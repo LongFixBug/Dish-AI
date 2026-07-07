@@ -1,0 +1,23 @@
+services:
+   postgres:
+   image: pgvector/pgvector:pg16
+   enviroment:
+   POSTGRES_USER: foodai
+   POSTGRES_PASSWORD: foodai
+   POSTGRES_DB: foodai
+   ports:
+   - "5432:5432"
+   volumes:
+   - postgres_data:/var.lib/postgressl/postgres_data
+
+   qdrant:
+    image: qdrant/qdrant:lastest
+    ports:
+      -:"6333:6333"
+      -:"6333:6333"
+    volumes:
+      -qdrant_data:/qdrant/storage
+
+volumes:
+  postgres_data:
+  qdrant_data:
