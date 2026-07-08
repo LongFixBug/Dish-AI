@@ -26,4 +26,5 @@ def test_info_returns_ok(client: TestClient) -> None:
     data = response.json()
     assert data["app"] == "FoodAI"
     assert "author" in data
-    assert "model" in data
+    assert "vision_model" in data
+    assert "llm_model" in data

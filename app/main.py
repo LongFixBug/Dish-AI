@@ -1,14 +1,13 @@
 """FoodAI — FastAPI application entry point."""
 
-from fastapi import FastAPI
-
-from app.config import settings
-
 import asyncio
+
+from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
+
 from app.api.chat import router as chat_router
-
-
+from app.api.analyze import router as analyze_router
+from app.config import settings
 
 app = FastAPI(
     title=settings.app_name,
@@ -22,25 +21,28 @@ async def health() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "ok", "version": settings.app_version}
 
+
 @app.get("/info")
-async def health() -> dict[str, str]:
-    """Mo ta ngan gon"""
+async def info() -> dict[str, str]:
+    """Thông tin ứng dụng."""
     return {
-    "app": settings.app_name,
-    "author": "nguyen hai long",
-    "model": settings.gemini_model
+        "app": settings.app_name,
+        "author": "nguyen hai long",
+        "vision_model": settings.vision_model,
+        "llm_model": settings.llm_model,
     }
 
 
 @app.get("/stream-demo")
 async def stream_demo():
+    """Demo SSE streaming."""
     async def generate():
         for i in range(10):
             yield f"data: Token {i}\n\n"
             await asyncio.sleep(0.5)
 
-    return StreamingResponse(generate(),
-                            media_type="text/event-stream")
-        
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
 
 app.include_router(chat_router)
+app.include_router(analyze_router)
