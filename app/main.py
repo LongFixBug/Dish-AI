@@ -27,7 +27,7 @@ async def info() -> dict[str, str]:
     """Thông tin ứng dụng."""
     return {
         "app": settings.app_name,
-        "author": "nguyen hai long",
+        "author": "nguyen hai long", 
         "vision_model": settings.vision_model,
         "llm_model": settings.llm_model,
     }
