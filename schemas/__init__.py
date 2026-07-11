@@ -1,0 +1,1 @@
+"""Shared schemas — Pydantic models dùng chung giữa BE + ML (shared)."""

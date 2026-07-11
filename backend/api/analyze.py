@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 
-from app.services.vision import identify_dish, VisionError
+from ml.inference.vision import identify_dish, VisionError
 
 router = APIRouter(prefix="/api/v1", tags=["analyze"])
 

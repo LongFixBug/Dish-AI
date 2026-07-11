@@ -1,0 +1,1 @@
+"""Evaluation harness — RAGAS + custom eval (AI/ML sở hữu)."""

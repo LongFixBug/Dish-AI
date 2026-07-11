@@ -5,9 +5,9 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 
-from app.api.chat import router as chat_router
-from app.api.analyze import router as analyze_router
-from app.config import settings
+from backend.api.chat import router as chat_router
+from backend.api.analyze import router as analyze_router
+from backend.config import settings
 
 app = FastAPI(
     title=settings.app_name,

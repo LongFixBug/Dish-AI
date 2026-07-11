@@ -1,0 +1,1 @@
+"""ML inference — CV model local + Vision API cloud (AI/ML sở hữu)."""

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import httpx
 
-from app.config import settings
+from backend.config import settings
 
 
 class VisionError(Exception):

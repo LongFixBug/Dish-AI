@@ -14,7 +14,7 @@ import torch.nn as nn
 from PIL import Image
 from torchvision import transforms, models
 
-from app.config import settings
+from backend.config import settings
 
 # ─── Constants ───────────────────────────────────────────────────────
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -124,7 +124,7 @@ class CVModel:
         if not self._loaded:
             raise RuntimeError(
                 "CV model chưa được load. Gọi cv_model.load() trước, "
-                "hoặc train model: python -m app.training.train"
+                "hoặc train model: python -m ml.training.train"
             )
 
         image_path = Path(image_path)

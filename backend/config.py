@@ -10,6 +10,9 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
     )
+    
+    # USDA FoodData Central
+    usda_api_key: str = ""
 
     # App
     app_name: str = "FoodAI"
@@ -27,7 +30,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = (
-        "postgresql+asyncpg://foodai:foodai@localhost:5432/foodai"
+        "postgresql+asyncpg://foodai:foodai@localhost:5433/foodai"
     )
 
     # LLM + Embedding (local with llama.cpp)

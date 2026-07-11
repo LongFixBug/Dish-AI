@@ -3,7 +3,7 @@
 Fine-tune ResNet50 pretrained trên ImageNet → phân loại món Việt.
 
 Usage:
-    python -m app.training.train
+    python -m ml.training.train
 
 Yêu cầu: ảnh đã được tổ chức trong data/images/{train,val}/<ten_mon>/
 """
@@ -22,7 +22,7 @@ from torchvision import models
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.training.dataset import VietFoodDataset  # noqa: E402
+from ml.training.dataset import VietFoodDataset  # noqa: E402
 
 
 # ─── Config ──────────────────────────────────────────────────────────

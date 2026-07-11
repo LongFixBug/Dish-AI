@@ -1,0 +1,1 @@
+"""Backend — FastAPI server + database + business logic (BE sở hữu)."""
