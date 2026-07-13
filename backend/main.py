@@ -1,6 +1,8 @@
 """FoodAI — FastAPI application entry point."""
 
 import asyncio
+import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -9,11 +11,30 @@ from backend.api.chat import router as chat_router
 from backend.api.analyze import router as analyze_router
 from backend.api.dishes import router as dishes_router
 from backend.config import settings
+from ml.inference.cv import cv_model
+
+logger = logging.getLogger("foodai")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load CV model lúc startup (asyncio.to_thread vì torch.load sync).
+
+    Load fail → log warning, app vẫn start (vision-only fallback).
+    """
+    try:
+        await asyncio.to_thread(cv_model.load)
+        logger.info("CV model loaded (%d classes)", len(cv_model.classes))
+    except Exception as e:
+        logger.warning("CV load failed — vision-only fallback: %s", e)
+    yield
+
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="AI nhận diện món ăn + phân tích dinh dưỡng từ ảnh",
+    lifespan=lifespan,
 )
 
 

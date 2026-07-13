@@ -5,6 +5,7 @@ Tầng 1 trong pipeline 2 tầng:
 - Nếu confidence < threshold → fallback Qwen3.7 Plus (cloud)
 """
 
+import glob
 import json
 from pathlib import Path
 from typing import Optional
@@ -19,10 +20,22 @@ from backend.config import settings
 # ─── Constants ───────────────────────────────────────────────────────
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
-CONFIDENCE_THRESHOLD = 0.8  # Ngưỡng fallback sang cloud
-DEFAULT_CHECKPOINT = Path("checkpoints/resnet50_vietfood_best.pth")
+CONFIDENCE_THRESHOLD = 0.6  # Ngưỡng fallback sang cloud (hạ từ 0.8 — 12 class conf phân tán hơn)
 CLASS_MAPPING = Path("checkpoints/class_mapping.json")
 IMAGE_SIZE = 224
+
+
+def _find_latest_checkpoint() -> Optional[Path]:
+    """Tìm checkpoint mới nhất trong checkpoints/ (glob *_vietfood_*.pth, sorted).
+
+    Future-proof: stage B retrain sinh tên mới (efficientnet_vietfood_*),
+    glob tự lấy file cuối theo timestamp trong tên → luôn dùng model mới nhất.
+    """
+    files = sorted(glob.glob("checkpoints/*_vietfood_*.pth"))
+    return Path(files[-1]) if files else None
+
+
+DEFAULT_CHECKPOINT = _find_latest_checkpoint()
 
 
 class CVModel:
@@ -117,15 +130,16 @@ class CVModel:
                 "source": "local" | "fallback_required",
             }
 
-        Raises:
-            FileNotFoundError: Nếu ảnh không tồn tại.
-            RuntimeError: Nếu model chưa được load.
+        Nếu model chưa load → trả dict source="fallback_required" (không raise)
+        để analyze skip sang vision graceful.
         """
         if not self._loaded:
-            raise RuntimeError(
-                "CV model chưa được load. Gọi cv_model.load() trước, "
-                "hoặc train model: python -m ml.training.train"
-            )
+            return {
+                "dish_name": None,
+                "confidence": 0.0,
+                "all_predictions": [],
+                "source": "fallback_required",
+            }
 
         image_path = Path(image_path)
         if not image_path.exists():

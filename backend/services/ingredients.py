@@ -68,13 +68,17 @@ async def _search_vector(
 
 
 async def search_ingredients(
-    session: AsyncSession, q: str, limit: int = DEFAULT_LIMIT
+    session: AsyncSession, q: str, limit: int = DEFAULT_LIMIT,
+    vector_fallback: bool = True,
 ) -> list[NutritionIngredient]:
     """Tìm nguyên liệu 2-tier: ILIKE + vector fallback, dedupe theo id.
 
     Args:
         q: text user gõ (1-2 chữ cũng OK).
         limit: số kết quả tối đa.
+        vector_fallback: True (mặc định, autocomplete) — bổ sung vector khi ILIKE
+            ít. False (map name→id trong analyze) — chỉ ILIKE, tránh false positive
+            (vector móc "gần nghĩa" nhưng sai nguyên liệu).
 
     Returns:
         list nguyên liệu, ILIKE hits lên đầu, vector hits bổ sung phía sau.
@@ -84,6 +88,9 @@ async def search_ingredients(
         return []
 
     ilike_hits = await _search_ilike(session, q, limit)
+
+    if not vector_fallback:
+        return ilike_hits[:limit]
 
     if len(ilike_hits) >= ILIKE_FALLBACK_THRESHOLD:
         return ilike_hits[:limit]
