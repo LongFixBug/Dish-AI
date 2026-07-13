@@ -12,7 +12,12 @@ build/
 
 # Models (GGUF files too large for git)
 models/*.gguf
-checkpoints/*.pth
+
+# Checkpoints (training artifacts, 600MB+)
+checkpoints/
+
+# Data dumps (debug scratch, not source data)
+jsonFood.md
 
 # Uploads (tmp user images)
 data/uploads/
