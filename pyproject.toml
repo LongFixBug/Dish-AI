@@ -13,6 +13,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.51",
     "asyncpg>=0.31.0",
     "pgvector>=0.5.0",
+    "timm>=1.0.0",
 ]
 
 [tool.pytest.ini_options]

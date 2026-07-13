@@ -1,6 +1,8 @@
 """Training script cho VietFood CV model.
 
-Fine-tune ResNet50 pretrained trên ImageNet → phân loại món Việt.
+Fine-tune EfficientNet-B0 (timm) pretrained ImageNet → phân loại món Việt.
+Full fine-tune (không freeze backbone) với lr nhỏ 5e-5 — tốt cho food
+(texture/quang cảnh quan trọng, không chỉ shape).
 
 Usage:
     python -m ml.training.train
@@ -13,10 +15,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import timm
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torchvision import models
 
 # Thêm project root vào path (chạy từ thư mục gốc FoodAI)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -26,9 +28,10 @@ from ml.training.dataset import VietFoodDataset  # noqa: E402
 
 
 # ─── Config ──────────────────────────────────────────────────────────
+ARCH = "efficientnet_b0"  # timm model name (B0: 5.3M params, input 224)
 BATCH_SIZE = 16
-NUM_EPOCHS = 15
-LEARNING_RATE = 1e-4
+NUM_EPOCHS = 18
+LEARNING_RATE = 5e-5  # nhỏ hơn ResNet 1e-4 — full fine-tune
 IMAGE_SIZE = 224
 NUM_WORKERS = 2
 
@@ -44,30 +47,20 @@ DEVICE = torch.device(
 
 
 def create_model(num_classes: int) -> nn.Module:
-    """Tạo ResNet50 pretrained + thay classification head.
+    """Tạo EfficientNet-B0 pretrained (timm) + classifier head cho num_classes.
+
+    Full fine-tune (không freeze) — drop_rate=0.3 dropout built-in.
+    timm tự thay classifier head khi truyền num_classes.
 
     Args:
         num_classes: Số lượng món ăn cần phân loại.
 
     Returns:
-        Model sẵn sàng để train.
+        Model sẵn sàng để train (toàn bộ param requires_grad=True).
     """
-    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
-
-    # Freeze tất cả layers trừ layer cuối
-    for param in model.parameters():
-        param.requires_grad = False
-
-    # Thay classification head
-    in_features = model.fc.in_features
-    model.fc = nn.Sequential(
-        nn.Dropout(p=0.3),
-        nn.Linear(in_features, 512),
-        nn.ReLU(),
-        nn.Dropout(p=0.3),
-        nn.Linear(512, num_classes),
+    model = timm.create_model(
+        ARCH, pretrained=True, num_classes=num_classes, drop_rate=0.3
     )
-
     return model
 
 
@@ -185,7 +178,7 @@ def main() -> None:
     )
 
     # ── Model ────────────────────────────────────────────────────────
-    print(f"\n🧠 Creating model (ResNet50, {train_ds.num_classes} classes)...")
+    print(f"\n🧠 Creating model ({ARCH}, {train_ds.num_classes} classes)...")
     model = create_model(train_ds.num_classes)
     model = model.to(DEVICE)
     print(f"   Total params: {sum(p.numel() for p in model.parameters()):,}")
@@ -233,9 +226,10 @@ def main() -> None:
         # Save best model
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            checkpoint_path = CHECKPOINT_DIR / f"resnet50_vietfood_{timestamp}_epoch{epoch}.pth"
+            checkpoint_path = CHECKPOINT_DIR / f"efficientnet_vietfood_{timestamp}_epoch{epoch}.pth"
             torch.save({
                 "epoch": epoch,
+                "arch": ARCH,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "val_acc": val_acc,

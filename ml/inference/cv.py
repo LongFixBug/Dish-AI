@@ -10,14 +10,16 @@ import json
 from pathlib import Path
 from typing import Optional
 
+import timm
 import torch
 import torch.nn as nn
 from PIL import Image
-from torchvision import transforms, models
+from torchvision import transforms
 
 from backend.config import settings
 
 # ─── Constants ───────────────────────────────────────────────────────
+ARCH = "efficientnet_b0"  # timm model — phải khớp train script
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 CONFIDENCE_THRESHOLD = 0.6  # Ngưỡng fallback sang cloud (hạ từ 0.8 — 12 class conf phân tán hơn)
@@ -26,12 +28,12 @@ IMAGE_SIZE = 224
 
 
 def _find_latest_checkpoint() -> Optional[Path]:
-    """Tìm checkpoint mới nhất trong checkpoints/ (glob *_vietfood_*.pth, sorted).
+    """Tìm checkpoint EfficientNet mới nhất trong checkpoints/ (sorted theo tên).
 
-    Future-proof: stage B retrain sinh tên mới (efficientnet_vietfood_*),
-    glob tự lấy file cuối theo timestamp trong tên → luôn dùng model mới nhất.
+    Chỉ glob efficientnet_vietfood_*.pth — tránh load nhầm ResNet checkpoint cũ
+    (architecture khác → state_dict key mismatch).
     """
-    files = sorted(glob.glob("checkpoints/*_vietfood_*.pth"))
+    files = sorted(glob.glob("checkpoints/efficientnet_vietfood_*.pth"))
     return Path(files[-1]) if files else None
 
 
@@ -84,19 +86,11 @@ class CVModel:
             self._loaded = False
             return
 
-        # Tạo model architecture
-        self.model = models.resnet50(weights=None)
-        in_features = self.model.fc.in_features
-        self.model.fc = nn.Sequential(
-            nn.Dropout(p=0.3),
-            nn.Linear(in_features, 512),
-            nn.ReLU(),
-            nn.Dropout(p=0.3),
-            nn.Linear(512, len(self.classes)),
-        )
+        # Tạo model architecture (EfficientNet-B0 qua timm, drop_rate trong checkpoint)
+        self.model = timm.create_model(ARCH, num_classes=len(self.classes), drop_rate=0.3)
 
         # Load weights nếu có
-        if self.checkpoint_path.exists():
+        if self.checkpoint_path and self.checkpoint_path.exists():
             checkpoint = torch.load(
                 self.checkpoint_path,
                 map_location=self.device,
