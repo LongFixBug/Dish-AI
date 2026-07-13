@@ -30,7 +30,8 @@ async def _search_ilike(
     stmt = (
         select(NutritionIngredient)
         .where(
-            func.vn_norm(NutritionIngredient.ingredient_name).op("ILIKE")(
+            NutritionIngredient.item_type.in_(["ingredient", "fruit"])
+            & func.vn_norm(NutritionIngredient.ingredient_name).op("ILIKE")(
                 func.vn_norm(literal(f"%{q}%"))
             )
         )
@@ -55,7 +56,10 @@ async def _search_vector(
 
     stmt = (
         select(NutritionIngredient)
-        .where(NutritionIngredient.embedding.isnot(None))
+        .where(
+            NutritionIngredient.embedding.isnot(None)
+            & NutritionIngredient.item_type.in_(["ingredient", "fruit"])
+        )
         .order_by(NutritionIngredient.embedding.cosine_distance(vec))
         .limit(limit)
     )

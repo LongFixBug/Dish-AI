@@ -85,6 +85,14 @@ class NutritionIngredient(Base):
         comment="Nguồn dữ liệu: 'usda', 'vnfood', 'manual'",
     )
 
+    item_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="ingredient",
+        server_default=text("'ingredient'"),
+        comment="Phân loại: ingredient | dish | fruit | product",
+    )
+
     embedding: Mapped[list[float] | None] = mapped_column(
         Vector(1024),
         nullable=True,

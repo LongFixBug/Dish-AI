@@ -64,7 +64,7 @@ async def _lookup_institute(
     stmt = (
         select(NutritionIngredient)
         .where(
-            (NutritionIngredient.source == "vnmeal")
+            (NutritionIngredient.item_type == "dish")
             & func.vn_norm(NutritionIngredient.ingredient_name).op("ILIKE")(
                 func.vn_norm(literal(f"%{name}%"))
             )
