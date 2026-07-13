@@ -50,9 +50,9 @@ App mobile (Expo/Flutter - làm sau)
 │  │          ingredients + gram    │  │
 │  │  Agent 2: RAG lookup nutrition │  │
 │  │           per ingredient       │  │
-│  │  Agent 3: aggregate + totals   │  │
-│  │  Agent 4: validate (sum check) │  │
-│  │  → retry Agent 1 nếu delta>15%│  │
+│  │  Step 3: Python math (gram x per_gram) = totals   │  │
+│  │  Agent 4: LLM viết lời giải thích │  │
+│  │  → retry Agent 1 nếu thiếu ingredient│  │
 │  └───────────────────────────────┘  │
 │                                     │
 │  ┌────────────┐  ┌──────────────┐   │
@@ -74,8 +74,8 @@ App mobile (Expo/Flutter - làm sau)
 |---|------|-----------|-----------------|
 | 1 | **RAG** | pgvector + USDA/ViFood embedding | "RAG pipeline giảm hallucination bằng đối chiếu nutrition DB chính quyền" |
 | 2 | **Structured output** | Pydantic schema + Gemini response_schema | "0 crash rate với schema-validated LLM output" |
-| 3 | **Agentic workflow** | LangGraph hoặc manual orchestration | "Multi-step agent với self-validation, retry khi aggregate delta > 15%" |
-| 4 | **Hallucination mitigation** | Compare Gemini estimate vs USDA GT, confidence score | "Confidence scoring + flag low-confidence cho user confirm" |
+| 3 | **Agentic workflow** | LangGraph hoặc manual orchestration | "Multi-step pipeline: Vision → RAG → Python math (không LLM tính toán) → LLM giải thích" |
+| 4 | **Hallucination mitigation** | LLM không làm toán → không thể bịa số; confidence dựa trên % ingredient tìm thấy trong DB | "Nutrition được tính bằng code, không qua LLM; confidence score phản ánh độ phủ DB" |
 | 5 | **Eval dashboard** | Streamlit/Next.js, 50 test images, metrics | "Eval harness đo accuracy/latency/cost, so sánh Gemini vs GPT-4o" |
 | 6 | **Cost/latency opt** | Redis cache + model routing (cheap identify, expensive aggregate) | "Cache + model routing giảm 40% API cost" |
 

@@ -93,10 +93,10 @@
 │  │  │              ORCHESTRATOR (Agentic)                    │   │    │
 │  │  │                                                       │   │    │
 │  │  │  Step 1 ──► Step 2 ──► Step 3 ──► Step 4 ──► Done    │   │    │
-│  │  │  CV        RAG per    Aggregate  Validate              │   │    │
-│  │  │  Identify  ingredient Nutrition  (delta<15%)           │   │    │
-│  │  │                                       │fail            │   │    │
-│  │  │                                       └──► retry ──────│   │    │
+│  │  │  CV        RAG per    Python     LLM giai             │   │    │
+│  │  │  Identify  ingredient math x     thich ket             │   │    │
+│  │  │                                       │qua              │   │    │
+│  │  │                                       └──► done ───────│   │    │
 │  │  └───────────────────────────────────────────────────────┘   │    │
 │  │                                                               │    │
 │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐     │    │
@@ -199,15 +199,15 @@
 ---
 
 ### Tuần 5: Agentic Workflow
-**Mục tiêu**: Pipeline đầy đủ từ ảnh → dinh dưỡng, có validate + retry
+**Mục tiêu**: Pipeline đầy đủ từ ảnh → dinh dưỡng, LLM không làm toán
 
 | Ngày | Làm gì | Skill học |
 |------|--------|-----------|
 | 1-2 | Step 1 - Identify: Qwen3.7 Plus + CV model → tên món + list ingredient + gram | Model ensemble, response parsing |
 | 3-4 | Step 2 - RAG per ingredient: loop từng ingredient → gọi RAG pipeline | Batch processing, async gather |
-| 5-6 | Step 3 - Aggregate: tổng calo/đạm/béo/carb/xơ từ tất cả ingredients | Data aggregation |
-| 7-8 | Step 4 - Validate: so sánh tổng vs Qwen3.7 Plus estimate, delta > 15% → retry | Self-validation logic |
-| 9-10 | Full pipeline test: upload ảnh tô phở → JSON dinh dưỡng có confidence score | End-to-end integration |
+| 5-6 | Step 3 - Python math: gram × per_gram = nutrition cho từng ingredient | Data aggregation (toán học, không LLM) |
+| 7-8 | Step 4 - LLM: Qwen2.5 7B viết lời giải thích kết quả, không làm toán | Prompt engineering cho explanation |
+| 9-10 | Full pipeline test: upload ảnh tô phở → JSON dinh dưỡng + confidence từ % DB coverage | End-to-end integration |
 
 **Deliverable cuối tuần 5**:
 - `POST /api/v1/analyze` upload ảnh → full JSON nutrition + confidence score
