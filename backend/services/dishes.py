@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import Dish, DishIngredient, NutritionIngredient
@@ -65,7 +65,9 @@ async def _lookup_institute(
         select(NutritionIngredient)
         .where(
             (NutritionIngredient.source == "vnmeal")
-            & NutritionIngredient.ingredient_name.ilike(f"%{name}%")
+            & func.vn_norm(NutritionIngredient.ingredient_name).op("ILIKE")(
+                func.vn_norm(literal(f"%{name}%"))
+            )
         )
         .limit(1)
     )
@@ -79,7 +81,11 @@ async def _lookup_user_recipe(
     """Tìm món trong dishes (user-contributed) + list DishIngredient của nó."""
     stmt_dish = (
         select(Dish)
-        .where(Dish.dish_name.ilike(f"%{name}%"))
+        .where(
+            func.vn_norm(Dish.dish_name).op("ILIKE")(
+                func.vn_norm(literal(f"%{name}%"))
+            )
+        )
         .order_by(Dish.usage_count.desc())  # ưu tiên recipe được reuse nhiều
         .limit(1)
     )
@@ -253,9 +259,13 @@ async def contribute_dish(
     Returns:
         (dish_id, totals, assumed_names) hoặc raise ValueError nếu trùng tên.
     """
-    # Check unique
+    # Check unique — equality sau vn_norm (không phân biệt dấu/hoa).
+    # Dùng == (không ILIKE) vì không có wildcard, semantic đúng + sẵn sàng
+    # expression index sau này.
     existing = await session.execute(
-        select(Dish).where(Dish.dish_name.ilike(dish_name)).limit(1)
+        select(Dish)
+        .where(func.vn_norm(Dish.dish_name) == func.vn_norm(literal(dish_name)))
+        .limit(1)
     )
     if existing.scalar_one_or_none() is not None:
         raise ValueError(f"Dish '{dish_name}' đã tồn tại")

@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from sqlalchemy import select
+from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import NutritionIngredient
@@ -29,7 +29,11 @@ async def _search_ilike(
     """Tier 1: ILIKE substring — nhanh, match tên chứa query."""
     stmt = (
         select(NutritionIngredient)
-        .where(NutritionIngredient.ingredient_name.ilike(f"%{q}%"))
+        .where(
+            func.vn_norm(NutritionIngredient.ingredient_name).op("ILIKE")(
+                func.vn_norm(literal(f"%{q}%"))
+            )
+        )
         .limit(limit)
     )
     result = await session.execute(stmt)
