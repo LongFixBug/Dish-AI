@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.api.chat import router as chat_router
 from backend.api.analyze import router as analyze_router
+from backend.api.dishes import router as dishes_router
 from backend.config import settings
 
 app = FastAPI(
@@ -46,3 +47,4 @@ async def stream_demo():
 
 app.include_router(chat_router)
 app.include_router(analyze_router)
+app.include_router(dishes_router)
