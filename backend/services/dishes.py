@@ -44,6 +44,23 @@ def _ingredient_to_per_gram(ing: NutritionIngredient) -> NutritionPerGram:
     )
 
 
+def compute_trust(usage_count: int, status: str | None) -> float:
+    """Trust-score 0.0-1.0 theo usage_count + status (Option 1).
+
+    - verified → 1.0 (admin duyệt, authoritative).
+    - draft → min(0.9, 0.3 + usage_count×0.03) — cap 0.9 (draft < verified luôn).
+      VD: 0 dùng→0.30, 5 dùng→0.45, 20 dùng→0.90 (cap).
+    - status lạ/None → 0.3 (fallback).
+
+    Khác NutritionTotals.confidence_score (data-coverage nguyên liệu).
+    """
+    if status == "verified":
+        return 1.0
+    if status == "draft":
+        return round(min(0.9, 0.3 + usage_count * 0.03), 2)
+    return 0.3
+
+
 @dataclass
 class ComputedItem:
     """Kết quả tính cho 1 item: kèm flag assumed (fallback chuyển mL→g)."""
@@ -124,12 +141,18 @@ async def lookup_dish(
             "status": "verified",
             "dish_id": None,
             "nutrition": totals,
+            "trust_score": 1.0,
         }
 
     # 2. User recipe (có công thức → tính tổng)
     recipe = await _lookup_user_recipe(session, name)
     if recipe is not None:
         dish, items = recipe
+        # Tăng usage_count +1 mỗi lần lookup user-recipe trúng.
+        # TODO(production): chuyển sang update(Dish).where(...).values(
+        #   usage_count=Dish.usage_count+1) cho race-safe; hiện KISS load+increment.
+        dish.usage_count += 1
+        await session.commit()  # get_session không auto-commit → phải explicit
         return await _build_recipe_response(session, dish, items)
 
     # 3. Không có
@@ -140,6 +163,7 @@ async def lookup_dish(
         "status": None,
         "dish_id": None,
         "nutrition": None,
+        "trust_score": None,
     }
 
 
@@ -171,6 +195,7 @@ async def _build_recipe_response(
         "status": dish.status,
         "dish_id": dish.id,
         "nutrition": totals,
+        "trust_score": compute_trust(dish.usage_count, dish.status),
     }
 
 

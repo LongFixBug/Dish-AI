@@ -52,6 +52,16 @@ class DishLookupResponse(BaseModel):
         description="UUID món trong dishes (chỉ khi source=user_recipe)",
     )
     nutrition: NutritionTotals | None = None
+    trust_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Độ tin cậy món: institute=1.0, user_recipe=f(usage_count,status), "
+            "None khi exists=False. KHÁC NutritionTotals.confidence_score "
+            "(đo data-coverage nguyên liệu, không phải trust món)."
+        ),
+    )
 
 
 # ─── Compute + Contribute (Tier 2) ───────────────────────────────────────────
