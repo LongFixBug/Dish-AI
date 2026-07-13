@@ -35,8 +35,8 @@ async def test_backfill_counts(db_session) -> None:
     ).all()
     counts = {t: c for t, c in rows}
 
-    assert abs(counts.get("ingredient", 0) - 8818) <= 5, f"ingredient: {counts}"
-    assert abs(counts.get("dish", 0) - 1225) <= 5, f"dish: {counts}"
+    assert abs(counts.get("ingredient", 0) - 8788) <= 5, f"ingredient: {counts}"
+    assert abs(counts.get("dish", 0) - 1255) <= 5, f"dish: {counts}"
     assert abs(counts.get("product", 0) - 80) <= 5, f"product: {counts}"
     assert abs(counts.get("fruit", 0) - 25) <= 5, f"fruit: {counts}"
 
@@ -45,13 +45,19 @@ async def test_backfill_counts(db_session) -> None:
 
 
 async def test_autocomplete_thit_excludes_dish(db_session) -> None:
-    """'thịt' → chỉ nguyên liệu + trái cây, KHÔNG móc món (Cơm sườn)."""
+    """'thịt' → chỉ nguyên liệu + trái cây, KHÔNG móc món.
+
+    Bao gồm cả món vnfood ('Cháo dinh dưỡng thịt bò' — vnfood nhưng là dish).
+    """
     results = await search_ingredients(db_session, "thịt", limit=20)
     types = {r.item_type for r in results}
     assert types <= {"ingredient", "fruit"}, f"còn dish/product: {types}"
     names = [r.ingredient_name.lower() for r in results]
     assert not any("cơm sườn" in n or "com suon" in n for n in names), (
         f"'Cơm sườn' (dish) lọt autocomplete: {names}"
+    )
+    assert not any("cháo" in n for n in names), (
+        f"'Cháo *' (dish vnfood) lọt autocomplete: {names}"
     )
 
 

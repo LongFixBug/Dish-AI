@@ -20,7 +20,8 @@ Heuristic dùng vn_norm(ingredient_name) (đã có, bỏ dấu+lower) để matc
 List trái cây dùng exact (vd 'dua hau' không 'dua' — tránh dính 'Dưa chuột' vegetable).
 List sản phẩm bỏ 'com' (vn_norm Cơm=Cốm collision).
 
-Kỳ vọng count: ingredient=8818, dish=1226, product=80, fruit=24.
+Kỳ vọng count: ingredient=8784, dish=1259, product=80, fruit=25.
+(ingredient = 10148 - 1259 dish - 80 product - 25 fruit)
 
 Lưu ý: heuristic dựa source + tên, ~0% sai sau refine. Metadata gốc đã MẤT trong
 JSON (parse chỉ giữ tên+nutrition+source). Nếu sau này re-parse giữ metadata gốc
@@ -65,7 +66,18 @@ WHERE source = 'vnfood'
   AND vn_norm(ingredient_name) ~ '^(banh|keo|caramen|sushi|burger|pizza|bim bim|hamburger|snack|popcorn|thach|tao pho|sui din|pha lau|socola)';
 """
 
-# Bước 3: fruit (vnmeal prefix exact) — chạy SAU product
+# Bước 2b: dish (vnfood prefix món) — món chế biến lẫn trong vnfood ingredient.
+# vnfood = API foodNatunal (nguyên liệu) nhưng lẫn món (Cháo/Chè/Bún/Chả/Canh/Lẩu).
+# Dùng prefix + space (vd 'bun ' không 'bun') để phân biệt 'Bún chả' (món) vs
+# 'Bún, tươi' (bún tươi nguyên liệu, bun+phẩy). 'cha ' không dính 'Chanh' (chanh).
+UPDATE_VNFOOD_DISH_SQL = """
+UPDATE nutrition_ingredients
+SET item_type = 'dish'
+WHERE source = 'vnfood'
+  AND vn_norm(ingredient_name) ~ '^(chao|cha |bun |canh |che |lau |nem chua)';
+"""
+
+# Bước 3: fruit (vnmeal prefix exact) — chạy SAU product + vnfood-dish
 # Dùng exact thay prefix rộng: 'dua hau' không 'dua' (tránh Dưa chuột vegetable),
 # 'tao ta'/'tao tay' không 'tao' (tránh Tào phớ product).
 UPDATE_FRUIT_SQL = """
@@ -88,8 +100,11 @@ async def migrate() -> None:
         await conn.execute(text(UPDATE_PRODUCT_SQL))
         print("✅ Bước 2: vnfood prefix → product (chạy trước fruit)")
 
+        await conn.execute(text(UPDATE_VNFOOD_DISH_SQL))
+        print("✅ Bước 2b: vnfood prefix món → dish (Cháo/Chè/Bún/Chả...)")
+
         await conn.execute(text(UPDATE_FRUIT_SQL))
-        print("✅ Bước 3: vnmeal prefix exact → fruit (chạy sau product)")
+        print("✅ Bước 3: vnmeal prefix exact → fruit (chạy sau)")
 
         # Verify count
         result = await conn.execute(

@@ -9,8 +9,9 @@ Test 4 điểm sửa:
 Trước khi sửa: 'suon' không móc 'sườn' qua ILIKE → rơi vector fallback (kém).
 Sau khi sửa: ILIKE + vn_norm móc đúng → không cần vector.
 
-Lưu ý: test dùng món THẬT có trong DB ('sườn', 'bún chả', 'cơm sườn').
-Không dùng 'cơm chiên' vì DB không có món đó.
+Lưu ý: test dùng món THẬT có trong DB ('sườn', 'sữa bò', 'cơm sườn').
+Không dùng 'cơm chiên' (DB không có) hay 'bún chả' (sau item_type = dish,
+bị lọc khỏi autocomplete).
 
 Dùng DB thật (10K rows) + embedding server 8081 (cho vector fallback nếu dùng).
 """
@@ -49,19 +50,20 @@ async def test_search_suon_finds_suon_via_ilike(db_session) -> None:
     )
 
 
-async def test_search_bun_cha_finds_bun_cha(db_session) -> None:
-    """'bun cha' (không dấu) phải móc 'Bún chả' qua ILIKE + vn_norm.
+async def test_search_sua_bo_finds_sua_bo(db_session) -> None:
+    """'sua bo' (không dấu) phải móc 'Sữa bò tươi' qua ILIKE + vn_norm.
 
-    Case quan trọng: trước sửa ILIKE phân biệt dấu → 'bun cha' không móc
-    'Bún chả' (chỉ vector fallback kém). Sau sửa: ILIKE móc đúng.
-    Dùng 'bun cha' thay vì 'com chin' vì DB không có món 'cơm chiên'.
+    Case quan trọng: trước sửa ILIKE phân biệt dấu → 'sua bo' không móc
+    'Sữa bò' (chỉ vector fallback kém). Sau sửa: ILIKE móc đúng.
+    Dùng 'sữa bò' (ingredient) thay vì 'bún chả' vì 'Bún chả' giờ = dish
+    (bị lọc khỏi autocomplete sau khi thêm item_type).
     """
-    results = await search_ingredients(db_session, "bun cha", limit=8)
-    assert len(results) > 0, "phải có kết quả cho 'bun cha'"
+    results = await search_ingredients(db_session, "sua bo", limit=8)
+    assert len(results) > 0, "phải có kết quả cho 'sua bo'"
     names = _names(results)
-    assert _has_substring(names, "bún chả") or _has_substring(
-        names, "bun cha"
-    ), f"không móc 'bún chả'; got {names}"
+    assert _has_substring(names, "sữa bò") or _has_substring(
+        names, "sua bo"
+    ), f"không móc 'sữa bò'; got {names}"
 
 
 # ─── #2 lookup_dish — institute móc không dấu ─────────────────────────────────
@@ -131,13 +133,13 @@ async def test_contribute_duplicate_case_diacritic_raises_409(db_session) -> Non
 # ─── Endpoint qua TestClient ──────────────────────────────────────────────────
 
 
-def test_endpoint_search_bun_cha(client) -> None:
-    """GET /ingredients/search?q=bun cha → 200 + có 'bún chả'."""
-    resp = client.get("/api/v1/ingredients/search", params={"q": "bun cha"})
+def test_endpoint_search_sua_bo(client) -> None:
+    """GET /ingredients/search?q=sua bo → 200 + có 'sữa bò'."""
+    resp = client.get("/api/v1/ingredients/search", params={"q": "sua bo"})
     assert resp.status_code == 200
     results = resp.json()["results"]
     assert len(results) > 0
     names = [r["ingredient_name"].lower() for r in results]
-    assert _has_substring(names, "bún chả") or _has_substring(
-        names, "bun cha"
-    ), f"endpoint không móc 'bún chả'; got {names}"
+    assert _has_substring(names, "sữa bò") or _has_substring(
+        names, "sua bo"
+    ), f"endpoint không móc 'sữa bò'; got {names}"
