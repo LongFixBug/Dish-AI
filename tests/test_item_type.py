@@ -1,9 +1,9 @@
 """Integration tests: phân biệt nguyên liệu vs món qua cột item_type.
 
-item_type ∈ {ingredient, dish, fruit, product}. Backfill heuristic:
-- vnmeal → dish (mặc định), trừ trái cây → fruit
-- vnfood → ingredient (mặc định), trừ sản phẩm (Bánh/Kẹo/Sushi...) → product
-- sr legacy + foundation → ingredient
+item_type ∈ {ingredient, dish, fruit, product}. Backfill 2 giai đoạn:
+- v1 heuristic (migrate_item_type.py): source + tên regex → ~0% sai cho VN
+- v2 re-parse (migrate_item_type_v2.py): USDA foodCategory + VN category gốc
+  → item_type chính xác hơn heuristic cho cả USDA + VN rows
 
 Mục tiêu:
 - autocomplete chỉ trả ingredient + fruit (dùng được trong công thức)
@@ -24,8 +24,10 @@ from tests.conftest import db_session  # noqa: F401  (fixture)
 async def test_backfill_counts(db_session) -> None:
     """Count theo item_type phải khớp số liệu inspect (tổng 10148).
 
-    ingredient=8818, dish=1226, product=80, fruit=24.
-    Dùng range ±5 để chịu sai số nhỏ (rerun idempotent không đổi).
+    Sau migrate_item_type_v2 (re-parse USDA foodCategory + VN category):
+    USDA 8057 rows + VN 2088 rows map category → item_type chính xác hơn heuristic.
+    ingredient=6195, dish=1268, product=2192, fruit=493 (tổng 10148).
+    Dùng range ±20 (USDA category có thể lệch vài row nếu data update).
     """
     rows = (
         await db_session.execute(
@@ -35,10 +37,10 @@ async def test_backfill_counts(db_session) -> None:
     ).all()
     counts = {t: c for t, c in rows}
 
-    assert abs(counts.get("ingredient", 0) - 8788) <= 5, f"ingredient: {counts}"
-    assert abs(counts.get("dish", 0) - 1255) <= 5, f"dish: {counts}"
-    assert abs(counts.get("product", 0) - 80) <= 5, f"product: {counts}"
-    assert abs(counts.get("fruit", 0) - 25) <= 5, f"fruit: {counts}"
+    assert abs(counts.get("ingredient", 0) - 6195) <= 20, f"ingredient: {counts}"
+    assert abs(counts.get("dish", 0) - 1268) <= 20, f"dish: {counts}"
+    assert abs(counts.get("product", 0) - 2192) <= 20, f"product: {counts}"
+    assert abs(counts.get("fruit", 0) - 493) <= 20, f"fruit: {counts}"
 
 
 # ─── Autocomplete chỉ trả ingredient + fruit ──────────────────────────────────
