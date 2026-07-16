@@ -25,3 +25,6 @@ data/images/
 
 # Logs
 logs/
+
+# RAG eval reports (output, không commit — chạy lại sinh mới)
+ml/evaluation/reports/

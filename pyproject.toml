@@ -14,6 +14,11 @@ dependencies = [
     "asyncpg>=0.31.0",
     "pgvector>=0.5.0",
     "timm>=1.0.0",
+    # RAG eval (Task #6) — RAGAS + OpenAI-compatible LLM judge
+    "ragas>=0.2.0",
+    "openai>=1.0.0",
+    "datasets>=2.0.0",
+    "pandas>=2.0.0",
 ]
 
 [tool.pytest.ini_options]
