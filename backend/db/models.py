@@ -1,16 +1,18 @@
 """SQLAlchemy ORM models cho FoodAI database.
 
-Tất cả model kế thừa từ Base. Hiện tại:
-    - NutritionIngredient: bảng lưu dinh dưỡng per-gram từ USDA/ViFood.
+Phiên bản Jul 23: chỉ giữ 2 bảng dữ liệu Việt Nam:
+    - VnIngredient: dinh dưỡng nguyên liệu / đồ uống (per-gram) — Viện DD.
+    - VnDish: dinh dưỡng món ăn (total + typical_grams) — Viện DD.
 
-Map với Pydantic schema NutritionPerGram trong schemas/nutrition.py.
+Đã bỏ: NutritionIngredient (USDA), Dish/DishIngredient (user-recipe),
+ConversionRate (mL→g) — flow analyze giờ chỉ dùng vn_dishes + vn_ingredients.
 """
 
 from datetime import datetime
 from uuid import uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, text
+from sqlalchemy import DateTime, Float, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -20,14 +22,17 @@ class Base(DeclarativeBase):
     pass
 
 
-class NutritionIngredient(Base):
-    """Bảng dinh dưỡng trên 1 gram của từng ingredient.
+# ── Bảng: Nguyên liệu Việt ────────────────────────────────────────────────────
 
-    Dữ liệu nguồn: USDA FoodData Central + Vietnam Food Composition Table.
-    Mỗi hàng = 1 ingredient với giá trị dinh dưỡng per gram.
+
+class VnIngredient(Base):
+    """Bảng dinh dưỡng nguyên liệu Việt Nam (per-gram sẵn).
+
+    Dữ liệu nguồn: Viện Dinh Dưỡng VN (viendinhduong.vn) — 853 thực phẩm.
+    Dùng cho: món ăn kèm / đồ uống trong ảnh (sữa hộp, trà đá, xoài...).
     """
 
-    __tablename__ = "nutrition_ingredients"
+    __tablename__ = "vn_ingredients"
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False),
@@ -38,236 +43,65 @@ class NutritionIngredient(Base):
     )
 
     ingredient_name: Mapped[str] = mapped_column(
-        String(500),
-        nullable=False,
-        comment="Tên thực phẩm, VD: 'Strawberries, raw'",
+        String(500), nullable=False, comment="Tên thực phẩm tiếng Việt"
     )
+    calories_per_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
+    protein_per_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
+    fat_per_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
+    carbs_per_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
+    fiber_per_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
 
-    calories_per_g: Mapped[float] = mapped_column(
-        Float,
-        default=0.0,
-        server_default=text("0.0"),
-        comment="Calo trên 1 gram (kcal/g)",
-    )
-
-    protein_per_g: Mapped[float] = mapped_column(
-        Float,
-        default=0.0,
-        server_default=text("0.0"),
-        comment="Đạm trên 1 gram (g/g)",
-    )
-
-    fat_per_g: Mapped[float] = mapped_column(
-        Float,
-        default=0.0,
-        server_default=text("0.0"),
-        comment="Chất béo trên 1 gram (g/g)",
-    )
-
-    carbs_per_g: Mapped[float] = mapped_column(
-        Float,
-        default=0.0,
-        server_default=text("0.0"),
-        comment="Carbohydrate trên 1 gram (g/g)",
-    )
-
-    fiber_per_g: Mapped[float] = mapped_column(
-        Float,
-        default=0.0,
-        server_default=text("0.0"),
-        comment="Chất xơ trên 1 gram (g/g)",
-    )
-
-    source: Mapped[str] = mapped_column(
-        String(50),
-        default="unknown",
-        server_default=text("'unknown'"),
-        comment="Nguồn dữ liệu: 'usda', 'vnfood', 'manual'",
-    )
-
+    source: Mapped[str] = mapped_column(String(50), default="vnfood", server_default=text("'vnfood'"))
     item_type: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="ingredient",
-        server_default=text("'ingredient'"),
-        comment="Phân loại: ingredient | dish | fruit | product",
+        String(20), nullable=False, default="ingredient", server_default=text("'ingredient'")
     )
 
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(1024),
-        nullable=True,
-        comment="Vector embedding 1024 chiều (từ Qwen3-Embedding)",
+        Vector(1024), nullable=True,
+        comment="Vector 1024 chiều (Qwen3-Embedding) cho semantic search",
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=text("now()"),
-        comment="Thời điểm insert vào DB",
+        DateTime(timezone=True), server_default=text("now()")
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<NutritionIngredient(id={self.id!r}, "
-            f"name={self.ingredient_name!r}, source={self.source!r})>"
-        )
+        return f"<VnIngredient(id={self.id!r}, name={self.ingredient_name!r})>"
 
 
-class Dish(Base):
-    """Bảng danh sách món ăn.
+# ── Bảng: Món ăn Việt ─────────────────────────────────────────────────────────
 
-    Mỗi hàng = 1 món ăn (cơm sườn, phở bò, bún chả...).
-    Món ăn được ghép từ nhiều ingredient qua bảng dish_ingredients.
+
+class VnDish(Base):
+    """Bảng dinh dưỡng món ăn Việt — dữ liệu từ Viện Dinh Dưỡng.
+
+    Giá trị RAW từ API (per-serving). typical_grams = trọng lượng 1 khẩu phần:
+      - Có → tính được per-gram chính xác → scale theo gram Vision.
+      - NULL → giữ RAW, KHÔNG scale theo gram ảnh (tránh sai số).
+    Món mới Vision nhận (chưa có DB) → INSERT source='vision_auto', nutrition=0.
     """
 
-    __tablename__ = "dishes"
+    __tablename__ = "vn_dishes"
 
     id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
-        primary_key=True,
-        default=lambda: str(uuid4()),
-        server_default=text("gen_random_uuid()"),
-        comment="UUID v4 — khóa chính",
+        UUID(as_uuid=False), primary_key=True,
+        default=lambda: str(uuid4()), server_default=text("gen_random_uuid()"),
     )
+    dish_name: Mapped[str] = mapped_column(String(200), nullable=False)
 
-    dish_name: Mapped[str] = mapped_column(
-        String(200),
-        nullable=False,
-        unique=True,
-        comment="Tên món ăn, VD: 'cơm sườn', 'phở bò'",
-    )
+    total_calories: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
+    total_protein_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
+    total_fat_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
+    total_carbs_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
+    total_fiber_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
 
-    description: Mapped[str | None] = mapped_column(
-        String(1000),
-        nullable=True,
-        comment="Mô tả ngắn về món ăn (tùy chọn)",
-    )
+    typical_grams: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="draft",
-        server_default=text("'draft'"),
-        comment="draft | verified — nền tảng trust-score pha 2",
-    )
-
-    contributor_id: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-        comment="UUID do client gen (anonymous, chưa có auth)",
-    )
-
-    usage_count: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=0,
-        server_default=text("0"),
-        comment="Số lần món được reuse — tăng dần, nền tảng confidence pha 2",
-    )
+    source: Mapped[str] = mapped_column(String(50), default="vnmeal", server_default=text("'vnmeal'"))
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=text("now()"),
-        comment="Thời điểm tạo món",
+        DateTime(timezone=True), server_default=text("now()")
     )
 
     def __repr__(self) -> str:
-        return f"<Dish(id={self.id!r}, name={self.dish_name!r}, status={self.status!r})>"
-
-
-class DishIngredient(Base):
-    """Bảng trung gian many-to-many: món ăn ↔ nguyên liệu.
-
-    Mỗi hàng = 1 cặp (món, nguyên liệu) kèm số gram.
-    Đây là "công thức" định nghĩa món gồm những gì và bao nhiêu.
-    """
-
-    __tablename__ = "dish_ingredients"
-
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
-        primary_key=True,
-        default=lambda: str(uuid4()),
-        server_default=text("gen_random_uuid()"),
-        comment="UUID v4 — khóa chính",
-    )
-
-    dish_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
-        ForeignKey("dishes.id", ondelete="CASCADE"),
-        nullable=False,
-        comment="Khóa ngoại tới dishes.id",
-    )
-
-    ingredient_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
-        ForeignKey("nutrition_ingredients.id", ondelete="CASCADE"),
-        nullable=False,
-        comment="Khóa ngoại tới nutrition_ingredients.id",
-    )
-
-    grams: Mapped[float] = mapped_column(
-        Float,
-        nullable=False,
-        comment="Số gram nguyên liệu này dùng trong món",
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=text("now()"),
-        comment="Thời điểm tạo dòng",
-    )
-
-    def __repr__(self) -> str:
-        return (
-            f"<DishIngredient(dish_id={self.dish_id!r}, "
-            f"ingredient_id={self.ingredient_id!r}, grams={self.grams!r})>"
-        )
-
-
-class ConversionRate(Base):
-    """Bảng chuyển đổi đơn vị thể tích → gram theo từng nguyên liệu.
-
-    VD: 1 mL sữa ≈ 1.03 g, 1 mL dầu ≈ 0.92 g.
-    ingredient_id = NULL → rate chung (fallback nước = 1.0).
-    """
-
-    __tablename__ = "conversion_rates"
-
-    id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False),
-        primary_key=True,
-        default=lambda: str(uuid4()),
-        server_default=text("gen_random_uuid()"),
-        comment="UUID v4 — khóa chính",
-    )
-
-    ingredient_id: Mapped[str | None] = mapped_column(
-        UUID(as_uuid=False),
-        ForeignKey("nutrition_ingredients.id", ondelete="CASCADE"),
-        nullable=True,
-        comment="NULL = rate chung fallback (nước). Có giá trị = rate riêng cho nguyên liệu đó",
-    )
-
-    unit_name: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        comment="Tên đơn vị, VD: 'ml'",
-    )
-
-    grams_per_unit: Mapped[float] = mapped_column(
-        Float,
-        nullable=False,
-        comment="Số gram tương đương 1 đơn vị, VD: 1 ml sữa = 1.03 g",
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=text("now()"),
-        comment="Thời điểm tạo",
-    )
-
-    def __repr__(self) -> str:
-        return (
-            f"<ConversionRate(ingredient_id={self.ingredient_id!r}, "
-            f"unit={self.unit_name!r}, grams_per_unit={self.grams_per_unit!r})>"
-        )
+        return f"<VnDish(id={self.id!r}, name={self.dish_name!r}, source={self.source!r})>"

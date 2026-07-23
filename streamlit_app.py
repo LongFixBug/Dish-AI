@@ -1,11 +1,10 @@
 """Streamlit UI — FoodAI: nhận diện món ăn Việt + phân tích dinh dưỡng từ ảnh.
 
-Ba tab chính:
-  - Analyze: upload ảnh → CV local + Qwen3.7 vision → dinh dưỡng
-  - Search: tìm món (lookup) + tìm nguyên liệu (autocomplete)
-  - Contribute: đóng góp công thức món mới (Tier 2)
-
-Gọi API backend qua httpx. Backend mặc định http://localhost:8000.
+Phiên bản Jul 23: chỉ còn 1 tab Analyze.
+  - Upload ảnh → CV local (giữ train sau) + Vision → dishes[{dish_name, gram, is_side}]
+  - Mỗi món tra vn_dishes (+ Qdrant) + vn_ingredients (món ăn kèm) → scale gram
+  - Món mới → tự thêm vào vn_dishes (source=vision_auto)
+  - KHÔNG còn per-ingredient edit / quick-add / Contribute / Search tab
 
 Usage:
     streamlit run streamlit_app.py
@@ -13,17 +12,15 @@ Usage:
 
 from __future__ import annotations
 
-import io
-import json
-import sys
-from pathlib import Path
+import os
+import unicodedata
 
 import httpx
 import streamlit as st
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-API_BASE = "http://localhost:8000"
+API_BASE = os.environ.get("FOODAI_API_BASE", "http://localhost:8000")
 st.set_page_config(
     page_title="FoodAI — Nhận diện món Việt",
     page_icon="🍜",
@@ -33,12 +30,12 @@ st.set_page_config(
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
+
 def _api(verb: str, path: str, **kwargs) -> httpx.Response:
-    """Gọi API backend. Verb = POST, GET, etc. Path = /api/v1/..."""
+    """Gọi API backend."""
     url = f"{API_BASE}{path}"
     try:
-        r = getattr(httpx, verb)(url, **kwargs, timeout=40.0)
-        return r
+        return getattr(httpx, verb)(url, **kwargs, timeout=60.0)
     except httpx.ConnectError:
         st.error(f"Không kết nối được backend ({API_BASE}). Chạy `uvicorn backend.main:app --port 8000`")
         st.stop()
@@ -47,41 +44,100 @@ def _api(verb: str, path: str, **kwargs) -> httpx.Response:
         st.stop()
 
 
-def _nutrition_card(totals: dict, title: str | None = None) -> None:
-    """Hiển thị nutrition card với metrics."""
+def _nutrition_card(totals: dict) -> None:
+    """Hiển thị nutrition card: per-100g + user nhập khẩu phần + danh sách món."""
 
+    total_grams = totals.get("total_grams", 0)
+    per_100g_cal = totals.get("per_100g_calories", 0)
+    per_100g_p = totals.get("per_100g_protein_g", 0)
+    per_100g_f = totals.get("per_100g_fat_g", 0)
+    per_100g_c = totals.get("per_100g_carbs_g", 0)
+    per_100g_fb = totals.get("per_100g_fiber_g", 0)
+
+    st.markdown("#### 📊 Dinh dưỡng trên 100g")
     cols = st.columns(5)
-    cols[0].metric("🔥 Calories", f"{totals.get('total_calories', 0):.0f} kcal")
-    cols[1].metric("🥩 Protein", f"{totals.get('total_protein_g', 0):.1f} g")
-    cols[2].metric("🧈 Fat", f"{totals.get('total_fat_g', 0):.1f} g")
-    cols[3].metric("🍚 Carbs", f"{totals.get('total_carbs_g', 0):.1f} g")
-    cols[4].metric("🌿 Fiber", f"{totals.get('total_fiber_g', 0):.1f} g")
+    cols[0].metric("🔥 Calories", f"{per_100g_cal:.0f} kcal")
+    cols[1].metric("🥩 Protein", f"{per_100g_p:.1f} g")
+    cols[2].metric("🧈 Fat", f"{per_100g_f:.1f} g")
+    cols[3].metric("🍚 Carbs", f"{per_100g_c:.1f} g")
+    cols[4].metric("🌿 Fiber", f"{per_100g_fb:.1f} g")
 
-    # Confidence & missing
+    if total_grams > 0:
+        st.caption(f"(Dựa trên tổng khối lượng ước tính **{total_grams:.0f}g** từ ảnh)")
+    else:
+        st.caption("(Dựa trên dữ liệu dinh dưỡng từ DB)")
+
+    # ── User nhập khẩu phần thực tế ─────────────────────────────────────
+    st.markdown("#### 🔢 Bạn ăn/uống bao nhiêu?")
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        serving = st.number_input(
+            "Khẩu phần", min_value=1.0, max_value=5000.0,
+            value=float(total_grams) if total_grams > 0 else 100.0,
+            step=10.0, key="serving_size",
+            help="Nhập số gram (món ăn) hoặc ml (đồ uống) bạn đã dùng.",
+        )
+    with c2:
+        serving_unit = st.selectbox("Đơn vị", ["gram", "ml"], key="serving_unit")
+
+    if per_100g_cal > 0 or per_100g_p > 0 or per_100g_f > 0 or per_100g_c > 0 or per_100g_fb > 0:
+        factor = serving / 100.0
+        st.markdown(f"##### → Tổng cho **{serving:.0f} {serving_unit}**:")
+        c2_ = st.columns(5)
+        c2_[0].metric("🔥 Calories", f"{per_100g_cal * factor:.0f} kcal")
+        c2_[1].metric("🥩 Protein", f"{per_100g_p * factor:.1f} g")
+        c2_[2].metric("🧈 Fat", f"{per_100g_f * factor:.1f} g")
+        c2_[3].metric("🍚 Carbs", f"{per_100g_c * factor:.1f} g")
+        c2_[4].metric("🌿 Fiber", f"{per_100g_fb * factor:.1f} g")
+    else:
+        st.caption("_(Chưa có dữ liệu dinh dưỡng để tính)_")
+
+    # ── Confidence & missing ─────────────────────────────────────────────
     conf = totals.get("confidence_score")
     missing = totals.get("missing_ingredients", [])
     foot = []
     if conf is not None:
         foot.append(f"Độ tin cậy: **{conf:.0%}**")
     if missing:
-        foot.append(f"Thiếu DB: {', '.join(missing)}")
+        foot.append(f"Thiếu DB: {len(missing)} món (Vision tự thêm, nutrition=0)")
     if foot:
         st.caption(" · ".join(foot))
 
-    # Ingredient table
-    with st.expander(f"Nguyên liệu ({len(totals.get('ingredients', []))})"):
-        rows = []
-        for ing in totals.get("ingredients", []):
-            rows.append({
-                "Tên": ing["ingredient_name"],
-                "Gram": f"{ing['grams']:.0f}",
-                "Calo": f"{ing['calories']:.0f}",
-                "Đạm": f"{ing['protein_g']:.1f}",
-                "Béo": f"{ing['fat_g']:.1f}",
-                "Carb": f"{ing['carbs_g']:.1f}",
-            })
-        if rows:
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+    # ── Danh sách món trong ảnh ──────────────────────────────────────────
+    items = totals.get("items", [])
+    if items:
+        with st.expander(f"🍽️ Các món trong ảnh ({len(items)} món)"):
+            for it in items:
+                badge = "✅" if it.get("found_in_db") else "🆕"
+                st.write(
+                    f"{badge} **{it['item_name']}** — {it['grams']:.0f}g | "
+                    f"🔥 {it['calories']:.0f} kcal | 🥩 {it['protein_g']:.1f}g | "
+                    f"🧈 {it['fat_g']:.1f}g | 🍚 {it['carbs_g']:.1f}g"
+                )
+
+
+def _normalize_dish_name(name: str) -> str:
+    """Chuẩn hóa tên món → snake_case không dấu (cho training-data feedback)."""
+    nfkd = unicodedata.normalize("NFKD", name)
+    no_dia = "".join(c for c in nfkd if not unicodedata.combining(c))
+    import re
+    return re.sub(r"[^\w\s-]", "", no_dia).strip().lower().replace(" ", "_")
+
+
+def _save_to_training(correct_name: str, uploaded_bytes: bytes, uploaded_type: str) -> None:
+    """Gửi ảnh + label đúng → POST /feedback/training-data (train CV sau)."""
+    if not correct_name.strip() or uploaded_bytes is None:
+        return
+    slug = _normalize_dish_name(correct_name)
+    files = {
+        "file": (f"{slug}.jpg", uploaded_bytes, uploaded_type or "image/jpeg"),
+        "correct_dish_name": (None, correct_name.strip()),
+    }
+    r = _api("post", "/api/v1/feedback/training-data", files=files)
+    if r.status_code == 200:
+        st.success(f"✅ Đã lưu ảnh '{correct_name}' vào training data ({r.json().get('count', '?')} ảnh)")
+    else:
+        st.error(f"Lỗi feedback {r.status_code}: {r.text[:300]}")
 
 
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
@@ -89,164 +145,137 @@ def _nutrition_card(totals: dict, title: str | None = None) -> None:
 st.sidebar.title("🍜 FoodAI")
 st.sidebar.caption("AI nhận diện món ăn Việt + phân tích dinh dưỡng")
 
-# Health check
 try:
     r = httpx.get(f"{API_BASE}/health", timeout=5).json()
-    health = r.get("status", "?")
-    st.sidebar.success(f"🟢 Backend: {health}")
+    st.sidebar.success(f"🟢 Backend: {r.get('status', '?')}")
 except Exception:
     st.sidebar.error("🔴 Backend offline")
 
-tab = st.sidebar.radio("Chọn chức năng", ["📸 Analyze", "🔍 Search", "➕ Contribute"])
+# ─── TAB Analyze (tab duy nhất) ─────────────────────────────────────────────
 
-# ─── TAB 1: Analyze (ảnh → nutrition) ────────────────────────────────────────
+st.title("📸 Nhận diện món ăn từ ảnh")
+st.caption(
+    "Upload ảnh → Vision nhận diện từng món + khối lượng → tra vn_dishes/vn_ingredients "
+    "→ scale dinh dưỡng theo gram ảnh. Món chưa có DB → tự thêm."
+)
 
-if tab == "📸 Analyze":
-    st.title("📸 Nhận diện món ăn từ ảnh")
-    st.caption("Upload ảnh → CV local (EfficientNet-B0, 12 món) + Qwen3.7 Vision fallback → phân tích dinh dưỡng")
+if "analyze_result" not in st.session_state:
+    st.session_state.analyze_result = None
+if "uploaded_bytes" not in st.session_state:
+    st.session_state.uploaded_bytes = None
+if "uploaded_name" not in st.session_state:
+    st.session_state.uploaded_name = None
+if "uploaded_type" not in st.session_state:
+    st.session_state.uploaded_type = None
 
-    uploaded = st.file_uploader("Chọn ảnh món ăn", type=["jpg", "jpeg", "png", "webp"])
-    if uploaded and st.button("🔍 Phân tích", type="primary"):
-        with st.spinner("Đang phân tích... (~10-30s nếu dùng Vision)"):
-            files = {"file": (uploaded.name, uploaded.getvalue(), uploaded.type)}
-            r = _api("post", "/api/v1/analyze", files=files)
-            if r.status_code != 200:
-                st.error(f"API lỗi {r.status_code}: {r.text[:500]}")
-            else:
-                data = r.json()
-                # Source badge
-                source = data.get("source", "?")
-                labels = {
-                    "cv_local": ("✅ CV Local", "green"),
-                    "vision": ("☁️ Vision (cloud)", "orange"),
-                    "cv_local_not_found_vision": ("🔄 CV → Vision", "blue"),
-                }
-                lbl, color = labels.get(source, (source, "grey"))
-                st.caption(f"Nguồn nhận diện: :{color}[{lbl}]")
 
-                if data.get("error"):
-                    st.warning(f"⚠️ {data['error']}")
-
-                if data.get("cv_confidence") is not None:
-                    st.metric("CV Confidence", f"{data['cv_confidence']:.0%}")
-
-                if data.get("dish_name"):
-                    st.subheader(f"🍽️ {data['dish_name']}")
-
-                if data.get("nutrition"):
-                    _nutrition_card(data["nutrition"])
-
-                if data.get("ingredients"):
-                    with st.expander("Vision ingredients"):
-                        for ing in data["ingredients"]:
-                            st.write(f"- {ing['name']}: {ing['grams']}g")
-
-# ─── TAB 2: Search ───────────────────────────────────────────────────────────
-
-elif tab == "🔍 Search":
-    st.title("🔍 Tìm kiếm")
-
-    sub = st.radio("Tìm gì?", ["🍽️ Món ăn (lookup)", "🥬 Nguyên liệu (autocomplete)"], horizontal=True)
-
-    if "Món" in sub:
-        q = st.text_input("Tên món (có dấu hoặc không dấu)", placeholder="vd: cơm sườn, pho bo, bun cha...")
-        if q and st.button("Tìm món"):
-            r = _api("get", "/api/v1/dishes/lookup", params={"name": q})
-            if r.status_code != 200:
-                st.error(f"Lỗi {r.status_code}: {r.text[:300]}")
-            else:
-                d = r.json()
-                if not d.get("exists"):
-                    st.warning("Món chưa có → chuyển tab **Contribute** để đóng góp")
-                else:
-                    st.success(f"🍽️ **{d['dish_name']}**   (nguồn: {d.get('source','?')})")
-                    if d.get("trust_score"):
-                        st.metric("Trust score", f"{d['trust_score']:.0%}")
-                    if d.get("nutrition"):
-                        _nutrition_card(d["nutrition"])
-
+def _store_upload(uploaded) -> None:
+    """Lưu ảnh vào session_state; ảnh mới → reset kết quả cũ."""
+    if uploaded is not None:
+        new_bytes = uploaded.getvalue()
+        if new_bytes != st.session_state.uploaded_bytes:
+            st.session_state.analyze_result = None
+        st.session_state.uploaded_bytes = new_bytes
+        st.session_state.uploaded_name = uploaded.name
+        st.session_state.uploaded_type = uploaded.type
     else:
-        q = st.text_input("Tên nguyên liệu", placeholder="vd: thịt bò, sua, trung ga...")
-        if q and st.button("Tìm nguyên liệu"):
-            r = _api("get", "/api/v1/ingredients/search", params={"q": q, "limit": 15})
-            if r.status_code != 200:
-                st.error(f"Lỗi {r.status_code}")
-            else:
-                results = r.json().get("results", [])
-                if not results:
-                    st.warning("Không tìm thấy")
-                else:
-                    st.success(f"{len(results)} kết quả")
-                    for ing in results:
-                        st.write(f"- `{ing['id'][:8]}...` **{ing['ingredient_name']}** ({ing['source']})")
+        st.session_state.uploaded_bytes = None
+        st.session_state.uploaded_name = None
+        st.session_state.uploaded_type = None
+        st.session_state.analyze_result = None
 
-# ─── TAB 3: Contribute ──────────────────────────────────────────────────────
 
-else:
-    st.title("➕ Đóng góp công thức mới")
-    st.caption("Món chưa có trong DB? Thêm công thức tại đây.")
+def _call_analyze(endpoint: str) -> dict | None:
+    """Gọi API analyze (chuẩn hoặc vision-only)."""
+    if st.session_state.uploaded_bytes is None:
+        st.error("Chưa có ảnh. Upload ảnh trước.")
+        return None
+    files = {
+        "file": (
+            st.session_state.uploaded_name,
+            st.session_state.uploaded_bytes,
+            st.session_state.uploaded_type,
+        )
+    }
+    r = _api("post", endpoint, files=files)
+    if r.status_code != 200:
+        st.error(f"API lỗi {r.status_code}: {r.text[:500]}")
+        return None
+    return r.json()
 
-    with st.form("contribute_form"):
-        name = st.text_input("Tên món *", placeholder="vd: Cơm tấm sườn bì chả")
-        desc = st.text_area("Mô tả (tùy chọn)", placeholder="Món cơm đặc trưng Sài Gòn...")
-        contributor = st.text_input("Tên bạn (tùy chọn)", placeholder="Anonymous")
 
-        st.markdown("### Nguyên liệu")
-        # Dynamic ingredient list
-        n_ings = st.number_input("Số nguyên liệu", 1, 15, 3)
-        items: list[dict] = []
-        for i in range(int(n_ings)):
-            c1, c2, c3 = st.columns([4, 2, 1])
-            ing_name = c1.text_input(f"Nguyên liệu #{i+1}", key=f"ing_{i}", placeholder="vd: thịt bò")
-            amount = c2.number_input(f"Gram #{i+1}", 1.0, 5000.0, 100.0, key=f"amt_{i}")
-            unit = c3.selectbox("Đơn vị", ["g", "ml"], key=f"unit_{i}")
-            if ing_name.strip():
-                # Tự động search ingredient_id qua autocomplete
-                items.append({"name": ing_name.strip(), "amount": amount, "unit": unit})
+def _show_analyze_result(data: dict) -> None:
+    """Hiển thị kết quả phân tích."""
+    source = data.get("source", "?")
+    labels = {
+        "cv_local": ("✅ CV Local", "green"),
+        "vision": ("☁️ Vision (cloud)", "orange"),
+        "cv_local_not_found_vision": ("🔄 CV → Vision", "blue"),
+    }
+    lbl, color = labels.get(source, (source, "grey"))
+    st.caption(f"Nguồn nhận diện: :{color}[{lbl}]")
 
-        submit = st.form_submit_button("💾 Đóng góp", type="primary", use_container_width=True)
+    if data.get("error"):
+        st.warning(f"⚠️ {data['error']}")
 
-    if submit:
-        if not name.strip():
-            st.error("Tên món là bắt buộc")
-        elif not items:
-            st.error("Cần ít nhất 1 nguyên liệu")
-        else:
-            # Resolve ingredient IDs
-            ingredient_ids: list[dict] = []
-            unresolved = []
-            with st.spinner("Đang tìm nguyên liệu..."):
-                for it in items:
-                    r = _api("get", "/api/v1/ingredients/search", params={"q": it["name"], "limit": 1})
-                    hits = r.json().get("results", []) if r.status_code == 200 else []
-                    if hits:
-                        ingredient_ids.append({"ingredient_id": hits[0]["id"], "amount": it["amount"], "unit": it["unit"]})
-                    else:
-                        unresolved.append(it["name"])
+    if data.get("cv_confidence") is not None:
+        st.metric("CV Confidence", f"{data['cv_confidence']:.0%}")
 
-            if unresolved:
-                st.warning(f"Không tìm thấy trong DB: {', '.join(unresolved)}. Vẫn thử gửi...")
-                # Fallback: skip unresolved (compute sẽ set missing)
+    # ── Món mới tự thêm vào DB ──────────────────────────────────────────
+    auto_added = data.get("auto_added_dishes", [])
+    if auto_added:
+        st.success(
+            f"🆕 **Tự thêm {len(auto_added)} món mới vào DB:** " + ", ".join(auto_added)
+            + " — nutrition=0 (chưa biết), lần sau vẫn nhận diện được tên."
+        )
 
-            if ingredient_ids:
-                body = {
-                    "dish_name": name.strip(),
-                    "description": desc.strip() or None,
-                    "items": ingredient_ids,
-                    "contributor_id": contributor.strip() or None,
-                }
-                r = _api("post", "/api/v1/dishes", json=body)
-                if r.status_code == 409:
-                    st.error(f"Món '{name}' đã tồn tại. Dùng tên khác hoặc search lookup.")
-                elif r.status_code == 200:
-                    d = r.json()
-                    st.success(f"✅ Đã tạo món `{name}` (status: {d.get('status')})")
-                    st.caption(f"Dish ID: `{d.get('dish_id')}`")
-                    if d.get("nutrition"):
-                        _nutrition_card(d["nutrition"])
-                    if d.get("conversion_assumed"):
-                        st.info(f"⚠️ Ước lượng mL→g: {', '.join(d['conversion_assumed'])}")
-                else:
-                    st.error(f"Lỗi {r.status_code}: {r.text[:500]}")
-            else:
-                st.error("Không tìm thấy nguyên liệu nào trong DB. Không thể tạo món.")
+    if data.get("dish_name"):
+        st.subheader(f"🍽️ {data['dish_name']}")
+
+    # ── Danh sách món Vision nhận ───────────────────────────────────────
+    dishes = data.get("dishes", [])
+    if dishes:
+        with st.expander(f"👁️ Vision nhận diện {len(dishes)} món"):
+            for d in dishes:
+                tag = "🥢 món kèm" if d.get("is_side") else "🍚 món chính"
+                st.write(f"- **{d['dish_name']}** — {d['grams']:.0f}g ({tag})")
+
+    nutrition = data.get("nutrition")
+    if nutrition:
+        _nutrition_card(nutrition)
+    elif not data.get("error"):
+        st.info("Không có dữ liệu dinh dưỡng.")
+
+    # ── Feedback: gửi ảnh đúng label để train CV sau ────────────────────
+    st.markdown("---")
+    with st.expander("📤 Gửi ảnh đúng tên (training data cho CV local)"):
+        suggested = data.get("dish_name") or ""
+        correct_name = st.text_input(
+            "Tên món chính xác", value=suggested,
+            help="Dùng để train lại CV local sau này (giữ code CV sẵn sàng).",
+        )
+        if st.button("Lưu ảnh training", key="save_training"):
+            _save_to_training(
+                correct_name,
+                st.session_state.uploaded_bytes,
+                st.session_state.uploaded_type,
+            )
+
+
+# ─── Upload + nút analyze ────────────────────────────────────────────────────
+
+uploaded = st.file_uploader("Chọn ảnh món ăn", type=["jpg", "jpeg", "png", "webp"])
+if uploaded is not None:
+    _store_upload(uploaded)
+
+c1, c2, _ = st.columns([1, 1, 4])
+with c1:
+    if st.button("🔍 Phân tích", type="primary"):
+        st.session_state.analyze_result = _call_analyze("/api/v1/analyze")
+with c2:
+    if st.button("☁️ Force Vision"):
+        st.session_state.analyze_result = _call_analyze("/api/v1/analyze/vision-only")
+
+# ── Hiển thị kết quả ─────────────────────────────────────────────────────────
+if st.session_state.analyze_result is not None:
+    _show_analyze_result(st.session_state.analyze_result)

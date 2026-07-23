@@ -1,114 +1,73 @@
-"""Dishes endpoints — 2-tier lookup + user-contributed recipes.
+"""Dishes endpoint — lookup món ăn trong vn_dishes.
 
-4 endpoint theo plan:
-  GET  /dishes/lookup              — Tier 1
-  GET  /ingredients/search         — autocomplete nguyên liệu
-  POST /dishes/compute             — preview nutrition (không lưu)
-  POST /dishes                     — Tier 2 đóng góp món mới
+Phiên bản Jul 23: chỉ giữ GET /dishes/lookup.
+Đã bỏ POST /dishes (contribute), /dishes/compute, /ingredients/*
+(mô hình mới không có user-recipe + không quản lý nguyên liệu thủ công).
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.postgres import get_session
-from backend.services.dishes import (
-    compute_nutrition,
-    contribute_dish,
-    lookup_dish,
-)
-from backend.services.ingredients import search_ingredients
-from schemas.dish import (
-    ComputeRequest,
-    ComputeResponse,
-    ContributeDishRequest,
-    ContributeDishResponse,
-    DishLookupResponse,
-    IngredientSearchResult,
-    IngredientSearchResponse,
-)
+from backend.services.dishes import _has_weight, _vn_dish_to_per_gram, lookup_dish
+from schemas.nutrition import NutritionPerIngredient, NutritionTotals, calculate_totals
 
 router = APIRouter(prefix="/api/v1", tags=["dishes"])
 
 
-# ─── Tier 1: Lookup ──────────────────────────────────────────────────────────
-
-
-@router.get("/dishes/lookup", response_model=DishLookupResponse)
+@router.get("/dishes/lookup")
 async def get_dish_lookup(
-    name: str = Query(..., min_length=1, description="Tên món, VD 'cơm sườn'"),
+    name: str = Query(..., min_length=1, description="Tên món, VD 'phở bò'"),
     session: AsyncSession = Depends(get_session),
-) -> DishLookupResponse:
-    """Tìm món trong DB (institute trước, fallback user-recipe).
+) -> dict:
+    """Tìm món trong vn_dishes (+ Qdrant fallback). Trả nutrition cấp món.
 
-    exists=False → frontend đi flow đóng góp (POST /dishes).
+    Không còn user-recipe — chỉ vn_dishes.
     """
-    result = await lookup_dish(session, name)
-    return DishLookupResponse(**result)
+    vn = await lookup_dish(session, name)
+    if vn is None:
+        return {
+            "exists": False,
+            "dish_name": name,
+            "source": None,
+            "status": None,
+            "dish_id": None,
+            "nutrition": None,
+        }
 
+    per_gram = _vn_dish_to_per_gram(vn)
 
-# ─── Autocomplete nguyên liệu ─────────────────────────────────────────────────
-
-
-@router.get("/ingredients/search", response_model=IngredientSearchResponse)
-async def search_ingredients_endpoint(
-    q: str = Query(..., min_length=1, description="1-2 chữ user gõ"),
-    limit: int = Query(8, ge=1, le=20),
-    session: AsyncSession = Depends(get_session),
-) -> IngredientSearchResponse:
-    """Tìm nguyên liệu cho autocomplete: ILIKE trước, vector fallback."""
-    hits = await search_ingredients(session, q, limit)
-    return IngredientSearchResponse(
-        query=q,
-        results=[
-            IngredientSearchResult(
-                id=ing.id,
-                ingredient_name=ing.ingredient_name,
-                source=ing.source,
-            )
-            for ing in hits
-        ],
-    )
-
-
-# ─── Tier 2: Compute (preview) ───────────────────────────────────────────────
-
-
-@router.post("/dishes/compute", response_model=ComputeResponse)
-async def compute_dish(
-    body: ComputeRequest,
-    session: AsyncSession = Depends(get_session),
-) -> ComputeResponse:
-    """Preview nutrition từ list (ingredient_id, amount, unit) — không lưu."""
-    totals, assumed = await compute_nutrition(session, body.dish_name, body.items)
-    return ComputeResponse(success=True, nutrition=totals, conversion_assumed=assumed)
-
-
-# ─── Tier 2: Contribute (lưu recipe mới) ────────────────────────────────────
-
-
-@router.post("/dishes", response_model=ContributeDishResponse)
-async def contribute_dish_endpoint(
-    body: ContributeDishRequest,
-    session: AsyncSession = Depends(get_session),
-) -> ContributeDishResponse:
-    """Món chưa có → user đóng góp công thức + tính nutrition + lưu (status=draft)."""
-    try:
-        dish_id, totals, assumed = await contribute_dish(
-            session,
-            dish_name=body.dish_name,
-            description=body.description,
-            items=body.items,
-            contributor_id=body.contributor_id,
+    if _has_weight(vn):
+        # Có trọng lượng → nutrition cho 1 khẩu phần typical_grams.
+        item = NutritionPerIngredient(
+            item_name=vn.dish_name,
+            grams=vn.typical_grams,
+            calories=round(per_gram.calories_per_g * vn.typical_grams, 1),
+            protein_g=round(per_gram.protein_per_g * vn.typical_grams, 1),
+            fat_g=round(per_gram.fat_per_g * vn.typical_grams, 1),
+            carbs_g=round(per_gram.carbs_per_g * vn.typical_grams, 1),
+            fiber_g=round(per_gram.fiber_per_g * vn.typical_grams, 1),
+            found_in_db=True,
         )
-    except ValueError as e:
-        # Trùng tên món
-        raise HTTPException(status_code=409, detail=str(e)) from e
+    else:
+        # Không biết trọng lượng → raw per-serving, sentinel grams=1.
+        item = NutritionPerIngredient(
+            item_name=vn.dish_name,
+            grams=1.0,
+            calories=round(per_gram.calories_per_g, 1),
+            protein_g=round(per_gram.protein_per_g, 1),
+            fat_g=round(per_gram.fat_per_g, 1),
+            carbs_g=round(per_gram.carbs_per_g, 1),
+            fiber_g=round(per_gram.fiber_per_g, 1),
+            found_in_db=True,
+        )
 
-    return ContributeDishResponse(
-        success=True,
-        dish_id=dish_id,
-        status="draft",
-        nutrition=totals,
-        conversion_assumed=assumed,
-    )
+    totals = calculate_totals(vn.dish_name, [item])
+    return {
+        "exists": True,
+        "dish_name": vn.dish_name,
+        "source": "vnmeal",
+        "status": "verified",
+        "dish_id": str(vn.id),
+        "nutrition": totals,
+    }

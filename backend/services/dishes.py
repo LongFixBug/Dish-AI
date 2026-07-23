@@ -1,40 +1,56 @@
-"""Service 2-tier dish: lookup, compute, contribute.
+"""Service lookup món + auto-add món mới — chỉ dùng vn_dishes & vn_ingredients.
 
-Lookup: tìm institute (nutrition_ingredients source=vnmeal) trước, fallback
-user-recipe (dishes JOIN dish_ingredients). Tái sử dụng calculate_totals
-từ schemas/nutrition.py.
-
-Compute/Contribute: ingredient_id + amount + unit → to_grams → NutritionPerGram →
-calculate_ingredient_nutrition → calculate_totals.
+Phiên bản mới (Jul 23): bỏ Dish/DishIngredient/NutritionIngredient/ConversionRate.
+  - lookup_dish: tra vn_dishes (ILIKE → Qdrant vector fallback). Trả per-gram.
+  - lookup_ingredient: tra vn_ingredients (ILIKE → vector). Dùng cho món ăn kèm
+    (sữa hộp, nước uống) khi vn_dishes không có.
+  - auto_add_dish: Vision nhận món mới → INSERT vào vn_dishes (source=vision_auto).
+    Nutrition ước = 0 (chưa biết) — user/admin bổ sung sau. typical_grams theo Vision.
 """
-
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
-from dataclasses import dataclass
 
 from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Dish, DishIngredient, NutritionIngredient
-from backend.services.conversions import to_grams
-from schemas.nutrition import (
-    Ingredient,
-    NutritionPerGram,
-    calculate_ingredient_nutrition,
-    calculate_totals,
-)
+from backend.db.models import VnDish, VnIngredient
+from schemas.nutrition import NutritionPerGram
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 
-def _ingredient_to_per_gram(ing: NutritionIngredient) -> NutritionPerGram:
-    """Map 1 dòng ORM NutritionIngredient → NutritionPerGram schema."""
+def _vn_dish_to_per_gram(vn: VnDish) -> NutritionPerGram:
+    """Map VnDish → NutritionPerGram.
+
+    Nếu typical_grams có → chia ra per-gram chính xác.
+    Nếu typical_grams NULL → giữ nguyên RAW (per-serving), ghi source kèm note.
+    """
+    if vn.typical_grams and vn.typical_grams > 0:
+        g = vn.typical_grams
+        return NutritionPerGram(
+            name=vn.dish_name,
+            calories_per_g=vn.total_calories / g,
+            protein_per_g=vn.total_protein_g / g,
+            fat_per_g=vn.total_fat_g / g,
+            carbs_per_g=vn.total_carbs_g / g,
+            fiber_per_g=vn.total_fiber_g / g,
+            source=vn.source,
+        )
+    # Không biết trọng lượng → giữ RAW (giá trị thực là per-serving)
     return NutritionPerGram(
-        ingredient_name=ing.ingredient_name,
+        name=vn.dish_name,
+        calories_per_g=vn.total_calories,
+        protein_per_g=vn.total_protein_g,
+        fat_per_g=vn.total_fat_g,
+        carbs_per_g=vn.total_carbs_g,
+        fiber_per_g=vn.total_fiber_g,
+        source=f"{vn.source} (per serving)",
+    )
+
+
+def _vn_ingredient_to_per_gram(ing: VnIngredient) -> NutritionPerGram:
+    """Map VnIngredient → NutritionPerGram (đã per-gram sẵn)."""
+    return NutritionPerGram(
+        name=ing.ingredient_name,
         calories_per_g=ing.calories_per_g,
         protein_per_g=ing.protein_per_g,
         fat_per_g=ing.fat_per_g,
@@ -44,290 +60,199 @@ def _ingredient_to_per_gram(ing: NutritionIngredient) -> NutritionPerGram:
     )
 
 
-def compute_trust(usage_count: int, status: str | None) -> float:
-    """Trust-score 0.0-1.0 theo usage_count + status (Option 1).
-
-    - verified → 1.0 (admin duyệt, authoritative).
-    - draft → min(0.9, 0.3 + usage_count×0.03) — cap 0.9 (draft < verified luôn).
-      VD: 0 dùng→0.30, 5 dùng→0.45, 20 dùng→0.90 (cap).
-    - status lạ/None → 0.3 (fallback).
-
-    Khác NutritionTotals.confidence_score (data-coverage nguyên liệu).
-    """
-    if status == "verified":
-        return 1.0
-    if status == "draft":
-        return round(min(0.9, 0.3 + usage_count * 0.03), 2)
-    return 0.3
+def _has_weight(vn: VnDish) -> bool:
+    """VnDish có trọng lượng chuẩn (typical_grams) không."""
+    return bool(vn.typical_grams and vn.typical_grams > 0)
 
 
-@dataclass
-class ComputedItem:
-    """Kết quả tính cho 1 item: kèm flag assumed (fallback chuyển mL→g)."""
-
-    ingredient_name: str
-    grams: float
-    per_gram: NutritionPerGram
-    assumed: bool
+# ─── Tier 1: Lookup vn_dishes ────────────────────────────────────────────────
 
 
-# ─── Tier 1: Lookup ───────────────────────────────────────────────────────────
-
-
-async def _lookup_institute(
+async def _lookup_institute_exact(
     session: AsyncSession, name: str
-) -> NutritionIngredient | None:
-    """Tìm món ăn trong nutrition_ingredients (source=vnmeal) — authoritative."""
+) -> VnDish | None:
+    """Tìm món trong vn_dishes exact (vn_norm ==) — không phân biệt dấu/hoa."""
+    exact = await session.execute(
+        select(VnDish)
+        .where(func.vn_norm(VnDish.dish_name) == func.vn_norm(literal(name)))
+        .limit(1)
+    )
+    return exact.scalar_one_or_none()
+
+
+async def _lookup_institute_by_qdrant(
+    session: AsyncSession, name: str
+) -> VnDish | None:
+    """Qdrant vector search → tra lại vn_dishes exact bằng tên match."""
+    try:
+        from backend.services.qdrant_dishes import search_dish
+
+        hits = await search_dish(name, limit=3)
+        for hit in hits:
+            matched = hit["dish_name"]
+            vn = await _lookup_institute_exact(session, matched)
+            if vn is not None:
+                return vn
+    except Exception:
+        # Qdrant offline / embed server lỗi → bỏ qua yên lặng
+        pass
+    return None
+
+
+async def lookup_dish(session: AsyncSession, name: str) -> VnDish | None:
+    """Tìm món trong vn_dishes: exact → Qdrant semantic fallback.
+
+    Không dùng ILIKE substring (tránh 'Phở bò' trúng 'Phở bò xào' sai món).
+    Miss cả 2 → caller auto-add món mới.
+
+    Returns:
+        VnDish | None. None khi không có món exact và Qdrant cũng miss.
+    """
+    if not name or not name.strip():
+        return None
+    name = name.strip()
+
+    vn = await _lookup_institute_exact(session, name)
+    if vn is not None:
+        return vn
+
+    return await _lookup_institute_by_qdrant(session, name)
+
+
+# ─── Lookup vn_ingredients (món ăn kèm / đồ uống) ────────────────────────────
+
+
+async def _lookup_ingredient_ilike(
+    session: AsyncSession, name: str
+) -> VnIngredient | None:
+    """ILIKE search trên vn_ingredients."""
     stmt = (
-        select(NutritionIngredient)
+        select(VnIngredient)
         .where(
-            (NutritionIngredient.item_type == "dish")
-            & func.vn_norm(NutritionIngredient.ingredient_name).op("ILIKE")(
+            VnIngredient.item_type.in_(["ingredient", "fruit", "product"])
+            & func.vn_norm(VnIngredient.ingredient_name).op("ILIKE")(
                 func.vn_norm(literal(f"%{name}%"))
             )
         )
+        .order_by(func.char_length(VnIngredient.ingredient_name).asc())
         .limit(1)
     )
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
 
 
-async def _lookup_user_recipe(
+async def _lookup_ingredient_vector(
     session: AsyncSession, name: str
-) -> tuple[Dish, list[DishIngredient]] | None:
-    """Tìm món trong dishes (user-contributed) + list DishIngredient của nó."""
-    stmt_dish = (
-        select(Dish)
-        .where(
-            func.vn_norm(Dish.dish_name).op("ILIKE")(
-                func.vn_norm(literal(f"%{name}%"))
-            )
-        )
-        .order_by(Dish.usage_count.desc())  # ưu tiên recipe được reuse nhiều
-        .limit(1)
-    )
-    result = await session.execute(stmt_dish)
-    dish = result.scalar_one_or_none()
-    if dish is None:
+) -> VnIngredient | None:
+    """Vector fallback trên vn_ingredients (cosine_distance)."""
+    try:
+        from backend.services.embeddings import embed_query
+
+        vec = await embed_query(name)
+    except Exception:
         return None
 
-    stmt_items = select(DishIngredient).where(DishIngredient.dish_id == dish.id)
-    items = (await session.execute(stmt_items)).scalars().all()
-    return dish, list(items)
-
-
-async def lookup_dish(
-    session: AsyncSession, name: str
-) -> dict:
-    """Tier 1: institute-first, fallback user-recipe. Trả dict match DishLookupResponse.
-
-    Returns:
-        dict với keys: exists, dish_name, source, status, dish_id, nutrition.
-    """
-    name = name.strip()
-
-    # 1. Institute (dinh dưỡng tổng, gram chưa rõ — tính cho 100g mặc định)
-    institute = await _lookup_institute(session, name)
-    if institute is not None:
-        per_gram = _ingredient_to_per_gram(institute)
-        # Institute chỉ có per-gram; hiển thị cho 1 khẩu phần giả định 100g
-        ing =Ingredient(name=institute.ingredient_name, estimated_grams=100.0)
-        per_ing = calculate_ingredient_nutrition(ing, per_gram)
-        totals = calculate_totals(institute.ingredient_name, [per_ing])
-        return {
-            "exists": True,
-            "dish_name": institute.ingredient_name,
-            "source": "institute",
-            "status": "verified",
-            "dish_id": None,
-            "nutrition": totals,
-            "trust_score": 1.0,
-        }
-
-    # 2. User recipe (có công thức → tính tổng)
-    recipe = await _lookup_user_recipe(session, name)
-    if recipe is not None:
-        dish, items = recipe
-        # Tăng usage_count +1 mỗi lần lookup user-recipe trúng.
-        # TODO(production): chuyển sang update(Dish).where(...).values(
-        #   usage_count=Dish.usage_count+1) cho race-safe; hiện KISS load+increment.
-        dish.usage_count += 1
-        await session.commit()  # get_session không auto-commit → phải explicit
-        return await _build_recipe_response(session, dish, items)
-
-    # 3. Không có
-    return {
-        "exists": False,
-        "dish_name": name,
-        "source": None,
-        "status": None,
-        "dish_id": None,
-        "nutrition": None,
-        "trust_score": None,
-    }
-
-
-async def _build_recipe_response(
-    session: AsyncSession, dish: Dish, items: list[DishIngredient]
-) -> dict:
-    """JOIN dish_ingredient → nutrition_ingredients, tính totals, trả dict."""
-    per_ingredients = []
-    missing: list[str] = []
-
-    for di in items:
-        # Lấy dinh dưỡng per-gram của ingredient
-        r = await session.execute(
-            select(NutritionIngredient).where(NutritionIngredient.id == di.ingredient_id)
+    stmt = (
+        select(VnIngredient)
+        .where(
+            VnIngredient.embedding.isnot(None)
+            & VnIngredient.item_type.in_(["ingredient", "fruit", "product"])
         )
-        ing = r.scalar_one_or_none()
-        if ing is None:
-            missing.append(f"<ingredient_id={di.ingredient_id}>")
-            continue
-        per_gram = _ingredient_to_per_gram(ing)
-        i = Ingredient(name=ing.ingredient_name, estimated_grams=di.grams)
-        per_ingredients.append(calculate_ingredient_nutrition(i, per_gram))
-
-    totals = calculate_totals(dish.dish_name, per_ingredients, missing)
-    return {
-        "exists": True,
-        "dish_name": dish.dish_name,
-        "source": "user_recipe",
-        "status": dish.status,
-        "dish_id": dish.id,
-        "nutrition": totals,
-        "trust_score": compute_trust(dish.usage_count, dish.status),
-    }
-
-
-# ─── Tier 2: Compute + Contribute ────────────────────────────────────────────
-
-
-async def compute_nutrition(
-    session: AsyncSession,
-    dish_name: str,
-    items: list,
-) -> tuple:
-    """Tính nutrition từ list RecipeItemInput (không lưu).
-
-    Returns:
-        (totals: NutritionTotals, assumed: list[tên nguyên liệu dùng fallback mL→g])
-    """
-    computed = await _resolve_items(session, items)
-    per_ingredients = []
-    assumed_names: list[str] = []
-
-    for c in computed:
-        i = Ingredient(name=c.ingredient_name, estimated_grams=c.grams)
-        per_ingredients.append(calculate_ingredient_nutrition(i, c.per_gram))
-        if c.assumed:
-            assumed_names.append(c.ingredient_name)
-
-    totals = calculate_totals(dish_name, per_ingredients)
-    return totals, assumed_names
-
-
-async def _resolve_items(
-    session: AsyncSession, items: list
-) -> list[ComputedItem]:
-    """Mỗi RecipeItemInput → (grams + NutritionPerGram + assumed)."""
-    out: list[ComputedItem] = []
-
-    for item in items:
-        r = await session.execute(
-            select(NutritionIngredient).where(
-                NutritionIngredient.id == item.ingredient_id
-            )
-        )
-        ing = r.scalar_one_or_none()
-        if ing is None:
-            # Nguyên liệu không có trong DB → bỏ qua + ghi missing phía totals
-            out.append(
-                ComputedItem(
-                    ingredient_name=f"<id={item.ingredient_id}>",
-                    grams=0.0,
-                    per_gram=NutritionPerGram(
-                        ingredient_name="<not found>",
-                        calories_per_g=0,
-                        protein_per_g=0,
-                        fat_per_g=0,
-                        carbs_per_g=0,
-                        fiber_per_g=0,
-                    ),
-                    assumed=False,
-                )
-            )
-            continue
-
-        grams, assumed = await to_grams(
-            session, ing.id, item.amount, item.unit
-        )
-        out.append(
-            ComputedItem(
-                ingredient_name=ing.ingredient_name,
-                grams=grams,
-                per_gram=_ingredient_to_per_gram(ing),
-                assumed=assumed,
-            )
-        )
-    return out
-
-
-async def contribute_dish(
-    session: AsyncSession,
-    dish_name: str,
-    description: str | None,
-    items: list,
-    contributor_id: str | None,
-) -> tuple:
-    """Lưu recipe mới (status=draft) + tính nutrition.
-
-    Returns:
-        (dish_id, totals, assumed_names) hoặc raise ValueError nếu trùng tên.
-    """
-    # Check unique — equality sau vn_norm (không phân biệt dấu/hoa).
-    # Dùng == (không ILIKE) vì không có wildcard, semantic đúng + sẵn sàng
-    # expression index sau này.
-    existing = await session.execute(
-        select(Dish)
-        .where(func.vn_norm(Dish.dish_name) == func.vn_norm(literal(dish_name)))
+        .order_by(VnIngredient.embedding.cosine_distance(vec))
         .limit(1)
     )
-    if existing.scalar_one_or_none() is not None:
-        raise ValueError(f"Dish '{dish_name}' đã tồn tại")
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
 
-    # INSERT Dish
-    dish = Dish(
+
+async def lookup_ingredient(session: AsyncSession, name: str) -> VnIngredient | None:
+    """Tìm nguyên liệu / đồ uống trong vn_ingredients: ILIKE → vector."""
+    if not name or not name.strip():
+        return None
+
+    ing = await _lookup_ingredient_ilike(session, name.strip())
+    if ing is not None:
+        return ing
+    return await _lookup_ingredient_vector(session, name.strip())
+
+
+# ─── Auto-add món mới vào vn_dishes ──────────────────────────────────────────
+
+
+async def auto_add_dish(
+    session: AsyncSession,
+    dish_name: str,
+    typical_grams: float | None,
+    *,
+    per_gram: NutritionPerGram | None = None,
+) -> VnDish:
+    """Vision nhận món chưa có DB → INSERT vào vn_dishes.
+
+    Args:
+        session: DB session.
+        dish_name: tên món Vision nhận.
+        typical_grams: gram Vision ước cho món (dùng làm khẩu phần chuẩn).
+        per_gram: Vision ước lượng nutrition per-gram (tùy chọn). None → toàn 0.
+
+    Returns:
+        VnDish vừa insert (nutrition 0 nếu không ước được).
+    """
+    g = typical_grams if typical_grams and typical_grams > 0 else None
+
+    if per_gram is not None and g:
+        # bottom_dish lưu total = per_g × typical_grams (đảo ngược _vn_dish_to_per_gram)
+        total_cal = per_gram.calories_per_g * g
+        total_p = per_gram.protein_per_g * g
+        total_f = per_gram.fat_per_g * g
+        total_c = per_gram.carbs_per_g * g
+        total_fb = per_gram.fiber_per_g * g
+    else:
+        total_cal = total_p = total_f = total_c = total_fb = 0.0
+
+    dish = VnDish(
         dish_name=dish_name,
-        description=description,
-        status="draft",
-        contributor_id=contributor_id,
-        usage_count=0,
+        total_calories=round(total_cal, 1),
+        total_protein_g=round(total_p, 1),
+        total_fat_g=round(total_f, 1),
+        total_carbs_g=round(total_c, 1),
+        total_fiber_g=round(total_fb, 1),
+        typical_grams=g,
+        source="vision_auto",
     )
     session.add(dish)
-    await session.flush()  # lấy dish.id
+    await session.flush()
 
-    # Resolve grams cho từng item (trước khi INSERT để có totals chính xác)
-    computed = await _resolve_items(session, items)
+    # Index vào Qdrant (fire-and-forget) để lần sau vector search tìm được
+    try:
+        import asyncio as _asyncio
 
-    # INSERT DishIngredient + tính totals song song (skip nguyên liệu không có)
-    per_ingredients = []
-    assumed_names: list[str] = []
-    for item, c in zip(items, computed):
-        if c.grams <= 0:
-            continue
-        session.add(
-            DishIngredient(
-                dish_id=dish.id,
-                ingredient_id=item.ingredient_id,
-                grams=c.grams,
-            )
-        )
-        i = Ingredient(name=c.ingredient_name, estimated_grams=c.grams)
-        per_ingredients.append(calculate_ingredient_nutrition(i, c.per_gram))
-        if c.assumed:
-            assumed_names.append(c.ingredient_name)
+        from backend.services.qdrant_dishes import index_one_dish
 
-    totals = calculate_totals(dish_name, per_ingredients)
-    await session.commit()
+        _asyncio.create_task(index_one_dish(str(dish.id), dish_name))
+    except Exception:
+        pass
 
-    return dish.id, totals, assumed_names
+    return dish
+
+
+# ─── Auto-update typical_grams cho món DB thiếu trọng lượng ──────────────────
+
+
+async def auto_update_grams(
+    session: AsyncSession, vn: VnDish, gram_vision: float
+) -> None:
+    """Món có trong DB nhưng thiếu typical_grams → lưu gram_vision làm chuẩn.
+
+    Per plan: Vision luôn chốt gram. DB thiếu gram → gram Vision thành typical_grams
+    cho món đó (lần sau có sẵn, không phải đoán lại). Nutrition giữ raw = total
+    (coi gram_vision = 1 khẩu phần chuẩn).
+    """
+    if not gram_vision or gram_vision <= 0:
+        return
+    await session.execute(
+        VnDish.__table__.update()
+        .where(VnDish.id == vn.id)
+        .where(VnDish.typical_grams.is_(None))
+        .values(typical_grams=round(gram_vision, 1))
+    )
+    vn.typical_grams = round(gram_vision, 1)
