@@ -1,7 +1,7 @@
-"""RAG eval chính — chạy RAGAS context_precision/recall trên search_ingredients.
+"""Run RAGAS context precision/recall on current ingredient lookup.
 
-Pipeline đánh giá: với mỗi query tiếng Việt → search_ingredients (2-tier ILIKE +
-vector fallback) → retrieved contexts. RAGAS LLMContextRecall +
+Pipeline đánh giá: với mỗi query tiếng Việt → lookup_ingredient (ILIKE +
+vector fallback) → retrieved context. RAGAS LLMContextRecall +
 LLMContextPrecisionWithReference chấm điểm (LLM-as-judge = llama.cpp local, Qwen2.5-7B).
 
 Script độc lập, KHÔNG nằm trong pytest thường (gọi LLM chậm).
@@ -19,7 +19,6 @@ Usage:
 import asyncio
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -31,8 +30,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 )
 
 from backend.config import settings  # noqa: E402
-from backend.services.ingredients import search_ingredients  # noqa: E402
-from ml.evaluation.dataset import EVAL_QUERIES, build_eval_dataset, verify_ground_truth  # noqa: E402
+from ml.evaluation.dataset import build_eval_dataset  # noqa: E402
 from ml.evaluation.llm_judge import JUDGE_MODE, _get_model, get_evaluator_llm  # noqa: E402
 
 REPORTS_DIR = Path(__file__).resolve().parent / "reports"
@@ -149,7 +147,7 @@ def _build_report(results: list[dict], aggregate: dict, timestamp: str) -> dict:
     """Build report dict (JSON-serializable)."""
     return {
         "timestamp": timestamp,
-        "pipeline": "search_ingredients (ILIKE + vector fallback)",
+        "pipeline": "lookup_ingredient (ILIKE + vector fallback)",
         "llm_judge": f"{JUDGE_MODE}:{_get_model()}",
         "aggregate": aggregate,
         "per_query": results,
@@ -192,7 +190,7 @@ def _render_md(report: dict) -> str:
         rec = r.get("context_recall")
         prec = r.get("context_precision")
         rec_s = f"{rec}" if rec is not None else "—"
-        prec_s = f"{prec}" if prec is not None else f"ERR"
+        prec_s = f"{prec}" if prec is not None else "ERR"
         ref = (r.get("reference") or "")[:40].replace("|", "\\|")
         lines.append(f"| {r['query']} | {r['n_retrieved']} | {rec_s} | {prec_s} | {ref} |")
     return "\n".join(lines) + "\n"
@@ -218,7 +216,7 @@ async def main() -> None:
     # Timestamp truyền vào (Date.now không dùng được — nhận từ args hoặc fixed)
     timestamp = sys.argv[1] if len(sys.argv) > 1 else "manual"
 
-    print("🔍 RAG eval — search_ingredients (ILIKE + vector fallback)")
+    print("🔍 RAG eval — lookup_ingredient (ILIKE + vector fallback)")
     print(f"   LLM judge: {JUDGE_MODE} ({_get_model()})\n")
 
     # 1. DB session
@@ -228,7 +226,7 @@ async def main() -> None:
     try:
         # 2. Build dataset
         print("📝 Build eval dataset...")
-        samples = await build_eval_dataset(session, limit=8)
+        samples = await build_eval_dataset(session)
         print(f"   → {len(samples)} samples\n")
 
         # 3. LLM judge
@@ -248,7 +246,7 @@ async def main() -> None:
     _print_summary(report)
 
     json_path, md_path = _save_report(report, timestamp)
-    print(f"\n💾 Report saved:")
+    print("\n💾 Report saved:")
     print(f"   JSON: {json_path}")
     print(f"   MD:   {md_path}")
 

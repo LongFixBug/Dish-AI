@@ -1,44 +1,44 @@
-"""CV service — PyTorch model local để phân loại món ăn Việt.
+"""Local EfficientNet inference for Vietnamese food classification."""
 
-Tầng 1 trong pipeline 2 tầng:
-- Nếu confidence >= threshold → dùng kết quả local
-- Nếu confidence < threshold → fallback Qwen3.7 Plus (cloud)
-"""
-
-import glob
 import json
 from pathlib import Path
-from typing import Optional
-
-import timm
-import torch
-import torch.nn as nn
-from PIL import Image
-from torchvision import transforms
-
-from backend.config import settings
+from typing import Any, Optional
 
 # ─── Constants ───────────────────────────────────────────────────────
 ARCH = "efficientnet_b0"  # timm model — phải khớp train script
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
-CONFIDENCE_THRESHOLD = 0.4  # Hạ xuống 0.4 — 12 class conf phân tán (phở 0.57, bún 0.55...)
-# Không fallback cloud trừ khi CV thực sự không chắc. Cloud đang offline (429 quota).
-CLASS_MAPPING = Path("checkpoints/class_mapping.json")
+CONFIDENCE_THRESHOLD = 0.4
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
+CLASS_MAPPING = CHECKPOINT_DIR / "class_mapping.json"
 IMAGE_SIZE = 224
 
 
-def _find_latest_checkpoint() -> Optional[Path]:
-    """Tìm checkpoint EfficientNet mới nhất trong checkpoints/ (sorted theo tên).
-
-    Chỉ glob efficientnet_vietfood_*.pth — tránh load nhầm ResNet checkpoint cũ
-    (architecture khác → state_dict key mismatch).
-    """
-    files = sorted(glob.glob("checkpoints/efficientnet_vietfood_*.pth"))
-    return Path(files[-1]) if files else None
+BEST_CHECKPOINT = CHECKPOINT_DIR / "best_model.pth"
 
 
-DEFAULT_CHECKPOINT = _find_latest_checkpoint()
+def _find_best_checkpoint() -> Optional[Path]:
+    """Return the serving checkpoint, with legacy checkpoints as fallback."""
+    if BEST_CHECKPOINT.exists():
+        return BEST_CHECKPOINT
+
+    files = list(CHECKPOINT_DIR.glob("efficientnet_vietfood_*.pth"))
+    return max(files, key=lambda path: path.stat().st_mtime) if files else None
+
+
+DEFAULT_CHECKPOINT = _find_best_checkpoint()
+
+
+def _default_device() -> str:
+    """Choose a Torch device only when optional local-CV dependencies exist."""
+    try:
+        import torch
+    except ImportError:
+        return "cpu"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 class CVModel:
@@ -54,65 +54,63 @@ class CVModel:
             checkpoint_path: Đường dẫn đến file .pth checkpoint.
             device: "mps", "cuda", hoặc "cpu" (auto-detect nếu None).
         """
-        self.device = device or (
-            "mps" if torch.backends.mps.is_available()
-            else "cuda" if torch.cuda.is_available()
-            else "cpu"
-        )
+        self.device = device or _default_device()
         self.checkpoint_path = checkpoint_path or DEFAULT_CHECKPOINT
-        self.model: Optional[nn.Module] = None
+        self.model: Any | None = None
         self.classes: list[str] = []
         self._loaded = False
+        self.transform: Any | None = None
+        self._torch: Any | None = None
 
-        # Transform cho inference — khớp val transform của train script
-        # (Resize cạnh ngắn + CenterCrop vuông, không ép vuông méo tỉ lệ).
+    def load(self) -> None:
+        """Load trained weights; keep local inference disabled if unavailable."""
+        self.model = None
+        self._loaded = False
+
+        if CLASS_MAPPING.exists():
+            with CLASS_MAPPING.open(encoding="utf-8") as f:
+                self.classes = json.load(f)["classes"]
+        else:
+            self.classes = []
+
+        if (
+            not self.classes
+            or self.checkpoint_path is None
+            or not self.checkpoint_path.exists()
+        ):
+            return
+
+        try:
+            import timm
+            import torch
+            from torchvision import transforms
+        except ImportError:
+            return
+
+        self.model = timm.create_model(ARCH, num_classes=len(self.classes), drop_rate=0.3)
+
+        checkpoint = torch.load(
+            self.checkpoint_path,
+            map_location=self.device,
+            weights_only=True,
+        )
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+
+        self.model = self.model.to(self.device)
+        self.model.eval()
+        self._torch = torch
         self.transform = transforms.Compose([
             transforms.Resize(IMAGE_SIZE),
             transforms.CenterCrop(IMAGE_SIZE),
             transforms.ToTensor(),
             transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ])
-
-    def load(self) -> None:
-        """Load model từ checkpoint.
-
-        Nếu chưa có checkpoint (chưa train), tạo model rỗng để không crash.
-        """
-        # Load class mapping trước
-        if CLASS_MAPPING.exists():
-            with open(CLASS_MAPPING) as f:
-                self.classes = json.load(f)["classes"]
-        else:
-            self.classes = []
-
-        if not self.classes:
-            self._loaded = False
-            return
-
-        # Tạo model architecture (EfficientNet-B0 qua timm, drop_rate trong checkpoint)
-        self.model = timm.create_model(ARCH, num_classes=len(self.classes), drop_rate=0.3)
-
-        # Load weights nếu có
-        if self.checkpoint_path and self.checkpoint_path.exists():
-            checkpoint = torch.load(
-                self.checkpoint_path,
-                map_location=self.device,
-                weights_only=True,
-            )
-            self.model.load_state_dict(checkpoint["model_state_dict"])
-        else:
-            # Chưa có model trained — vẫn load được nhưng prediction sẽ random
-            pass
-
-        self.model = self.model.to(self.device)
-        self.model.eval()
         self._loaded = True
 
     @property
     def is_loaded(self) -> bool:
         return self._loaded
 
-    @torch.no_grad()
     def predict(self, image_path: str | Path) -> dict:
         """Dự đoán món ăn từ ảnh.
 
@@ -137,6 +135,10 @@ class CVModel:
                 "all_predictions": [],
                 "source": "fallback_required",
             }
+        if self._torch is None or self.transform is None or self.model is None:
+            raise RuntimeError("CV model is marked loaded without inference dependencies")
+
+        from PIL import Image
 
         image_path = Path(image_path)
         if not image_path.exists():
@@ -147,11 +149,12 @@ class CVModel:
         tensor = self.transform(image).unsqueeze(0).to(self.device)
 
         # Inference
-        outputs = self.model(tensor)
-        probabilities = torch.softmax(outputs, dim=1)[0]
+        with self._torch.no_grad():
+            outputs = self.model(tensor)
+            probabilities = self._torch.softmax(outputs, dim=1)[0]
 
         # Top-5 predictions
-        top5_prob, top5_idx = torch.topk(probabilities, min(5, len(self.classes)))
+        top5_prob, top5_idx = self._torch.topk(probabilities, min(5, len(self.classes)))
         all_predictions = [
             {
                 "class_name": self.classes[idx].replace("_", " ").title(),

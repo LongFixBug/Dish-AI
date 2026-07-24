@@ -6,6 +6,8 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+.coverage
+coverage.xml
 *.egg-info/
 dist/
 build/
@@ -28,3 +30,4 @@ logs/
 
 # RAG eval reports (output, không commit — chạy lại sinh mới)
 ml/evaluation/reports/
+reports/

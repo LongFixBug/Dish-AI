@@ -1,18 +1,7 @@
-"""Schemas for nutrition analysis results — dish-level (no per-ingredient).
+"""Nutrition value objects and deterministic aggregation helpers.
 
-Thiết kế mới (Jul 23): Vision chỉ nhận diện MÓN + khối lượng + món ăn kèm,
-KHÔNG phân tích từng nguyên liệu trong món. Dinh dưỡng lấy từ DB:
-  - vn_dishes (mónViện DD, total Calories / typical_grams) → chia ra per-gram
-  - vn_ingredients (nguyên liệu / drink Việt, đã per-gram)
-
-Mỗi item trong ảnh (món chính hoặc món ăn kèm) = 1 NutritionPerIngredient
-với gram do Vision ước lượng + per-gram từ DB. Python nhân gram × per_g
-để ra dinh dưỡng thực tế (toán học, không LLM).
-
-Flow:
-    DB: bánh mì thịt = 600 cal / 1 ổ 150g → 4 cal/g
-    Vision: "2 ổ bánh mì thịt, 300g"
-    Python: 300 × 4 = 1200 cal (scale theo gram ảnh, KHÔNG cố định 250g)
+Database matches are scaled from per-serving values only when a serving weight
+is known. Vision estimates remain explicitly marked as non-database values.
 """
 
 from pydantic import BaseModel, Field
@@ -21,7 +10,7 @@ from pydantic import BaseModel, Field
 class NutritionPerGram(BaseModel):
     """Dinh dưỡng trên 1 gram của 1 item (món hoặc nguyên liệu) — lưu trong DB.
 
-    Món (vn_dishes): total_calories / typical_grams → per_g.
+    Món (vn_dishes): total_calories / typical_grams → per-gram.
     Nguyên liệu (vn_ingredients): đã lưu per_g sẵn.
     """
 
@@ -33,7 +22,7 @@ class NutritionPerGram(BaseModel):
     fiber_per_g: float = Field(ge=0, description="Chất xơ trên 1 gram (g/g)")
     source: str = Field(
         default="unknown",
-        description="Nguồn dữ liệu: 'vnmeal', 'vnfood', 'vision_auto'...",
+        description="Nguồn dữ liệu: 'vnmeal', 'vnfood', 'vision_reviewed'...",
     )
 
 
@@ -55,7 +44,7 @@ class NutritionPerIngredient(BaseModel):
         default=True,
         description=(
             "True = có trong vn_dishes/vn_ingredients. "
-            "False = món mới, Vision tự thêm (nutrition ước lượng)."
+            "False = món mới chỉ dùng nutrition Vision ước lượng."
         ),
     )
 
@@ -112,7 +101,7 @@ def calculate_item_nutrition(
 ) -> NutritionPerIngredient:
     """Tính dinh dưỡng thực tế của 1 item = gram × per_gram.
 
-    Phép nhân thuần túy, không liên quan AI/LLM → chính xác 100% toán học.
+    This function performs deterministic arithmetic and does not call an AI model.
     """
     g = max(0.0, grams)
     return NutritionPerIngredient(

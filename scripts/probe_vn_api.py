@@ -78,7 +78,7 @@ def _probe_endpoint(client: httpx.Client, name: str, api_path: str) -> None:
     else:
         print("  → KHÔNG thấy field phân loại nào → VN giữ heuristic")
 
-    print(f"  Mẫu item[0] full JSON:")
+    print("  Mẫu item[0] full JSON:")
     print(json.dumps(first, ensure_ascii=False, indent=2)[:1200])
 
 

@@ -7,7 +7,9 @@ Cào 2 API ẩn (SPA) của trang web:
 Vì API thực phẩm không trả về Energy, tự tính calo từ macro (Atwater):
     calories = protein×4 + fat×9 + carb×4
 
-Tất cả giá trị USDA là per 100-gram → chia 100 ra per-gram (khớp schema NutritionPerGram).
+API nguyên liệu trả dữ liệu theo 100 g nên được đổi sang per-gram. API món ăn
+trả tổng dinh dưỡng của một khẩu phần món ăn; các giá trị này được giữ nguyên
+với hậu tố ``_per_serving`` để không nhầm với dữ liệu nguyên liệu.
 
 Usage:
     python scripts/parse_vn_foods.py
@@ -170,10 +172,11 @@ def fetch_all_foods(client: httpx.Client) -> list[dict]:
 # ─── API 2: Món ăn (nấu sẵn) ─────────────────────────────────────────────────
 
 def parse_meal_item(item: dict) -> dict | None:
-    """Chuyển 1 món ăn → NutritionPerGram record.
+    """Chuyển một món ăn thành tổng dinh dưỡng của một khẩu phần.
 
-    API món ăn có sẵn total_energy (kcal cho cả món) + dish_components.
-    Đơn vị gốc là per-100g-serving nên vẫn chia 100 ra per-gram.
+    ``tool/getPageFoodData`` trả ``total_energy`` và các thành phần dinh dưỡng
+    cho cả món, không phải cho 100 g. Khối lượng khẩu phần chưa có trong nguồn
+    nên được ước lượng riêng khi nạp vào ``vn_dishes``.
     """
     name = item.get("name_vi") or item.get("name_en") or ""
     if not name:
@@ -221,11 +224,11 @@ def parse_meal_item(item: dict) -> dict | None:
 
     return {
         "ingredient_name": name,
-        "calories_per_g": round(energy / 100, 6),
-        "protein_per_g": round(protein / 100, 6),
-        "fat_per_g": round(fat / 100, 6),
-        "carbs_per_g": round(carb / 100, 6),
-        "fiber_per_g": round(fiber / 100, 6),
+        "calories_per_serving": round(energy, 3),
+        "protein_per_serving_g": round(protein, 3),
+        "fat_per_serving_g": round(fat, 3),
+        "carbs_per_serving_g": round(carb, 3),
+        "fiber_per_serving_g": round(fiber, 3),
         "source": "vnmeal",
     }
 
@@ -287,14 +290,21 @@ def main() -> None:
     size = output_path.stat().st_size / 1024
     print(f"✅ Đã lưu vào {output_path} ({size:.1f} KB)\n")
 
-    # In 5 món mẫu
+    # In 5 bản ghi mẫu, giữ rõ đơn vị của nguyên liệu và món ăn.
     print("Mẫu 5 items đầu:")
     for item in all_items[:5]:
-        print(
-            f"  [{item['source']}] {item['ingredient_name']}: "
-            f"cal={item['calories_per_g']:.4f}/g, "
-            f"protein={item['protein_per_g']:.4f}/g"
-        )
+        if item["source"] == "vnmeal":
+            print(
+                f"  [vnmeal] {item['ingredient_name']}: "
+                f"cal={item['calories_per_serving']:.1f}/khẩu phần, "
+                f"protein={item['protein_per_serving_g']:.1f}g/khẩu phần"
+            )
+        else:
+            print(
+                f"  [{item['source']}] {item['ingredient_name']}: "
+                f"cal={item['calories_per_g']:.4f}/g, "
+                f"protein={item['protein_per_g']:.4f}/g"
+            )
 
 
 if __name__ == "__main__":

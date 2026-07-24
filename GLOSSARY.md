@@ -141,8 +141,10 @@ Model chuyên làm embedding (0.6 tỉ tham số). Đầu vào: văn bản. Đ�
 
 ## 4. Database & Vector Search
 
-### pgvector
-Extension cho PostgreSQL để lưu và tìm kiếm vector (embedding).
+### Qdrant
+Vector database chuyên dụng để lưu, lập chỉ mục và tìm kiếm embedding. Trong
+FoodAI, Qdrant là chỉ mục dẫn về UUID; dữ liệu dinh dưỡng chuẩn vẫn nằm trong
+PostgreSQL.
 
 ### HNSW (Hierarchical Navigable Small World)
 Thuật toán tìm kiếm vector nhanh. Thay vì so sánh vector cần tìm với TẤT CẢ vector trong database (chậm), HNSW tạo chỉ mục thông minh → tìm gần đúng trong mili giây.
@@ -152,7 +154,7 @@ Kỹ thuật: trước khi hỏi LLM, mình TÌM thông tin liên quan từ data
 
 **Ví dụ**: User hỏi "100g thịt bò bao nhiêu calo?"
 1. Embed "thịt bò" → vector
-2. Tìm trong pgvector 5 ingredients gần nhất
+2. Tìm trong Qdrant 5 ingredients gần nhất
 3. Lấy thông tin dinh dưỡng của 5 ingredients đó
 4. Gửi cho LLM: "Dựa vào dữ liệu sau: [thịt bò: 250 calo...], trả lời câu hỏi"
 5. LLM trả lời có căn cứ, không hallucinate (bịa)

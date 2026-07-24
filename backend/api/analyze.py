@@ -1,33 +1,36 @@
-"""Analyze endpoint — upload ảnh món ăn → nutrition (dish-level, không nguyên liệu).
+"""Food-image analysis endpoints.
 
-Giai đoạn A wire-up (phiên bản Jul 23):
-  ảnh → CV local → Vision → dishes[{dish_name, gram, is_side, total_*}]
-       → mỗi item lookup vn_dishes (+ Qdrant fallback)
-       → nếu miss + is_side → lookup vn_ingredients (đồ uống/món kèm)
-       → match: bỏ nutrition Vision, scale gram_vision × per_g_db
-       → miss: dùng nutrition Vision + auto-add vào vn_dishes
+High-confidence local CV results use verified database nutrition directly. Other
+requests fall back to Vision, then reconcile each detected menu item with the
+local dish and ingredient catalogs.
 """
 
+import asyncio
 import logging
 import uuid
 from pathlib import Path
+
 import httpx
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.postgres import get_session
+from backend.api.upload_utils import (
+    MAX_IMAGE_UPLOAD_BYTES,
+    read_upload_limited,
+    validate_image_content_type,
+)
 from backend.services.dishes import (
     _has_nutrition,
     _has_weight,
     _vn_dish_to_per_gram,
     _vn_ingredient_to_per_gram,
-    auto_add_dish,
-    auto_update_grams,
     lookup_dish,
     lookup_dish_exact,
     lookup_ingredient_text,
 )
+from backend.services.dish_candidates import stage_dish_candidate
 from ml.inference.cv import cv_model
 from ml.inference.vision import VisionError, identify_dish
 from schemas.analyze import AnalyzeDish, AnalyzeResponse
@@ -40,8 +43,8 @@ from schemas.nutrition import (
 
 # ─── Constants ─────────────────────────────────────────────────────────────
 
-CV_CONFIDENCE_THRESHOLD = 0.85       # CV phải rất tự tin (≥85%) mới bỏ qua Vision
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB — chặn upload ảnh quá lớn gây OOM
+CV_CONFIDENCE_THRESHOLD = 0.85
+MAX_UPLOAD_BYTES = MAX_IMAGE_UPLOAD_BYTES
 
 
 def _safe_filename(filename: str) -> str:
@@ -53,19 +56,54 @@ def _safe_filename(filename: str) -> str:
 
 router = APIRouter(prefix="/api/v1", tags=["analyze"])
 
-UPLOAD_DIR = Path("data/uploads")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 logger = logging.getLogger("foodai")
 
 
 def _is_cv_high_conf(cv_conf: float | None, cv_dish: str | None) -> bool:
-    """CV có confidence cao không (dùng chung)."""
+    """Return whether a local prediction is safe to use without Vision."""
     return (
         cv_model.is_loaded
         and cv_conf is not None
         and cv_conf >= CV_CONFIDENCE_THRESHOLD
         and cv_dish is not None
+    )
+
+
+async def _analyze_cv_local(
+    session: AsyncSession,
+    dish_name: str,
+    confidence: float,
+) -> AnalyzeResponse | None:
+    """Build a local-CV response when serving-size nutrition is complete."""
+    vn = await lookup_dish(session, dish_name)
+    if vn is None or not _has_nutrition(vn) or not _has_weight(vn):
+        return None
+
+    grams = float(vn.typical_grams)
+    item = calculate_item_nutrition(
+        vn.dish_name,
+        grams,
+        _vn_dish_to_per_gram(vn),
+    )
+    totals = calculate_totals(vn.dish_name, [item])
+
+    return AnalyzeResponse(
+        dish_name=vn.dish_name,
+        source="cv_local",
+        cv_confidence=confidence,
+        nutrition=totals,
+        dishes=[
+            AnalyzeDish(
+                dish_name=vn.dish_name,
+                grams=grams,
+                is_side=False,
+                found_in_db=True,
+            )
+        ],
     )
 
 
@@ -93,14 +131,10 @@ async def _resolve_dish_item(
     )
     resolved_name = vn.dish_name if vn is not None else dish_name
     if vn is not None:
-        per_gram = _vn_dish_to_per_gram(vn)
         if _has_nutrition(vn) and _has_weight(vn):
-            # DB có typical_grams → per_g thật → scale đúng gram Vision.
+            per_gram = _vn_dish_to_per_gram(vn)
             return calculate_item_nutrition(vn.dish_name, gram, per_gram), vn.dish_name
         if _has_nutrition(vn):
-            # DB có nutrition nhưng thiếu typical_grams → coi gram ảnh là 1 khẩu phần.
-            await auto_update_grams(session, vn, gram)
-            await session.commit()
             return NutritionPerIngredient(
                 item_name=vn.dish_name,
                 grams=gram,
@@ -111,7 +145,7 @@ async def _resolve_dish_item(
                 fiber_g=round(vn.total_fiber_g, 1),
                 found_in_db=True,
             ), vn.dish_name
-        # Chỉ có tên/gram từ lần Vision cũ, chưa có nutrition → dùng Vision mới.
+        # Catalog rows without nutrition fall back to the Vision estimate.
 
     # ── Tier 2: vn_ingredients (chỉ khi is_side — đồ uống/món kèm) ───────
     if is_side:
@@ -123,7 +157,7 @@ async def _resolve_dish_item(
                 ing.ingredient_name,
             )
 
-    # ── Không có ở đâu cả → món mới (caller sẽ auto-add) ─────────────────
+    # Unknown labels are staged by the caller; they are not trusted catalog rows.
     return None, resolved_name
 
 
@@ -133,13 +167,13 @@ async def _analyze_vision_dishes(
 ) -> tuple[
     list[NutritionPerIngredient],   # items đã tính
     list[AnalyzeDish],              # dishes response (với is_side)
-    list[str],                       # món mới auto-added
+    list[str],                       # món mới staged để duyệt
     list[str],                       # missing items
 ]:
-    """Xử lý list dishes Vision trả → nutrition từng món + auto-add món mới."""
+    """Resolve Vision dishes and stage unknown labels for later review."""
     items: list[NutritionPerIngredient] = []
     response_dishes: list[AnalyzeDish] = []
-    auto_added: list[str] = []
+    staged: list[str] = []
     missing: list[str] = []
 
     for d in vision_dishes:
@@ -165,7 +199,8 @@ async def _analyze_vision_dishes(
             )
             continue
 
-        # Món mới → dùng toàn bộ nutrition Vision và lưu làm 1 khẩu phần chuẩn.
+        # Unknown dishes remain usable in this response, but their estimates are
+        # staged separately and never become trusted catalog data automatically.
         vision_item = create_item_nutrition_from_vision(
             resolved_name,
             gram,
@@ -185,28 +220,27 @@ async def _analyze_vision_dishes(
             )
         )
         try:
-            await auto_add_dish(
+            await stage_dish_candidate(
                 session,
                 resolved_name,
                 gram if gram > 0 else None,
                 nutrition=vision_item,
             )
             await session.commit()
-            auto_added.append(resolved_name)
+            staged.append(resolved_name)
             items.append(vision_item)
             logger.info(
-                "auto-add '%s' gram=%s với nutrition Vision → vn_dishes",
+                "Staged Vision dish '%s' with estimated grams=%s",
                 resolved_name,
                 gram,
             )
-        except Exception as e:
-            # Trùng tên (race) hoặc lỗi khác → rollback + báo missing
+        except Exception:
             await session.rollback()
-            logger.warning("auto-add '%s' fail: %s", dish_name, e)
+            logger.exception("Failed to stage Vision dish '%s'", dish_name)
             missing.append(resolved_name)
             items.append(vision_item)
 
-    return items, response_dishes, auto_added, missing
+    return items, response_dishes, staged, missing
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -218,33 +252,31 @@ async def analyze_food(
     session: AsyncSession = Depends(get_session),
 ) -> AnalyzeResponse:
     """Upload ảnh món ăn → nhận diện + phân tích dinh dưỡng (dish-level)."""
-    allowed_types = {"image/jpeg", "image/png", "image/webp"}
-    if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Định dạng không hỗ trợ: {file.content_type}. Chỉ JPEG, PNG, WebP.",
-        )
-
+    validate_image_content_type(file)
     safe_name = _safe_filename(file.filename or "upload")
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Ảnh quá lớn (>{MAX_UPLOAD_BYTES // (1024*1024)}MB).",
-        )
+    content = await read_upload_limited(file, max_bytes=MAX_UPLOAD_BYTES)
     temp_path = UPLOAD_DIR / f"upload_{uuid.uuid4().hex[:12]}_{safe_name}"
-    temp_path.write_bytes(content)
+    await asyncio.to_thread(temp_path.write_bytes, content)
 
     try:
-        # ─── Tier 1: CV local (giữ — user sẽ train sau) ─────────────────
+        # Use local inference first to avoid a cloud call for reliable classes.
         cv_conf: float | None = None
         cv_dish: str | None = None
         if cv_model.is_loaded:
-            cv_result = cv_model.predict(temp_path)
+            cv_result = await asyncio.to_thread(cv_model.predict, temp_path)
             cv_conf = cv_result["confidence"]
             cv_dish = cv_result["dish_name"]
 
-        # ─── Tier 2: Vision (luôn chạy để lấy gram thực tế từ ảnh) ──────
+        if _is_cv_high_conf(cv_conf, cv_dish):
+            cv_response = await _analyze_cv_local(
+                session,
+                cv_dish,
+                cv_conf,
+            )
+            if cv_response is not None:
+                return cv_response
+
+        # Vision handles low-confidence predictions and incomplete DB records.
         try:
             vision = await identify_dish(temp_path)
         except VisionError as e:
@@ -273,8 +305,8 @@ async def analyze_food(
                        "Hãy thử ảnh rõ hơn hoặc chụp cận cảnh món ăn.",
             )
 
-        # ── Resolve từng dish → nutrition + auto-add món mới ─────────────
-        items, response_dishes, auto_added, missing = await _analyze_vision_dishes(
+        # Resolve nutrition and stage unknown labels for explicit review.
+        items, response_dishes, staged, missing = await _analyze_vision_dishes(
             session, vision_dishes
         )
 
@@ -307,12 +339,11 @@ async def analyze_food(
             nutrition=totals,
             dishes=response_dishes,
             vision_reasoning=vision.get("reasoning"),
-            auto_added_dishes=auto_added,
+            staged_dishes=staged,
             missing_items=missing,
         )
     finally:
-        if temp_path.exists():
-            temp_path.unlink()
+        await asyncio.to_thread(temp_path.unlink, missing_ok=True)
 
 
 @router.post("/analyze/vision-only", response_model=AnalyzeResponse)
@@ -321,23 +352,12 @@ async def analyze_vision_only(
     session: AsyncSession = Depends(get_session),
 ) -> AnalyzeResponse:
     """Force Qwen Vision — bỏ qua CV local, gọi thẳng Vision."""
-    allowed_types = {"image/jpeg", "image/png", "image/webp"}
-    if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Định dạng không hỗ trợ: {file.content_type}.",
-        )
-
+    validate_image_content_type(file)
     safe_name = _safe_filename(file.filename or "upload")
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Ảnh quá lớn (>{MAX_UPLOAD_BYTES // (1024*1024)}MB).",
-        )
+    content = await read_upload_limited(file, max_bytes=MAX_UPLOAD_BYTES)
 
     temp_path = UPLOAD_DIR / f"upload_vision_{uuid.uuid4().hex[:12]}_{safe_name}"
-    temp_path.write_bytes(content)
+    await asyncio.to_thread(temp_path.write_bytes, content)
 
     try:
         vision = await identify_dish(temp_path)
@@ -351,7 +371,7 @@ async def analyze_vision_only(
                        "Hãy thử ảnh rõ hơn hoặc chụp cận cảnh món ăn.",
             )
 
-        items, response_dishes, auto_added, missing = await _analyze_vision_dishes(
+        items, response_dishes, staged, missing = await _analyze_vision_dishes(
             session, vision_dishes
         )
 
@@ -376,7 +396,7 @@ async def analyze_vision_only(
             nutrition=totals,
             dishes=response_dishes,
             vision_reasoning=vision.get("reasoning"),
-            auto_added_dishes=auto_added,
+            staged_dishes=staged,
             missing_items=missing,
         )
     except VisionError as e:
@@ -390,5 +410,4 @@ async def analyze_vision_only(
             error=f"Vision cloud unreachable: {e}",
         )
     finally:
-        if temp_path.exists():
-            temp_path.unlink()
+        await asyncio.to_thread(temp_path.unlink, missing_ok=True)

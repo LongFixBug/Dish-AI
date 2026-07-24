@@ -14,17 +14,25 @@ import asyncio
 import json
 import re
 import unicodedata
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from backend.api.upload_utils import (
+    MAX_IMAGE_UPLOAD_BYTES,
+    read_upload_limited,
+    validate_image_content_type,
+)
+from backend.config import PROJECT_ROOT
+
 router = APIRouter(prefix="/api/v1", tags=["feedback"])
 
-FEEDBACK_DIR = Path("data/images/feedback")
+FEEDBACK_DIR = PROJECT_ROOT / "data" / "images" / "feedback"
 FEEDBACK_DIR.mkdir(parents=True, exist_ok=True)
 LOG_PATH = FEEDBACK_DIR / "feedback_log.jsonl"
+MAX_UPLOAD_BYTES = MAX_IMAGE_UPLOAD_BYTES
 
 
 def _normalize_dish_name(name: str) -> str:
@@ -44,7 +52,7 @@ def _normalize_dish_name(name: str) -> str:
 
 def _append_log(log_path: Path, entry: dict) -> None:
     """Ghi 1 dòng JSONL vào log (sync — gọi qua asyncio.to_thread)."""
-    with open(log_path, "a") as f:
+    with log_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
@@ -69,30 +77,27 @@ async def save_training_data(
         correct_dish_name: Tên món ĐÚNG (từ Qwen hoặc user nhập). Sẽ được chuẩn hóa.
         file: File ảnh (JPEG/PNG/WebP).
     """
-    allowed_types = {"image/jpeg", "image/png", "image/webp"}
-    if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Định dạng không hỗ trợ: {file.content_type}.",
-        )
-
+    validate_image_content_type(file)
     if not correct_dish_name or not correct_dish_name.strip():
         raise HTTPException(status_code=400, detail="Thiếu correct_dish_name.")
 
     normalized = _normalize_dish_name(correct_dish_name.strip())
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Tên món không hợp lệ.")
 
     # Tạo thư mục cho món
     dish_dir = FEEDBACK_DIR / normalized
     dish_dir.mkdir(parents=True, exist_ok=True)
 
-    # Tạo tên file duy nhất: timestamp + tên gốc (sau khi clean)
+    # A random suffix prevents concurrent uploads in the same second from
+    # overwriting one another.
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     safe_filename = re.sub(r"[^\w.]", "_", file.filename or "image.jpg")
-    saved_filename = f"{ts}_{safe_filename}"
+    saved_filename = f"{ts}_{uuid.uuid4().hex[:12]}_{safe_filename}"
     saved_path = dish_dir / saved_filename
 
-    content = await file.read()
-    saved_path.write_bytes(content)
+    content = await read_upload_limited(file, max_bytes=MAX_UPLOAD_BYTES)
+    await asyncio.to_thread(saved_path.write_bytes, content)
 
     # Đếm tổng số ảnh đã tích lũy (chỉ đếm file ảnh, không đếm .DS_Store hay log)
     image_extensions = {".jpg", ".jpeg", ".png", ".webp"}

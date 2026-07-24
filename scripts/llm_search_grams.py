@@ -5,7 +5,9 @@ Prompt chứa nhiều món 1 lần → LLM trả JSON array → parse → UPDATE
 Chạy: uv run python scripts/llm_search_grams.py --input /tmp/llm_grams_prompt.txt
 """
 
-import asyncio, json, sys
+import asyncio
+import json
+import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

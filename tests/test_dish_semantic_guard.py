@@ -1,9 +1,10 @@
-"""Unit tests cho lexical guard trước khi chấp nhận Qdrant candidate."""
+"""Unit tests for lexical guards before accepting Qdrant dish candidates."""
 
 from types import SimpleNamespace
 
-from backend.services import dishes, qdrant_dishes
+from backend.services import dishes
 from backend.services.dishes import _is_semantic_candidate_compatible
+from backend.services.vector_catalog import CatalogHit, CatalogType
 
 
 def test_rejects_candidate_with_different_main_dish_family() -> None:
@@ -23,27 +24,36 @@ def test_rejects_same_family_with_only_generic_token_shared() -> None:
 
 
 async def test_lookup_scans_past_incompatible_top_results(monkeypatch) -> None:
-    hits = [
-        {"dish_name": "Bún chả"},
-        {"dish_name": "Xôi chả"},
-        {"dish_name": "Cơm gà"},
-        {"dish_name": "Bánh cuốn trứng"},
-        {"dish_name": "Cơm tấm sườn bì chả trứng ốp la"},
-    ]
+    candidates = [SimpleNamespace(
+        id="target-id",
+        dish_name="Cơm tấm sườn bì chả trứng ốp la",
+    )]
 
-    async def fake_search(_query, limit):
-        return hits[:limit]
+    class FakeSession:
+        async def execute(self, _statement):
+            return SimpleNamespace(
+                scalars=lambda: SimpleNamespace(all=lambda: candidates)
+            )
 
-    async def fake_exact(_session, name):
-        if name == "Cơm tấm sườn bì chả trứng ốp la":
-            return SimpleNamespace(dish_name=name)
-        return None
+    async def fake_search(_query, catalog_type, limit):
+        assert catalog_type == CatalogType.DISH
+        assert limit == dishes.QDRANT_CANDIDATE_LIMIT
+        return [
+            CatalogHit("1", "Bún chả", 0.97),
+            CatalogHit("2", "Xôi chả", 0.96),
+            CatalogHit("3", "Cơm gà", 0.95),
+            CatalogHit("4", "Bánh cuốn trứng", 0.94),
+            CatalogHit(
+                "target-id",
+                "Cơm tấm sườn bì chả trứng ốp la",
+                0.91,
+            ),
+        ]
 
-    monkeypatch.setattr(qdrant_dishes, "search_dish", fake_search)
-    monkeypatch.setattr(dishes, "_lookup_institute_exact", fake_exact)
+    monkeypatch.setattr(dishes, "search_catalog", fake_search)
 
-    result = await dishes._lookup_institute_by_qdrant(
-        object(), "Cơm bì chả trứng"
+    result = await dishes._lookup_institute_by_vector(
+        FakeSession(), "Cơm bì chả trứng"
     )
 
     assert result is not None

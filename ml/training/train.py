@@ -45,6 +45,7 @@ USE_CLASS_WEIGHT = True
 DATA_DIR = PROJECT_ROOT / "data" / "images"
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
 CHECKPOINT_DIR.mkdir(exist_ok=True)
+BEST_CHECKPOINT_PATH = CHECKPOINT_DIR / "best_model.pth"
 
 DEVICE = torch.device(
     "mps" if torch.backends.mps.is_available()
@@ -401,8 +402,8 @@ def main(resume: bool = False, ckpt: str | None = None, data_dir: str | None = N
         # Save best model
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            checkpoint_path = CHECKPOINT_DIR / f"efficientnet_vietfood_{timestamp}_epoch{epoch}.pth"
-            torch.save({
+
+            checkpoint_data = {
                 "epoch": epoch,
                 "arch": ARCH,
                 "model_state_dict": model.state_dict(),
@@ -411,11 +412,19 @@ def main(resume: bool = False, ckpt: str | None = None, data_dir: str | None = N
                 "val_acc": val_acc,
                 "classes": train_ds.classes,
                 "history": history,
-            }, checkpoint_path)
-            print(f"   💾 Best model saved: {checkpoint_path.name}")
+            }
 
-    print("\n" + "=" * 60)
-    print(f"🏁 Training complete! Best val accuracy: {best_val_acc:.1f}%")
+            # Giữ lại checkpoint theo epoch để debug hoặc so sánh sau này.
+            epoch_checkpoint_path = (
+                CHECKPOINT_DIR / f"efficientnet_vietfood_{timestamp}_epoch{epoch}.pth"
+            )
+            torch.save(checkpoint_data, epoch_checkpoint_path)
+
+            # Đây là checkpoint duy nhất backend sẽ dùng khi predict.
+            torch.save(checkpoint_data, BEST_CHECKPOINT_PATH)
+
+            print(f"   💾 Best model saved: {epoch_checkpoint_path.name}")
+            print(f"   ⭐ Serving model updated: {BEST_CHECKPOINT_PATH.name}")
 
     # Save class mapping
     mapping_path = CHECKPOINT_DIR / "class_mapping.json"

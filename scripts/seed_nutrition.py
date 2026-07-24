@@ -1,11 +1,11 @@
-"""Seed script — đọc usda_ingredients.json, INSERT vào bảng nutrition_ingredients.
+"""Seed per-gram records into the current ``vn_ingredients`` catalog.
 
 Chạy 1 lần duy nhất sau khi parse_usda.py tạo xong JSON.
 
 Usage:
     python scripts/seed_nutrition.py
 
-Yêu cầu: PostgreSQL + pgvector phải chạy trước (docker compose up -d postgres).
+Yêu cầu: PostgreSQL phải chạy trước (docker compose up -d postgres).
 """
 
 import asyncio
@@ -16,9 +16,9 @@ from pathlib import Path
 # Thêm project root vào sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 
-from backend.db.models import NutritionIngredient  # noqa: E402
+from backend.db.models import VnIngredient  # noqa: E402
 from backend.db.postgres import async_session  # noqa: E402
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -53,19 +53,23 @@ async def seed() -> None:
 
     async with async_session() as session:
         # Lấy danh sách tên đã có trong DB để tránh trùng lặp
-        existing_result = await session.execute(
-            select(NutritionIngredient.ingredient_name)
-        )
+        existing_result = await session.execute(select(VnIngredient.ingredient_name))
         existing_names = {row[0] for row in existing_result}
         if existing_names:
             print(f"  ℹ️  DB đã có {len(existing_names)} ingredients — chỉ INSERT món mới.")
 
         # Lọc ra các ingredient chưa có trong DB
+        # `vnmeal` rows belong to `vn_dishes` and are seeded by
+        # `recreate_vn_dishes.py`; mixing them here breaks the catalog boundary.
+        ingredient_rows = [
+            item for item in ingredients if item.get("source") != "vnmeal"
+        ]
         new_ingredients = [
-            item for item in ingredients
+            item
+            for item in ingredient_rows
             if item["ingredient_name"] not in existing_names
         ]
-        skipped = len(ingredients) - len(new_ingredients)
+        skipped = len(ingredient_rows) - len(new_ingredients)
         if skipped:
             print(f"  ⏭️  Bỏ qua {skipped} ingredient đã tồn tại.")
 
@@ -82,7 +86,7 @@ async def seed() -> None:
             total_batches = (total + BATCH_SIZE - 1) // BATCH_SIZE
 
             rows = [
-                NutritionIngredient(
+                VnIngredient(
                     ingredient_name=item["ingredient_name"],
                     calories_per_g=item.get("calories_per_g", 0.0),
                     protein_per_g=item.get("protein_per_g", 0.0),

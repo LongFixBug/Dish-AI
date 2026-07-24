@@ -42,3 +42,39 @@ def test_feedback_rejects_blank_label(client, tmp_path, monkeypatch) -> None:
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Thiếu correct_dish_name."
+
+
+def test_feedback_rejects_label_without_safe_characters(
+    client, tmp_path, monkeypatch
+) -> None:
+    feedback_dir = tmp_path / "feedback"
+    monkeypatch.setattr(feedback, "FEEDBACK_DIR", feedback_dir)
+    monkeypatch.setattr(feedback, "LOG_PATH", feedback_dir / "feedback_log.jsonl")
+
+    response = client.post(
+        "/api/v1/feedback/training-data",
+        files={
+            "file": ("food.jpg", b"fake-jpeg-content", "image/jpeg"),
+            "correct_dish_name": (None, "!!!"),
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Tên món không hợp lệ."
+
+
+def test_feedback_rejects_oversized_upload(client, tmp_path, monkeypatch) -> None:
+    feedback_dir = tmp_path / "feedback"
+    monkeypatch.setattr(feedback, "FEEDBACK_DIR", feedback_dir)
+    monkeypatch.setattr(feedback, "LOG_PATH", feedback_dir / "feedback_log.jsonl")
+    oversized = b"x" * (feedback.MAX_UPLOAD_BYTES + 1)
+
+    response = client.post(
+        "/api/v1/feedback/training-data",
+        files={
+            "file": ("food.jpg", oversized, "image/jpeg"),
+            "correct_dish_name": (None, "Phở bò"),
+        },
+    )
+
+    assert response.status_code == 413

@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: foodai
+          POSTGRES_PASSWORD: foodai
+          POSTGRES_DB: foodai
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U foodai -d foodai"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      qdrant:
+        image: qdrant/qdrant:v1.18.3
+        ports:
+          - 6333:6333
+    env:
+      DATABASE_URL: postgresql+asyncpg://foodai:foodai@localhost:5432/foodai
+      QDRANT_URL: http://localhost:6333
+      DEBUG: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --all-groups
+      - run: uv run ruff check backend ml schemas scripts tests
+      - run: uv run alembic upgrade head
+      - run: >-
+          uv run pytest -q
+          --cov=backend.services
+          --cov=schemas.nutrition
+          --cov-report=term-missing
+          --cov-report=xml
+          --cov-fail-under=80
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml

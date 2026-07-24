@@ -2,7 +2,7 @@
 
 Dataset ~30-50 query, mỗi query kèm ground_truth (list tên nguyên liệu mong đợi
 CÓ TRONG DB). Mix: có dấu, không dấu, sai chính tả nhẹ — để test cả ILIKE (vn_norm)
-lẫn vector fallback (cosine_distance).
+lẫn Qdrant semantic fallback.
 
 Ground truth hand-curate (KHÔNG tự sinh từ search kết quả — sẽ circular, eval luôn
 perfect). Mỗi ground_truth name được verify tồn tại trong DB qua `verify_ground_truth`
@@ -10,7 +10,7 @@ bỏ name không có → tránh reference sai làm RAGAS chấm nhầm.
 
 Build SingleTurnSample cho RAGAS:
   - user_input: query
-  - retrieved_contexts: list ingredient_name từ search_ingredients
+  - retrieved_contexts: ingredient_name từ lookup_ingredient
   - reference: "; ".join(ground_truth)  (cần cho LLMContextRecall/Precision)
   - response: "; ".join(retrieved_contexts)
 """
@@ -23,8 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from sqlalchemy import func, literal, select  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
-from backend.db.models import NutritionIngredient  # noqa: E402
-from backend.services.ingredients import search_ingredients  # noqa: E402
+from backend.db.models import VnIngredient  # noqa: E402
+from backend.services.dishes import lookup_ingredient  # noqa: E402
 
 # ─── Eval queries (hand-curated) ──────────────────────────────────────────────
 # (query, [ground_truth_names mong đợi CÓ trong DB], note)
@@ -86,9 +86,9 @@ async def verify_ground_truth(session: AsyncSession, names: list[str]) -> list[s
         if not name:
             continue
         stmt = (
-            select(NutritionIngredient.id)
+            select(VnIngredient.id)
             .where(
-                func.vn_norm(NutritionIngredient.ingredient_name).op("ILIKE")(
+                func.vn_norm(VnIngredient.ingredient_name).op("ILIKE")(
                     func.vn_norm(literal(f"%{name}%"))
                 )
             )
@@ -100,11 +100,11 @@ async def verify_ground_truth(session: AsyncSession, names: list[str]) -> list[s
     return verified
 
 
-async def build_eval_dataset(session: AsyncSession, limit: int = 8):
+async def build_eval_dataset(session: AsyncSession, limit: int = 1):
     """Build list SingleTurnSample cho RAGAS từ EVAL_QUERIES.
 
-    Với mỗi query: gọi search_ingredients (vector_fallback=True — autocomplete path)
-    → retrieved_contexts. Verify ground_truth → reference. Build SingleTurnSample.
+    Each query uses the current text/vector ingredient lookup, verifies its
+    ground truth, and produces one RAGAS sample.
 
     Returns:
         list[SingleTurnSample] — import ragas.dataset_schema.
@@ -115,9 +115,8 @@ async def build_eval_dataset(session: AsyncSession, limit: int = 8):
     stats = {"total": len(EVAL_QUERIES), "retrieved_empty": 0, "gt_verified_empty": 0}
 
     for query, gt_names, note in EVAL_QUERIES:
-        # Retrieved contexts qua pipeline thật
-        hits = await search_ingredients(session, query, limit=limit, vector_fallback=True)
-        retrieved = [h.ingredient_name for h in hits]
+        hit = await lookup_ingredient(session, query)
+        retrieved = [hit.ingredient_name] if hit is not None else []
         if not retrieved:
             stats["retrieved_empty"] += 1
 

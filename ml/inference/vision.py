@@ -1,12 +1,6 @@
-"""Vision service — gọi Vision cloud API để nhận diện món ăn từ ảnh.
+"""Cloud Vision client for menu-level dish recognition and estimation."""
 
-Đây là Tầng 2 (cloud fallback). Tầng 1 là CV model PyTorch local (giữ để train sau).
-Flow: CV local → nếu confidence thấp → fallback Vision API.
-
-Phiên bản mới (Jul 23): Vision nhận diện TỪNG MÓN được chụp có chủ ý, ước lượng
-gram + dinh dưỡng. Backend chỉ dùng dinh dưỡng Vision khi món không có trong DB.
-"""
-
+import asyncio
 import base64
 import json
 import unicodedata
@@ -118,61 +112,23 @@ async def identify_dish(image_path: str | Path) -> dict:
     if not image_path.exists():
         raise VisionError(f"File không tồn tại: {image_path}")
 
-    # Encode ảnh base64
-    with open(image_path, "rb") as f:
-        image_data = base64.b64encode(f.read()).decode("utf-8")
+    image_bytes = await asyncio.to_thread(image_path.read_bytes)
+    image_data = base64.b64encode(image_bytes).decode("utf-8")
 
     # Xác định MIME type
     suffix = image_path.suffix.lower()
-    mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+    mime_map = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+    }
     mime_type = mime_map.get(suffix, "image/jpeg")
 
     system_prompt = _build_food_identification_prompt()
 
-    # ── [COMMENTED] Prompt cũ (CoT 3 bước ước lượng thể tích → gram) ──
-    # Giữ lại để dùng sau nếu cần Vision phân tích chi tiết nguyên liệu.
-    # system_prompt = (
-    #     "Bạn là chuyên gia ẩm thực Việt Nam kiêm chuyên gia ước lượng thực phẩm.\n"
-    #     "Khi nhìn ảnh món ăn, bạn KHÔNG đoán gram trực tiếp. Bạn suy luận theo quy trình 3 bước:\n\n"
-    #     "BƯỚC 1 — KÍCH THƯỚC: Ước đường kính bát/đĩa (cm), độ cao thức ăn (cm).\n"
-    #     "  → Nếu có đũa/thìa/điện thoại/bàn tay trong ảnh → dùng làm thước tham chiếu.\n"
-    #     "  → Nếu không có vật tham chiếu, giả định đường kính bát tô ≈ 15cm, bát cơm ≈ 12cm, đĩa ≈ 22cm.\n\n"
-    #     "BƯỚC 2 — THỂ TÍCH: Với mỗi nguyên liệu, ước tỉ lệ lấp đầy trong bát/đĩa → tính thể tích (cm³).\n"
-    #     "  → Công thức gần đúng: thể tích = tỉ_lệ_lấp_đầy × diện_tích_đáy × chiều_cao.\n"
-    #     "  → Ví dụ: bún chiếm ~40% bát tô 15cm, cao 6cm → V ≈ 0.4 × π×(7.5)² × 6 ≈ 424 cm³.\n\n"
-    #     "BƯỚC 3 — KHỐI LƯỢNG: Thể tích (cm³) × khối lượng riêng (g/cm³) → gram.\n"
-    #     "  → Bảng khối lượng riêng tham khảo:\n"
-    #     "    • Nước lèo / canh: 1.0 g/cm³\n"
-    #     "    • Bún / phở / mì / hủ tiếu (sợi đã nấu chín): 0.55–0.65 g/cm³\n"
-    #     "    • Cơm (đã nấu): 0.85–0.95 g/cm³\n"
-    #     "    • Thịt (bò, heo, gà các loại): 0.90–1.05 g/cm³\n"
-    #     "    • Chả / nem / giò: 0.80–0.95 g/cm³\n"
-    #     "    • Rau sống / rau thơm: 0.15–0.30 g/cm³\n"
-    #     "    • Đậu phụ: 0.65–0.75 g/cm³\n"
-    #     "    • Trứng: 1.02–1.05 g/cm³\n"
-    #     "    • Bánh mì (ruột): 0.20–0.30 g/cm³\n"
-    #     "    • Nước chấm / mắm: 1.0–1.1 g/cm³\n\n"
-    #     "QUY TẮC NGUYÊN LIỆU (TUYỆT ĐỐI TUÂN THỦ):\n"
-    #     "- MỖI nguyên liệu PHẢI là 1 dòng RIÊNG BIỆT trong mảng ingredients.\n"
-    #     "- TUYỆT ĐỐI KHÔNG gộp nhiều nguyên liệu vào 1 name.\n"
-    #     "- Nếu món có rau sống/rau thơm ăn kèm → liệt kê TỪNG LOẠI RAU RIÊNG.\n"
-    #     "- Nếu món có nước chấm → tách riêng nước chấm (1 dòng).\n"
-    #     "- Nếu không thấy rõ thành phần bên trong (vd bánh xèo bọc kín) → ước lượng "
-    #     "dựa trên công thức chuẩn của món đó, vẫn tách riêng từng nguyên liệu.\n\n"
-    #     "Trả về CHỈ JSON (không markdown, không text ngoài JSON):\n"
-    #     '{\n'
-    #     '  "dish_name": "tên món (tiếng Việt, có dấu)",\n'
-    #     '  "reasoning": "mô tả ngắn gọn 3 bước suy luận (80-150 từ)",\n'
-    #     '  "ingredients": [\n'
-    #     '    {"name": "tên nguyên liệu (tiếng Việt)", "gram": số}\n'
-    #     '  ],\n'
-    #     '  "confidence": 0.0_đến_1.0\n'
-    #     '}\n'
-    #     "Nếu không nhận diện được món → confidence = 0."
-    # )
-
-    # Build request body — dùng OpenAI-compatible vision format
-    # Prompt ngắn → max_tokens nhỏ (200 thay vì 1024), nhanh hơn nhiều.
+    # OpenAI-compatible multimodal request. The output budget accommodates
+    # providers that add reasoning metadata around the requested JSON.
     request_body = {
         "model": settings.vision_model,
         "messages": [
@@ -196,8 +152,8 @@ async def identify_dish(image_path: str | Path) -> dict:
             },
         ],
         "temperature": 0.1,
-        "max_tokens": 800,  # Đủ cho thinking tags + JSON (Minimax-M3 cần ~500-800)
-        # Qwen3.7: tắt thinking để tăng tốc. Minimax-M3: bỏ qua param này.
+        "max_tokens": 800,
+        # Compatible providers may ignore this optional latency optimization.
         "chat_template_kwargs": {"enable_thinking": False},
     }
 
@@ -214,31 +170,40 @@ async def identify_dish(image_path: str | Path) -> dict:
         )
 
     if response.status_code != 200:
-        # KHÔNG include raw response.text — có thể chứa API key hoặc internal details
+        # Do not expose provider response bodies; they may contain internal details.
         raise VisionError(
             f"Vision API lỗi HTTP {response.status_code}"
         )
 
-    data = response.json()
-    content = data["choices"][0]["message"]["content"]
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise VisionError("Vision API trả response không phải JSON") from exc
+    content = _extract_message_content(data)
 
-    # ── Parse JSON từ LLM response ──────────────────────────────────
-    # Minimax-M3 dùng <think>...</think> tags; Qwen3.7 có thể bọc ```json.
-    # Tăng max_tokens để đủ chỗ cho thinking + JSON (Minimax cần ~500-800).
+    # Providers may wrap the requested object in reasoning tags or code fences.
     try:
         result = _parse_json_response(content)
-    except json.JSONDecodeError as e:
-        raise VisionError(f"Không parse được JSON từ response: {content[:300]}") from e
+    except json.JSONDecodeError as exc:
+        raise VisionError("Vision API trả nội dung JSON không hợp lệ") from exc
+
+    if not isinstance(result, dict):
+        raise VisionError("Vision API phải trả về một JSON object")
 
     # ── Validate + normalize: format mới (dishes[]) hoặc cũ (dish_name) ──
     if "dishes" not in result:
         if "dish_name" in result:
             result["dishes"] = [{"dish_name": result["dish_name"]}] if result["dish_name"] else []
         else:
-            raise VisionError(f"Thiếu field 'dishes' hoặc 'dish_name' trong response: {result}")
+            raise VisionError("Vision API thiếu field 'dishes' hoặc 'dish_name'")
+
+    raw_dishes = result["dishes"]
+    if not isinstance(raw_dishes, list):
+        raise VisionError("Field 'dishes' phải là một JSON array")
 
     normalized = _normalize_dishes(
-        result["dishes"], default_confidence=result.get("confidence")
+        raw_dishes,
+        default_confidence=result.get("confidence"),
     )
     result["dishes"] = normalized
     result["dish_name"] = normalized[0]["dish_name"] if normalized else None
@@ -256,6 +221,20 @@ def _as_non_negative_float(value: object) -> float:
         return max(0.0, float(value or 0))
     except (TypeError, ValueError):
         return 0.0
+
+
+def _extract_message_content(data: object) -> str:
+    """Extract text from an OpenAI-compatible response with schema checks."""
+    if not isinstance(data, dict):
+        raise VisionError("Vision API response không hợp lệ")
+    try:
+        content = data["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise VisionError("Vision API response không hợp lệ") from exc
+
+    if not isinstance(content, str) or not content.strip():
+        raise VisionError("Vision API response không hợp lệ")
+    return content
 
 
 def _as_confidence(value: object, *, default: float) -> float:
@@ -281,7 +260,7 @@ def _is_included_accompaniment(dish_name: str) -> bool:
 
 
 def _normalize_dishes(
-    raw_dishes: list[dict], *, default_confidence: object = None
+    raw_dishes: list[object], *, default_confidence: object = None
 ) -> list[dict]:
     """Chuẩn hóa tên, gram, loại món và tổng dinh dưỡng từng món.
 
@@ -292,7 +271,9 @@ def _normalize_dishes(
     """
     normalized = []
     fallback_confidence = _as_confidence(default_confidence, default=1.0)
-    for index, d in enumerate(raw_dishes):
+    for d in raw_dishes:
+        if not isinstance(d, dict):
+            continue
         name = d.get("dish_name")
         if not name:
             continue
@@ -304,8 +285,10 @@ def _normalize_dishes(
             gram = sum(
                 _as_non_negative_float(i.get("gram", 0) or i.get("grams", 0))
                 for i in d["ingredients"]
+                if isinstance(i, dict)
             )
-        if index == 0:
+        is_first_valid_item = not normalized
+        if is_first_valid_item:
             is_side = False
         elif "is_side" in d:
             is_side = bool(d["is_side"])
@@ -320,7 +303,7 @@ def _normalize_dishes(
         )
         threshold = MIN_SIDE_CONFIDENCE if is_side else MIN_MAIN_CONFIDENCE
         if confidence < threshold:
-            if index == 0:
+            if is_first_valid_item:
                 return []
             continue
         if is_side and normalized and _is_included_accompaniment(str(name)):
@@ -442,13 +425,19 @@ async def suggest_nutrition(ingredient_name: str) -> dict:
             f"Qwen suggest lỗi HTTP {response.status_code}"
         )
 
-    data = response.json()
-    content = data["choices"][0]["message"]["content"]
+    try:
+        data = response.json()
+        content = _extract_message_content(data)
+    except (ValueError, VisionError):
+        return {"ingredient_name": ingredient_name, "sources": []}
 
     try:
         result = _parse_json_response(content)
     except json.JSONDecodeError:
         # Fallback: trả về rỗng nếu Qwen không trả JSON hợp lệ
+        return {"ingredient_name": ingredient_name, "sources": []}
+
+    if not isinstance(result, dict):
         return {"ingredient_name": ingredient_name, "sources": []}
 
     result["ingredient_name"] = ingredient_name

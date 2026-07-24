@@ -1,7 +1,7 @@
-"""Service sinh embedding cho query (đưa query text → vector).
+"""Embed one search query through the local llama.cpp server.
 
-Gọi llama.cpp embedding server (port 8081) — cùng server và API format
-như scripts/generate_embeddings.py, nhưng cho 1 xâu query thay vì batch.
+The query path uses the same model as ``scripts/reindex_qdrant.py`` so query
+and catalog vectors remain in the same semantic space.
 """
 
 import httpx
@@ -14,13 +14,10 @@ TIMEOUT = 30.0
 
 
 async def embed_query(text: str) -> list[float]:
-    """Sinh embedding cho 1 text → vector 1024D.
-
-    Dùng để tìm nguyên liệu theo nghĩa (vector search): query 'cơm chiên' có thể
-    móc được 'cơm sườn', 'cơm gà' dù khác tên.
+    """Return the 1024-dimensional semantic vector for one query.
 
     Raises:
-        httpx.HTTPError: nếu embedding server không chạy hoặc trả lỗi.
+        httpx.HTTPError: The embedding server is unavailable or rejects the request.
     """
     async with httpx.AsyncClient() as client:
         response = await client.post(

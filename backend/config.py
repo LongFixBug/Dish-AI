@@ -1,47 +1,40 @@
-"""Application configuration — .env là nguồn thật (override env shell).
+"""Application settings loaded from environment variables and project ``.env``."""
 
-Mặc định pydantic-settings ưu tiên biến môi trường shell > file .env →
-nếu shell có export cũ (VD VISION_MODEL=qwen3.5-plus) sẽ đè giá trị .env mới.
-Đảo lại: nạp .env vào os.environ với override=True TRƯỚC khi Settings()
-chạy, để .env luôn thắng. User đổi key/model trong .env → áp dụng ngay.
-"""
+from pathlib import Path
 
-from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Nạp .env vào os.environ với override=True → .env thắng env shell cũ.
-# Phải chạy TRƯỚC khi Settings() khởi tạo (nằm dưới) thì mới effect.
-load_dotenv(".env", override=True)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
-    """FoodAI settings — .env là nguồn thật (override env shell)."""
+    """Runtime configuration with deployment-safe environment precedence."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
+        extra="ignore",
     )
-    
+
     # USDA FoodData Central
     usda_api_key: str = ""
 
     # App
     app_name: str = "FoodAI"
     app_version: str = "0.1.0"
-    debug: bool = True
+    debug: bool = False
 
-    # Vision API (cloud — for food image recognition)
-    # Dùng OpenCode API thay Gemini
+    # OpenAI-compatible cloud Vision API.
     vision_api_key: str = ""
     vision_api_base: str = "https://opencode.ai/zen/go/v1"
-    vision_model: str = "qwen3.6-plus"
+    vision_model: str = "qwen3.7-plus"
 
-    # RAG — Vector DB
+    # Derived semantic index. PostgreSQL remains the source of truth.
     qdrant_url: str = "http://localhost:6333"
 
     # Database
     database_url: str = (
-        "postgresql+asyncpg://foodai:foodai@localhost:5433/foodai"
+        "postgresql+asyncpg://foodai:foodai@localhost:5432/foodai"
     )
 
     # LLM + Embedding (local with llama.cpp)

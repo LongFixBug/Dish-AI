@@ -1,12 +1,4 @@
-"""Service lookup món + auto-add món mới — chỉ dùng vn_dishes & vn_ingredients.
-
-Phiên bản mới (Jul 23): bỏ Dish/DishIngredient/NutritionIngredient/ConversionRate.
-  - lookup_dish: tra vn_dishes (ILIKE → Qdrant vector fallback). Trả per-gram.
-  - lookup_ingredient: tra vn_ingredients (ILIKE → vector). Dùng cho món ăn kèm
-    (sữa hộp, nước uống) khi vn_dishes không có.
-  - auto_add_dish: Vision nhận món mới → INSERT tên, gram và tổng dinh dưỡng
-    vào vn_dishes (source=vision_auto).
-"""
+"""Look up reviewed dishes and ingredients in the local catalogs."""
 
 import re
 import unicodedata
@@ -15,43 +7,31 @@ from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import VnDish, VnIngredient
-from schemas.nutrition import NutritionPerGram, NutritionPerIngredient
+from backend.services.vector_catalog import CatalogType, search_catalog
+from schemas.nutrition import NutritionPerGram
 
-
-# ─── Helpers ─────────────────────────────────────────────────────────────────
+# Nutrition mapping helpers
 
 
 def _vn_dish_to_per_gram(vn: VnDish) -> NutritionPerGram:
-    """Map VnDish → NutritionPerGram.
+    """Convert source serving totals to per-gram values when weight is known."""
+    if not _has_weight(vn):
+        raise ValueError("Không thể tính dinh dưỡng trên gram khi thiếu typical_grams")
 
-    Nếu typical_grams có → chia ra per-gram chính xác.
-    Nếu typical_grams NULL → giữ nguyên RAW (per-serving), ghi source kèm note.
-    """
-    if vn.typical_grams and vn.typical_grams > 0:
-        g = vn.typical_grams
-        return NutritionPerGram(
-            name=vn.dish_name,
-            calories_per_g=vn.total_calories / g,
-            protein_per_g=vn.total_protein_g / g,
-            fat_per_g=vn.total_fat_g / g,
-            carbs_per_g=vn.total_carbs_g / g,
-            fiber_per_g=vn.total_fiber_g / g,
-            source=vn.source,
-        )
-    # Không biết trọng lượng → giữ RAW (giá trị thực là per-serving)
+    grams = float(vn.typical_grams)
     return NutritionPerGram(
         name=vn.dish_name,
-        calories_per_g=vn.total_calories,
-        protein_per_g=vn.total_protein_g,
-        fat_per_g=vn.total_fat_g,
-        carbs_per_g=vn.total_carbs_g,
-        fiber_per_g=vn.total_fiber_g,
-        source=f"{vn.source} (per serving)",
+        calories_per_g=vn.total_calories / grams,
+        protein_per_g=vn.total_protein_g / grams,
+        fat_per_g=vn.total_fat_g / grams,
+        carbs_per_g=vn.total_carbs_g / grams,
+        fiber_per_g=vn.total_fiber_g / grams,
+        source=vn.source,
     )
 
 
 def _vn_ingredient_to_per_gram(ing: VnIngredient) -> NutritionPerGram:
-    """Map VnIngredient → NutritionPerGram (đã per-gram sẵn)."""
+    """Map an ingredient row whose nutrients are already stored per gram."""
     return NutritionPerGram(
         name=ing.ingredient_name,
         calories_per_g=ing.calories_per_g,
@@ -64,12 +44,12 @@ def _vn_ingredient_to_per_gram(ing: VnIngredient) -> NutritionPerGram:
 
 
 def _has_weight(vn: VnDish) -> bool:
-    """VnDish có trọng lượng chuẩn (typical_grams) không."""
+    """Return whether the dish has a usable reference serving weight."""
     return bool(vn.typical_grams and vn.typical_grams > 0)
 
 
 def _has_nutrition(vn: VnDish) -> bool:
-    """Bản ghi có số dinh dưỡng thực, không chỉ là tên Vision đã lưu trước đó."""
+    """Return whether the row contains at least one positive nutrient value."""
     return any(
         (value or 0) > 0
         for value in (
@@ -82,7 +62,7 @@ def _has_nutrition(vn: VnDish) -> bool:
     )
 
 
-# ─── Tier 1: Lookup vn_dishes ────────────────────────────────────────────────
+# Reviewed dish lookup
 
 
 _DISH_FAMILY_TOKENS = {
@@ -94,7 +74,7 @@ QDRANT_CANDIDATE_LIMIT = 10
 
 
 def _menu_tokens(name: str) -> set[str]:
-    """Chuẩn hóa tên món thành token không dấu để so khớp lexical."""
+    """Normalize a Vietnamese dish name into accent-insensitive lexical tokens."""
     normalized = unicodedata.normalize("NFKD", name.casefold())
     ascii_name = "".join(
         char for char in normalized if not unicodedata.combining(char)
@@ -103,7 +83,7 @@ def _menu_tokens(name: str) -> set[str]:
 
 
 def _is_semantic_candidate_compatible(query: str, candidate: str) -> bool:
-    """Chỉ nhận vector candidate cùng họ món và chia sẻ đủ token menu."""
+    """Require semantic candidates to share a compatible lexical dish family."""
     query_tokens = _menu_tokens(query)
     candidate_tokens = _menu_tokens(candidate)
     if not query_tokens or not candidate_tokens:
@@ -123,7 +103,7 @@ def _is_semantic_candidate_compatible(query: str, candidate: str) -> bool:
 async def _lookup_institute_exact(
     session: AsyncSession, name: str
 ) -> VnDish | None:
-    """Tìm món trong vn_dishes exact (vn_norm ==) — không phân biệt dấu/hoa."""
+    """Find one reviewed dish by accent- and case-insensitive normalized name."""
     exact = await session.execute(
         select(VnDish)
         .where(func.vn_norm(VnDish.dish_name) == func.vn_norm(literal(name)))
@@ -137,35 +117,46 @@ async def _lookup_institute_exact(
     return exact.scalar_one_or_none()
 
 
-async def _lookup_institute_by_qdrant(
+async def _lookup_institute_by_vector(
     session: AsyncSession, name: str
 ) -> VnDish | None:
-    """Qdrant vector search → tra lại vn_dishes exact bằng tên match."""
+    """Resolve Qdrant candidates through authoritative PostgreSQL UUIDs."""
     try:
-        from backend.services.qdrant_dishes import search_dish
-
-        hits = await search_dish(name, limit=QDRANT_CANDIDATE_LIMIT)
+        hits = await search_catalog(
+            name,
+            CatalogType.DISH,
+            limit=QDRANT_CANDIDATE_LIMIT,
+        )
+        compatible_ids = [
+            hit.record_id
+            for hit in hits
+            if _is_semantic_candidate_compatible(name, hit.name)
+        ]
+        if not compatible_ids:
+            return None
+        result = await session.execute(
+            select(VnDish)
+            .where(VnDish.id.in_(compatible_ids))
+        )
+        by_id = {str(candidate.id): candidate for candidate in result.scalars().all()}
         for hit in hits:
-            matched = hit["dish_name"]
-            if not _is_semantic_candidate_compatible(name, matched):
-                continue
-            vn = await _lookup_institute_exact(session, matched)
-            if vn is not None:
-                return vn
+            candidate = by_id.get(hit.record_id)
+            if candidate and _is_semantic_candidate_compatible(name, candidate.dish_name):
+                return candidate
     except Exception:
-        # Qdrant offline / embed server lỗi → bỏ qua yên lặng
+        # Embedding service unavailable → preserve the exact-lookup result path.
         pass
     return None
 
 
 async def lookup_dish(session: AsyncSession, name: str) -> VnDish | None:
-    """Tìm món trong vn_dishes: exact → Qdrant semantic fallback.
+    """Search reviewed dishes using PostgreSQL, then a guarded Qdrant fallback.
 
-    Không dùng ILIKE substring (tránh 'Phở bò' trúng 'Phở bò xào' sai món).
-    Miss cả 2 → caller auto-add món mới.
+    Substring matching is intentionally excluded because a base dish such as
+    ``Phở bò`` must not silently resolve to the composite ``Phở bò xào``.
 
     Returns:
-        VnDish | None. Bản ghi có dinh dưỡng được ưu tiên trước bản vision_auto rỗng.
+        The best reviewed catalog row, or ``None`` when no safe match exists.
     """
     if not name or not name.strip():
         return None
@@ -175,23 +166,23 @@ async def lookup_dish(session: AsyncSession, name: str) -> VnDish | None:
     if vn is not None:
         return vn
 
-    return await _lookup_institute_by_qdrant(session, name)
+    return await _lookup_institute_by_vector(session, name)
 
 
 async def lookup_dish_exact(session: AsyncSession, name: str) -> VnDish | None:
-    """Tìm đúng tên món, dùng cho món phụ để tránh match sang món composite khác."""
+    """Look up an exact normalized name without semantic fallback."""
     if not name or not name.strip():
         return None
     return await _lookup_institute_exact(session, name.strip())
 
 
-# ─── Lookup vn_ingredients (món ăn kèm / đồ uống) ────────────────────────────
+# Ingredient, fruit, and packaged-product lookup
 
 
 async def _lookup_ingredient_ilike(
     session: AsyncSession, name: str
 ) -> VnIngredient | None:
-    """ILIKE search trên vn_ingredients."""
+    """Find the shortest ingredient containing the normalized query."""
     stmt = (
         select(VnIngredient)
         .where(
@@ -210,7 +201,7 @@ async def _lookup_ingredient_ilike(
 async def _lookup_ingredient_exact(
     session: AsyncSession, name: str
 ) -> VnIngredient | None:
-    """Tìm đúng tên ingredient, tránh tên ngắn match vào giữa từ khác."""
+    """Match a complete normalized ingredient name before substring search."""
     stmt = (
         select(VnIngredient)
         .where(
@@ -229,29 +220,28 @@ async def _lookup_ingredient_exact(
 async def _lookup_ingredient_vector(
     session: AsyncSession, name: str
 ) -> VnIngredient | None:
-    """Vector fallback trên vn_ingredients (cosine_distance)."""
+    """Resolve Qdrant ingredient candidates through PostgreSQL UUIDs."""
     try:
-        from backend.services.embeddings import embed_query
-
-        vec = await embed_query(name)
+        hits = await search_catalog(name, CatalogType.INGREDIENT, limit=5)
     except Exception:
+        return None
+    if not hits:
         return None
 
     stmt = (
         select(VnIngredient)
         .where(
-            VnIngredient.embedding.isnot(None)
+            VnIngredient.id.in_([hit.record_id for hit in hits])
             & VnIngredient.item_type.in_(["ingredient", "fruit", "product"])
         )
-        .order_by(VnIngredient.embedding.cosine_distance(vec))
-        .limit(1)
     )
     result = await session.execute(stmt)
-    return result.scalar_one_or_none()
+    by_id = {str(ingredient.id): ingredient for ingredient in result.scalars().all()}
+    return next((by_id[hit.record_id] for hit in hits if hit.record_id in by_id), None)
 
 
 async def lookup_ingredient(session: AsyncSession, name: str) -> VnIngredient | None:
-    """Tìm nguyên liệu / đồ uống trong vn_ingredients: ILIKE → vector."""
+    """Search ingredients using PostgreSQL text lookup, then Qdrant fallback."""
     if not name or not name.strip():
         return None
 
@@ -264,91 +254,7 @@ async def lookup_ingredient(session: AsyncSession, name: str) -> VnIngredient | 
 async def lookup_ingredient_text(
     session: AsyncSession, name: str
 ) -> VnIngredient | None:
-    """Chỉ exact text cho món phụ; không substring/vector sang tên khác."""
+    """Require an exact normalized name for side items and beverages."""
     if not name or not name.strip():
         return None
     return await _lookup_ingredient_exact(session, name.strip())
-
-
-# ─── Auto-add món mới vào vn_dishes ──────────────────────────────────────────
-
-
-async def auto_add_dish(
-    session: AsyncSession,
-    dish_name: str,
-    typical_grams: float | None,
-    *,
-    nutrition: NutritionPerIngredient | None = None,
-) -> VnDish:
-    """Vision nhận món chưa có DB → INSERT vào vn_dishes.
-
-    Args:
-        session: DB session.
-        dish_name: tên món Vision nhận.
-        typical_grams: gram Vision ước cho món (dùng làm khẩu phần chuẩn).
-        nutrition: Tổng dinh dưỡng Vision ước lượng cho đúng khẩu phần trong ảnh.
-
-    Returns:
-        VnDish vừa insert hoặc bản vision_auto rỗng vừa được bổ sung nutrition.
-    """
-    g = typical_grams if typical_grams and typical_grams > 0 else None
-
-    if nutrition is not None:
-        total_cal = nutrition.calories
-        total_p = nutrition.protein_g
-        total_f = nutrition.fat_g
-        total_c = nutrition.carbs_g
-        total_fb = nutrition.fiber_g
-    else:
-        total_cal = total_p = total_f = total_c = total_fb = 0.0
-
-    dish = await _lookup_institute_exact(session, dish_name)
-    if dish is None:
-        dish = VnDish(dish_name=dish_name)
-        session.add(dish)
-
-    if not _has_nutrition(dish):
-        dish.total_calories = round(total_cal, 1)
-        dish.total_protein_g = round(total_p, 1)
-        dish.total_fat_g = round(total_f, 1)
-        dish.total_carbs_g = round(total_c, 1)
-        dish.total_fiber_g = round(total_fb, 1)
-        dish.typical_grams = g
-        dish.source = "vision_auto"
-
-    await session.flush()
-
-    # Index vào Qdrant (fire-and-forget) để lần sau vector search tìm được
-    try:
-        import asyncio as _asyncio
-
-        from backend.services.qdrant_dishes import index_one_dish
-
-        _asyncio.create_task(index_one_dish(str(dish.id), dish_name))
-    except Exception:
-        pass
-
-    return dish
-
-
-# ─── Auto-update typical_grams cho món DB thiếu trọng lượng ──────────────────
-
-
-async def auto_update_grams(
-    session: AsyncSession, vn: VnDish, gram_vision: float
-) -> None:
-    """Món có trong DB nhưng thiếu typical_grams → lưu gram_vision làm chuẩn.
-
-    Per plan: Vision luôn chốt gram. DB thiếu gram → gram Vision thành typical_grams
-    cho món đó (lần sau có sẵn, không phải đoán lại). Nutrition giữ raw = total
-    (coi gram_vision = 1 khẩu phần chuẩn).
-    """
-    if not gram_vision or gram_vision <= 0:
-        return
-    await session.execute(
-        VnDish.__table__.update()
-        .where(VnDish.id == vn.id)
-        .where(VnDish.typical_grams.is_(None))
-        .values(typical_grams=round(gram_vision, 1))
-    )
-    vn.typical_grams = round(gram_vision, 1)

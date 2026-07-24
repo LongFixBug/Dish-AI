@@ -56,7 +56,7 @@ App mobile (Expo/Flutter - làm sau)
 │  └───────────────────────────────┘  │
 │                                     │
 │  ┌────────────┐  ┌──────────────┐   │
-│  │ pgvector   │  │   Redis      │   │
+│  │ Qdrant     │  │   Redis      │   │
 │  │ (USDA +    │  │ (cache热血 popular │
 │  │  ViFood    │  │   dishes)    │   │
 │  │  embed)    │  │              │   │
@@ -72,7 +72,7 @@ App mobile (Expo/Flutter - làm sau)
 
 | # | Mảng | Implement | Nói gì trong CV |
 |---|------|-----------|-----------------|
-| 1 | **RAG** | pgvector + USDA/ViFood embedding | "RAG pipeline giảm hallucination bằng đối chiếu nutrition DB chính quyền" |
+| 1 | **RAG** | Qdrant + USDA/ViFood embedding | "RAG pipeline giảm hallucination bằng đối chiếu nutrition DB chính quyền" |
 | 2 | **Structured output** | Pydantic schema + Gemini response_schema | "0 crash rate với schema-validated LLM output" |
 | 3 | **Agentic workflow** | LangGraph hoặc manual orchestration | "Multi-step pipeline: Vision → RAG → Python math (không LLM tính toán) → LLM giải thích" |
 | 4 | **Hallucination mitigation** | LLM không làm toán → không thể bịa số; confidence dựa trên % ingredient tìm thấy trong DB | "Nutrition được tính bằng code, không qua LLM; confidence score phản ánh độ phủ DB" |
@@ -95,8 +95,8 @@ Không target (cần kinh nghiệm/specialty): VinBigdata (CV model), Trusting S
 
 | Tuần | Milestone | Deliverable |
 |------|-----------|-------------|
-| 1-2 | Setup: repo, Docker, FastAPI skeleton, Gemini API key, pgvector | Hello world API |
-| 3 | RAG: ingest USDA FoodData Central vào pgvector, embedding | Query ingredient → nutrition |
+| 1-2 | Setup: repo, Docker, FastAPI skeleton, Vision API key, PostgreSQL + Qdrant | Hello world API |
+| 3 | RAG: ingest dữ liệu dinh dưỡng vào PostgreSQL, embedding vào Qdrant | Query ingredient → nutrition |
 | 4 | Agentic workflow: Agent 1 identify + Agent 2 RAG lookup | End-to-end 1 ảnh → JSON nutrition |
 | 5-6 | Aggregate + validate (sum check) + retry logic + confidence | Full agentic pipeline |
 | 7 | Eval harness: 50 ảnh test, metrics, dashboard Streamlit | Eval report |

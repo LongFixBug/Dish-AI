@@ -3,7 +3,7 @@
 Phiên bản Jul 23: chỉ còn 1 tab Analyze.
   - Upload ảnh → CV local + Vision → dishes[{dish_name, gram, is_side, total_*}]
   - Mỗi món tra vn_dishes (+ Qdrant) + vn_ingredients (món ăn kèm) → scale gram
-  - Món mới → dùng nutrition Vision và tự thêm vào vn_dishes (source=vision_auto)
+  - Món mới → dùng nutrition Vision cho response và đưa vào hàng chờ duyệt
   - KHÔNG còn per-ingredient edit / quick-add / Contribute / Search tab
 
 Usage:
@@ -239,12 +239,11 @@ def _show_analyze_result(data: dict) -> None:
     if data.get("cv_confidence") is not None:
         st.metric("CV Confidence", f"{data['cv_confidence']:.0%}")
 
-    # ── Món mới tự thêm vào DB ──────────────────────────────────────────
-    auto_added = data.get("auto_added_dishes", [])
-    if auto_added:
-        st.success(
-            f"🆕 **Tự thêm {len(auto_added)} món mới vào DB:** " + ", ".join(auto_added)
-            + " — đã lưu gram và dinh dưỡng ước lượng từ Vision."
+    staged = data.get("staged_dishes", [])
+    if staged:
+        st.info(
+            f"🕒 **{len(staged)} món mới đang chờ duyệt:** " + ", ".join(staged)
+            + " — dinh dưỡng Vision chỉ dùng tạm cho kết quả hiện tại."
         )
 
     if data.get("dish_name"):

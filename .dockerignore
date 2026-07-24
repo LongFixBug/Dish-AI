@@ -1,0 +1,13 @@
+.env
+.venv
+.git
+.pytest_cache
+__pycache__
+*.pyc
+backups
+checkpoints
+data
+models
+uploads
+ml/evaluation/reports
+.Codex

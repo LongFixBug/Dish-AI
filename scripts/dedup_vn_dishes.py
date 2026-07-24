@@ -1,5 +1,7 @@
 """Deduplicate vn_dishes bằng SQL rules - không dùng LLM."""
-import asyncio, sys, unicodedata
+import asyncio
+import sys
+import unicodedata
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -20,7 +22,8 @@ async def main():
         groups = {}
         for rid, name, grams, cal in rows:
             key = normalize(name)
-            if key not in groups: groups[key] = []
+            if key not in groups:
+                groups[key] = []
             groups[key].append((rid, name, grams, cal))
 
         dupes = {k: v for k, v in groups.items() if len(v) > 1}
@@ -32,18 +35,21 @@ async def main():
             without_g = [i for i in items if i[2] is None]
 
             if with_g and without_g:
-                for i in without_g: to_delete.append(i[0])
+                for i in without_g:
+                    to_delete.append(i[0])
                 continue
             if with_g:
                 cals = sorted(with_g, key=lambda x: x[3])
                 keep = cals[len(cals) // 2]
                 for i in cals:
-                    if i[0] != keep[0]: to_delete.append(i[0])
+                    if i[0] != keep[0]:
+                        to_delete.append(i[0])
                 continue
             cals = sorted(items, key=lambda x: x[3])
             keep = cals[len(cals) // 2]
             for i in cals:
-                if i[0] != keep[0]: to_delete.append(i[0])
+                if i[0] != keep[0]:
+                    to_delete.append(i[0])
 
         print(f"To delete: {len(to_delete)}")
 

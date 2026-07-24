@@ -1,4 +1,4 @@
-"""Re-create vn_dishes từ file JSON + seed typical_grams + clean tên.
+"""Refresh institute dish nutrition from JSON without deleting serving metadata.
 
 - Strip tiếng Anh trong ngoặc khỏi dish_name
 - Dedup: nếu nhiều dòng cùng tên -> giữ nutrition tốt nhất
@@ -44,9 +44,34 @@ def clean_dish_name(name: str) -> str:
     return name
 
 
-async def main():
+def serving_totals(item: dict) -> tuple[float, float, float, float, float]:
+    """Read explicit serving totals, with compatibility for the legacy export.
+
+    The first exports encoded meal totals as misleading ``*_per_g`` values
+    divided by 100. Keeping this fallback lets existing data be refreshed
+    safely, while all newly parsed exports use explicit serving fields.
+    """
+    if "calories_per_serving" in item:
+        return (
+            float(item["calories_per_serving"]),
+            float(item["protein_per_serving_g"]),
+            float(item["fat_per_serving_g"]),
+            float(item["carbs_per_serving_g"]),
+            float(item["fiber_per_serving_g"]),
+        )
+
+    return (
+        float(item["calories_per_g"]) * 100,
+        float(item["protein_per_g"]) * 100,
+        float(item["fat_per_g"]) * 100,
+        float(item["carbs_per_g"]) * 100,
+        float(item["fiber_per_g"]) * 100,
+    )
+
+
+async def main() -> None:
     json_path = Path(__file__).resolve().parent.parent / "data" / "vn_foods.json"
-    with open(json_path) as f:
+    with open(json_path, encoding="utf-8") as f:
         all_items = json.load(f)
 
     dishes = [d for d in all_items if d.get("source") == "vnmeal"]
@@ -67,84 +92,27 @@ async def main():
     print(f"Unique dishes (after dedup): {len(seen)}")
 
     async with async_session() as session:
-        print("\n[1/3] Recreating vn_dishes...")
-        await session.execute(text("DROP TABLE IF EXISTS vn_dishes CASCADE"))
-        await session.execute(text("""
-            CREATE TABLE vn_dishes (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                dish_name VARCHAR(300) NOT NULL,
-                total_calories DOUBLE PRECISION DEFAULT 0.0,
-                total_protein_g DOUBLE PRECISION DEFAULT 0.0,
-                total_fat_g DOUBLE PRECISION DEFAULT 0.0,
-                total_carbs_g DOUBLE PRECISION DEFAULT 0.0,
-                total_fiber_g DOUBLE PRECISION DEFAULT 0.0,
-                typical_grams DOUBLE PRECISION,
-                source VARCHAR(50) DEFAULT 'vnmeal',
-                created_at TIMESTAMPTZ DEFAULT now()
-            )
-        """))
-
-        print("[2/3] Inserting dishes (cleaned)...")
+        print("\n[1/2] Upserting institute nutrition (preserving serving metadata)...")
         count = 0
         for cleaned_name, d in seen.items():
-            cal = d["calories_per_g"] * 100
-            p = d["protein_per_g"] * 100
-            f_val = d["fat_per_g"] * 100
-            c = d["carbs_per_g"] * 100
-            fb = d["fiber_per_g"] * 100
-            await session.execute(text("""
+            cal, p, f_val, c, fb = serving_totals(d)
+            result = await session.execute(text("""
                 INSERT INTO vn_dishes (dish_name, total_calories,
                     total_protein_g, total_fat_g, total_carbs_g, total_fiber_g, source)
                 VALUES (:name, :cal, :p, :f, :c, :fb, 'vnmeal')
+                ON CONFLICT ON CONSTRAINT uq_vn_dishes_dish_name DO UPDATE SET
+                    total_calories = EXCLUDED.total_calories,
+                    total_protein_g = EXCLUDED.total_protein_g,
+                    total_fat_g = EXCLUDED.total_fat_g,
+                    total_carbs_g = EXCLUDED.total_carbs_g,
+                    total_fiber_g = EXCLUDED.total_fiber_g,
+                    source = 'vnmeal'
             """), {"name": cleaned_name, "cal": cal, "p": p, "f": f_val, "c": c, "fb": fb})
-            count += 1
-        print(f"  -> Inserted {count} dishes")
-
-        print("[3/3] Seeding typical_grams...")
-        known = {
-            "Phở bò tái": 500, "Phở bò chín": 500, "Phở gà": 500,
-            "Bún bò Huế": 550, "Bún chả": 400, "Bún riêu": 500,
-            "Bún thịt nướng": 400, "Hủ tiếu": 500, "Mì Quảng": 450,
-            "Cơm sườn": 400, "Cơm gà": 400, "Cơm tấm": 450,
-            "Bánh mì": 250, "Bánh xèo": 200, "Bánh cuốn": 300,
-            "Bánh bèo": 150, "Bánh bao": 150,
-            "Bánh chưng": 800, "Bánh tét": 800,
-            "Gỏi cuốn": 150, "Cháo": 450, "Chè": 300, "Xôi": 300,
-            "Quẩy": 50, "Nem rán": 100, "Vịt quay": 1200,
-        }
-        updated = 0
-        for kw, grams in known.items():
-            r = await session.execute(text("""
-                UPDATE vn_dishes SET typical_grams = :grams
-                WHERE dish_name ILIKE '%' || :kw || '%'
-            """), {"grams": grams, "kw": kw})
-            updated += r.rowcount
+            count += result.rowcount
+        print(f"  -> Upserted {count} dishes")
         await session.commit()
-        print(f"  -> Updated {updated} dishes with typical_grams")
 
-        # Dedup group giống nhau sau clean (keep best nutrition)
-        r = await session.execute(text("""
-            SELECT dish_name, COUNT(*) as cnt
-            FROM vn_dishes GROUP BY dish_name HAVING COUNT(*) > 1
-        """))
-        dups = list(r.fetchall())
-        if dups:
-            print(f"\nDedup {len(dups)} duplicate groups...")
-            deleted = 0
-            for name, cnt in dups:
-                r2 = await session.execute(
-                    text("SELECT id::text FROM vn_dishes WHERE dish_name = :nm ORDER BY typical_grams DESC NULLS LAST"),
-                    {"nm": name},
-                )
-                ids = [row[0] for row in r2.fetchall()]
-                keep = ids[0]
-                for did in ids[1:]:
-                    await session.execute(text("DELETE FROM vn_dishes WHERE id = CAST(:uid AS uuid)"), {"uid": did})
-                    deleted += 1
-            await session.commit()
-            print(f"  Deleted {deleted} duplicates")
-
-        # Verify
+        print("[2/2] Verifying serving-size coverage...")
         r = await session.execute(text("SELECT COUNT(*) FROM vn_dishes"))
         total = r.scalar()
         r = await session.execute(text(
@@ -164,4 +132,5 @@ async def main():
 
     print("\n=== Done! ===")
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

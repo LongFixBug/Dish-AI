@@ -55,7 +55,7 @@
 ### Data / Storage
 | Layer | Chọn gì | Tại sao |
 |-------|---------|---------|
-| Vector DB | **pgvector** (PostgreSQL extension) | Gộp chung 1 DB, đỡ phải maintain 2 service |
+| Vector DB | **Qdrant** | Vector search chuyên dụng; payload UUID liên kết về PostgreSQL source of truth |
 | Database | **PostgreSQL** (SQLAlchemy async) | Chat history, document metadata, nutrition cache |
 | Cache | **Redis** | Cache món phổ biến, giảm API cost |
 
@@ -109,7 +109,7 @@
 │         ┌────────────────────┼────────────────────┐                 │
 │         ▼                    ▼                     ▼                 │
 │  ┌──────────┐  ┌──────────────────────┐  ┌──────────────┐         │
-│  │ pgvector │  │ PostgreSQL (metadata) │  │    Redis     │         │
+│  │ Qdrant   │  │ PostgreSQL (metadata) │  │    Redis     │         │
 │  │ (USDA +  │  │ chat_history         │  │  (cache      │         │
 │  │  ViFood) │  │ eval_results         │  │   món phổ    │         │
 │  │          │  │                      │  │   biến)      │         │
@@ -133,7 +133,7 @@
 | 3 | **Computer Vision** | Preprocess dataset, augmentation, training loop, evaluation metrics | ✅ Bắt buộc |
 | 4 | **Generative AI / LLM** | llama.cpp Qwen2.5 7B, Qwen3.7 Plus Vision API, prompt engineering | ✅ Bắt buộc |
 | 5 | **RAG** | Tự code pipeline: chunk → embed → search → rerank → generate | ✅ Lợi thế |
-| 6 | **Embedding** | Qwen3-Embedding + pgvector HNSW index + similarity search | ✅ Lợi thế |
+| 6 | **Embedding** | Qwen3-Embedding + Qdrant cosine search + UUID reconciliation | ✅ Lợi thế |
 | 7 | **Structured Output** | Pydantic schema + Qwen3.7 Plus structured JSON output | ✅ Lợi thế |
 | 8 | **Agentic Workflow** | Multi-step orchestration + self-validation + retry | ✅ Lợi thế |
 | 9 | **Evaluation** | RAGAS + custom eval harness 50 ảnh test | ✅ Lợi thế |
@@ -150,7 +150,7 @@
 
 | Ngày | Làm gì | Skill học |
 |------|--------|-----------|
-| 1-2 | ✅ FastAPI skeleton (đã xong), ✅ Docker Compose postgres+pgvector (đã xong) | Docker, async Python |
+| 1-2 | ✅ FastAPI skeleton, ✅ Docker Compose PostgreSQL + Qdrant | Docker, async Python |
 | 3-4 | Setup llama.cpp: tải Qwen2.5 7B GGUF + Qwen3-Embedding GGUF, chạy server | Self-host LLM, GGUF format |
 | 5-6 | **CV Dataset**: Thu thập 500-1000 ảnh món Việt (phở, bún bò, cơm tấm, bánh xèo...), gán nhãn | Dataset preparation, labeling |
 | 7-8 | **CV Dataset (tiếp)**: Augmentation (flip, rotate, color jitter), train/val/test split, DataLoader | PyTorch `Dataset`, `DataLoader`, `transforms` |
@@ -173,11 +173,11 @@
 | 1-2 | Parse USDA FoodData Central JSON/CSV → extract ingredient + nutrition | Data processing, JSON/CSV parsing |
 | 3-4 | Parse Vietnam Food Composition Table → merge với USDA thành 1 DB thống nhất | Data cleaning, normalization |
 | 5-6 | Viết `app/services/embedding.py`: gọi llama.cpp `/v1/embeddings` cho từng ingredient | Embedding API, async HTTP |
-| 7-8 | Viết `app/services/document.py`: chunk text, embed, insert vào pgvector | Chunking strategy, vector insert |
-| 9-10 | Index HNSW cho bảng pgvector, benchmark speed | HNSW index, query optimization |
+| 7-8 | Viết `backend/services/vector_catalog.py`: embed và upsert vào Qdrant | Vector indexing, payload design |
+| 9-10 | Benchmark Qdrant cosine search và kiểm toán drift UUID | HNSW, retrieval evaluation |
 
 **Deliverable cuối tuần 3**:
-- ~5000 ingredients đã được embed + lưu pgvector
+- Catalog đã được embed vào Qdrant và có lệnh rebuild/audit lặp lại được
 - Query `"thịt bò"` → trả về top-5 ingredients gần nhất kèm nutrition
 
 ---
@@ -300,7 +300,7 @@ FoodAI/
 │   │   ├── __init__.py
 │   │   ├── postgres.py                  # SQLAlchemy async session
 │   │   ├── models.py                    # ORM: nutrition, chat_history, eval_results
-│   │   └── vector.py                    # pgvector operations
+│   │   └── models.py                    # PostgreSQL source-of-truth models
 │   ├── schemas/
 │   │   ├── __init__.py
 │   │   ├── nutrition.py                 # Pydantic: Ingredient, NutritionInfo
@@ -368,7 +368,7 @@ FoodAI/
 | Generative AI / LLM | ✅ | llama.cpp Qwen2.5, Qwen3.7 Plus, prompt engineering |
 | Triển khai CV model trên cloud | ✅ | ONNX export + SageMaker/Vertex AI deploy |
 | Quy trình ML/DL | ✅ | Data → train → eval → export → deploy |
-| RAG + Vector DB | ✅ | Tự code pipeline + pgvector HNSW |
+| RAG + Vector DB | ✅ | PostgreSQL source of truth + Qdrant HNSW |
 | Agentic Workflow | ✅ | 4-step orchestration + validate + retry |
 | Structured Output | ✅ | Pydantic schema + validation |
 | Evaluation Framework | ✅ | RAGAS + custom harness + 50 ảnh test |

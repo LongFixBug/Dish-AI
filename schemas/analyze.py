@@ -1,11 +1,4 @@
-"""Pydantic schemas cho POST /analyze (ảnh → nutrition) — dish-level.
-
-Flow mới (Jul 23, không phân tích nguyên liệu):
-  ảnh → CV local → Vision → dishes[{dish_name, gram, total_*}]
-       → lookup mỗi item trong vn_dishes (+ Qdrant fallback) + vn_ingredients
-       → match: scale nutrition = gram_vision × per_g_db, bỏ nutrition Vision
-       → miss: dùng nutrition Vision và tự thêm vào vn_dishes
-"""
+"""Response schemas for dish-level food-image analysis."""
 
 from typing import Literal
 
@@ -38,12 +31,12 @@ class AnalyzeDish(BaseModel):
 class AnalyzeResponse(BaseModel):
     """Response cho POST /api/v1/analyze.
 
-    - source='cv_local': CV local conf cao + lookup trúng (chưa wire vì CV chỉ trả dish_name).
+    - source='cv_local': CV local conf cao + DB có đủ nutrition và khẩu phần chuẩn.
     - source='vision': Vision nhận diện + lookup vn_dishes/vn_ingredients.
     - nutrition: NutritionTotals (dish-level, không có per-ingredient list).
     - dishes: list món Vision trả (tên + gram).
-    - auto_added_dishes: món mới Vision tự INSERT vào vn_dishes.
-    - missing_items: item dùng Vision nhưng lưu DB thất bại.
+    - staged_dishes: món mới được lưu ở khu vực chờ duyệt.
+    - missing_items: item dùng Vision nhưng staging thất bại.
     """
 
     dish_name: str | None = Field(default=None, description="Tên món chính / bữa ăn")
@@ -57,11 +50,16 @@ class AnalyzeResponse(BaseModel):
         description="Từng món trong ảnh (món chính + món ăn kèm) kèm gram",
     )
     vision_reasoning: str | None = Field(
-        default=None, description="Chain-of-Thought reasoning từ Qwen (nếu bật)"
+        default=None,
+        description="Giải thích ngắn do Vision API cung cấp, nếu có",
     )
     auto_added_dishes: list[str] = Field(
         default_factory=list,
-        description="Món mới được tự động INSERT vào vn_dishes từ ảnh",
+        description="Deprecated compatibility field; always empty",
+    )
+    staged_dishes: list[str] = Field(
+        default_factory=list,
+        description="Món Vision mới đã được lưu vào dish_candidates để chờ duyệt",
     )
     missing_items: list[str] = Field(
         default_factory=list,

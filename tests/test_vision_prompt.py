@@ -1,6 +1,27 @@
-"""Contract tests cho mức độ khái quát khi Vision nhận diện món."""
+"""Contracts for Vision prompting and provider-response normalization."""
 
-from ml.inference.vision import _build_food_identification_prompt, _normalize_dishes
+import pytest
+
+from ml.inference.vision import (
+    VisionError,
+    _build_food_identification_prompt,
+    _extract_message_content,
+    _normalize_dishes,
+)
+
+
+def test_provider_response_requires_message_content() -> None:
+    with pytest.raises(VisionError, match="response không hợp lệ"):
+        _extract_message_content({"choices": []})
+
+
+def test_normalizer_ignores_non_object_items() -> None:
+    normalized = _normalize_dishes(
+        [None, "not-an-object", {"dish_name": "Phở bò", "gram": 500}]
+    )
+
+    assert [dish["dish_name"] for dish in normalized] == ["Phở bò"]
+    assert normalized[0]["is_side"] is False
 
 
 def test_prompt_groups_com_tam_at_menu_item_level() -> None:

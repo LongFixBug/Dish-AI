@@ -17,8 +17,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy import text
-from backend.db.postgres import async_session
+from sqlalchemy import text  # noqa: E402
+from backend.db.postgres import async_session  # noqa: E402
 
 # Một segment chứa >=3 chữ cái alphabet liên tiếp → coi là tiếng Anh
 _HAS_EN = re.compile(r"[A-Za-z]{3,}")

@@ -8,7 +8,6 @@ Test gọi trực tiếp `SELECT vn_norm(:input)` qua async session thật (DB 5
 
 from sqlalchemy import text
 
-from tests.conftest import db_session  # noqa: F401  (fixture)
 
 
 async def _vn_norm(session, value: str | None) -> str | None:
