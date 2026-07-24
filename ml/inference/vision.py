@@ -3,12 +3,13 @@
 Đây là Tầng 2 (cloud fallback). Tầng 1 là CV model PyTorch local (giữ để train sau).
 Flow: CV local → nếu confidence thấp → fallback Vision API.
 
-Phiên bản mới (Jul 23): Vision nhận diện TỪNG MÓN trong ảnh + gram + đánh dấu
-món ăn kèm. KHÔNG phân tích từng nguyên liệu trong món (dinh dưỡng lấy từ DB).
+Phiên bản mới (Jul 23): Vision nhận diện TỪNG MÓN được chụp có chủ ý, ước lượng
+gram + dinh dưỡng. Backend chỉ dùng dinh dưỡng Vision khi món không có trong DB.
 """
 
 import base64
 import json
+import unicodedata
 from pathlib import Path
 
 import httpx
@@ -20,17 +21,94 @@ class VisionError(Exception):
     """Lỗi khi gọi Vision API."""
 
 
+MAX_MENU_ITEMS = 3
+MIN_MAIN_CONFIDENCE = 0.55
+MIN_SIDE_CONFIDENCE = 0.80
+
+INCLUDED_ACCOMPANIMENTS = (
+    "do chua",
+    "rau muong chua",
+    "dua chua",
+    "dua leo",
+    "ca chua",
+    "rau song",
+    "rau thom",
+    "mo hanh",
+    "hanh phi",
+    "nuoc cham",
+    "nuoc mam",
+    "sot an kem",
+)
+
+
+def _build_food_identification_prompt() -> str:
+    """Prompt nhận diện ở cấp món trên menu, không tách vụn mọi thành phần."""
+    return (
+        "Bạn là chuyên gia ẩm thực và dinh dưỡng Việt Nam.\n"
+        "Hãy nhận diện món ở MỨC KHÁI QUÁT NHƯ TÊN GỌI TRÊN MENU, "
+        "không làm object detection từng thứ ăn được.\n\n"
+        "QUY TẮC NHÓM MÓN (ƯU TIÊN CAO NHẤT):\n"
+        "- Một đĩa combo chỉ trả TỐI ĐA 3 món: 1 món chính và tối đa 2 món phụ.\n"
+        "- Món chính phải gom tinh bột + phần đạm chính thành tên quen thuộc. "
+        "Ví dụ cơm và sườn nướng trên cùng đĩa phải gọi là 'Cơm sườn'.\n"
+        "- Chỉ tách món phụ khi đó là một món chế biến có tên riêng trên menu, "
+        "rõ nét, nổi bật và được chụp có chủ ý như món chính.\n"
+        "- Gộp các phần liên quan thành tên menu chung; ví dụ chả trứng và bì "
+        "trên đĩa cơm tấm gọi chung là 'Chả bì'.\n"
+        "- KHÔNG tách riêng cơm, thịt, nhân bên trong, topping nhỏ, dưa leo, "
+        "đồ chua, rau muống chua, rau thơm, mỡ hành, nước chấm, sốt hoặc đồ "
+        "trang trí. Các phần này đã thuộc khẩu phần món chính.\n"
+        "- Bỏ qua thức ăn mờ ở hậu cảnh, bao bì và vật thể vô tình lọt vào ảnh.\n"
+        "- Không suy diễn món lạ từ màu sắc/hình dạng; dùng tên Việt Nam phổ biến, ngắn gọn.\n\n"
+        "QUY TẮC ĐỘ TIN CẬY:\n"
+        "- Mỗi món phải có confidence từ 0 đến 1, phản ánh độ chắc chắn về đúng tên món.\n"
+        "- Chỉ trả món phụ khi confidence >= 0.80; nếu chưa chắc thì BỎ QUA, không đoán.\n"
+        "- Món chính confidence < 0.55 thì trả dishes=[] thay vì đoán tên món.\n"
+        "- Không tăng confidence chỉ vì nhìn thấy một màu hoặc hình dạng giống món đó.\n\n"
+        "VÍ DỤ BẮT BUỘC CHO CƠM TẤM COMBO:\n"
+        "Nếu ảnh là một đĩa có cơm, sườn nướng, trứng ốp la, chả trứng, bì, "
+        "một ít lạp xưởng và đồ chua thì chỉ trả 3 món: "
+        "'Cơm sườn', 'Trứng ốp la', 'Chả bì'. "
+        "Không tạo mục riêng cho cơm, sườn, lạp xưởng, bì hay đồ chua.\n\n"
+        "Nếu đồng thời thấy miếng chả trứng và bì sợi, tên mục thứ ba BẮT BUỘC là "
+        "'Chả bì', không được chỉ gọi là 'Chả trứng' và không tách 'Bì' riêng.\n"
+        "Nếu là đĩa cơm tấm có thịt heo thái lát/sợi, bì, chả và trứng, "
+        "phần thịt có thể là sườn đã cắt nhỏ: món chính BẮT BUỘC gọi là "
+        "'Cơm sườn', không gọi là 'Cơm chả lụa trứng'. Bát canh đặt riêng "
+        "vẫn được nhận là một món phụ.\n"
+        "Ví dụ tên trong output: "
+        '{"dishes": [{"dish_name": "Cơm sườn"}, '
+        '{"dish_name": "Trứng ốp la"}, {"dish_name": "Chả bì"}]}\n\n'
+        "BẮT BUỘC — OUTPUT CHÍNH XÁC:\n"
+        "Trả về CHỈ JSON đúng cấu trúc:\n"
+        '{"confidence": số từ 0 đến 1, "dishes": [{"dish_name": str, '
+        '"gram": số, "is_side": bool, "confidence": số từ 0 đến 1, '
+        '"total_calories": số, "total_protein_g": số, "total_fat_g": số, '
+        '"total_carbs_g": số, "total_fiber_g": số}]}\n'
+        "- confidence ngoài cùng là độ tin cậy tổng thể của lần nhận diện.\n"
+        "- confidence trong từng mục là độ tin cậy của riêng tên món đó.\n"
+        "- Mục đầu tiên luôn là món chính và is_side=false.\n"
+        "- Các mục sau là món phụ và is_side=true.\n"
+        "- gram là khối lượng của đúng nhóm món đó; không tính trùng gram giữa các mục.\n"
+        "- total_calories dùng kcal; 4 trường còn lại dùng gram.\n"
+        "- Các total là cho đúng lượng gram vừa ước tính, không phải trên 100g.\n"
+        "- Không có trường ingredients. Nếu không thấy món nào thì dishes=[].\n"
+        "Trả về CHỈ JSON, không markdown, không giải thích ngoài JSON."
+    )
+
+
 async def identify_dish(image_path: str | Path) -> dict:
     """Nhận diện món ăn từ ảnh — trả về danh sách món + gram.
 
     Gửi ảnh lên Vision API, trả về:
-        - dishes: [{"dish_name": str, "gram": float, "is_side": bool}, ...]
+        - dishes: [{dish_name, gram, is_side, total_*}, ...]
             + dish_name: tên món tiếng Việt (có dấu)
             + gram: khối lượng ước lượng (gram) cho món đó
             + is_side: True nếu là món ăn kèm / đồ uống (VD: quảy, soda, sữa hộp)
         - dish_name (top-level): món đầu tiên (backward-compat cho analyze.py cũ)
 
-    KHÔNG phân tích nguyên liệu trong từng món. Món chưa có DB → backend tự thêm.
+    KHÔNG phân tích nguyên liệu trong từng món. Món chưa có DB → backend tự thêm
+    cùng gram và tổng dinh dưỡng Vision ước lượng.
 
     Raises:
         VisionError: nếu API lỗi hoặc response không hợp lệ.
@@ -49,35 +127,7 @@ async def identify_dish(image_path: str | Path) -> dict:
     mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
     mime_type = mime_map.get(suffix, "image/jpeg")
 
-    # ── Prompt: Vision nhận diện từng món + khối lượng ──────────────────
-    # Trả về dishes[{dish_name, gram, is_side}]. KHÔNG tách nguyên liệu từng món.
-    system_prompt = (
-        "Bạn là chuyên gia ẩm thực Việt Nam.\n"
-        "Nhìn ảnh và liệt kê TỪNG món ăn / đồ uống riêng biệt có trong ảnh.\n"
-        "Với mỗi món, ước lượng khối lượng TỔNG (gram cả món) và đánh dấu món chính / kèm.\n\n"
-        "BẮT BUỘC — OUTPUT CHÍNH XÁC:\n"
-        "Trả về CHỈ JSON đúng cấu trúc:\n"
-        '{"dishes": [{"dish_name": str, "gram": số, "is_side": bool}]}\n'
-        "- gram = khối lượng TỔNG của món đó (không phải từng nguyên liệu).\n"
-        "- KHÔNG có trường 'ingredients'. KHÔNG liệt kê nguyên liệu bên trong món.\n"
-        "- KHÔNG dùng 'is_main'. Chỉ dùng 'is_side'.\n\n"
-        "HƯỚNG DẪN ƯỚC LƯỢNG GRAM (tổng cả món):\n"
-        "- 1 tô phở/bún đầy = 400-600g. 1 đĩa cơm = 300-500g.\n"
-        "- 1 ổ bánh mì = 150-250g. 1 ly nước = 200-400g.\n"
-        "- 1 phần quẩy/chả nhỏ = 20-50g.\n\n"
-        "is_side:\n"
-        "- false = món chính (phở, cơm sườn, bánh mì thịt...).\n"
-        "- true  = món ăn kèm / đồ uống / topping (quẩy, trà đá, sữa hộp, xoài...).\n\n"
-        "Ví dụ ảnh 1 tô phở bò + 2 quẩy →\n"
-        '{"dishes": ['
-        '{"dish_name": "Phở bò", "gram": 530, "is_side": false}, '
-        '{"dish_name": "Quẩy", "gram": 40, "is_side": true}'
-        "]}\n\n"
-        "QUY TẮC TÊN:\n"
-        "- Tên tiếng Việt có dấu (VD 'Bánh mì thịt nướng').\n"
-        "- Nếu không thấy món nào → dishes = [].\n"
-        "Trả về CHỈ JSON, KHÔNG markdown, KHÔNG text ngoài JSON."
-    )
+    system_prompt = _build_food_identification_prompt()
 
     # ── [COMMENTED] Prompt cũ (CoT 3 bước ước lượng thể tích → gram) ──
     # Giữ lại để dùng sau nếu cần Vision phân tích chi tiết nguyên liệu.
@@ -137,14 +187,15 @@ async def identify_dish(image_path: str | Path) -> dict:
                     {
                         "type": "text",
                         "text": (
-                            "Liệt kê từng món trong ảnh + ước lượng khối lượng (gram) "
-                            "mỗi món và đánh dấu món chính / món ăn kèm."
+                            "Nhận diện ở cấp tên món trên menu. Chỉ trả tối đa 3 món, "
+                            "không tách nguyên liệu, topping hoặc đồ ăn kèm nhỏ. "
+                            "Bỏ mọi món phụ có confidence dưới 0.80."
                         ),
                     },
                 ],
             },
         ],
-        "temperature": 0.3,
+        "temperature": 0.1,
         "max_tokens": 800,  # Đủ cho thinking tags + JSON (Minimax-M3 cần ~500-800)
         # Qwen3.7: tắt thinking để tăng tốc. Minimax-M3: bỏ qua param này.
         "chat_template_kwargs": {"enable_thinking": False},
@@ -186,17 +237,53 @@ async def identify_dish(image_path: str | Path) -> dict:
         else:
             raise VisionError(f"Thiếu field 'dishes' hoặc 'dish_name' trong response: {result}")
 
-    normalized = _normalize_dishes(result["dishes"])
+    normalized = _normalize_dishes(
+        result["dishes"], default_confidence=result.get("confidence")
+    )
     result["dishes"] = normalized
     result["dish_name"] = normalized[0]["dish_name"] if normalized else None
-    result.setdefault("confidence", 1.0 if normalized else 0.0)
+    result["confidence"] = _as_confidence(
+        result.get("confidence"), default=1.0 if normalized else 0.0
+    )
     result.setdefault("reasoning", None)
 
     return result
 
 
-def _normalize_dishes(raw_dishes: list[dict]) -> list[dict]:
-    """Chuẩn hóa từng dish → {dish_name, gram, is_side}.
+def _as_non_negative_float(value: object) -> float:
+    """Đổi output không ổn định của model sang số không âm an toàn."""
+    try:
+        return max(0.0, float(value or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _as_confidence(value: object, *, default: float) -> float:
+    """Chuẩn hóa confidence về khoảng 0..1."""
+    if value is None:
+        return default
+    try:
+        return min(1.0, max(0.0, float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _search_label(value: str) -> str:
+    """Bỏ dấu để so tên garnish ổn định với mọi kiểu viết từ model."""
+    decomposed = unicodedata.normalize("NFKD", value.casefold().replace("đ", "d"))
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
+
+
+def _is_included_accompaniment(dish_name: str) -> bool:
+    """True khi đây là garnish/đồ chua vốn đã nằm trong khẩu phần món chính."""
+    label = _search_label(dish_name)
+    return any(name in label for name in INCLUDED_ACCOMPANIMENTS)
+
+
+def _normalize_dishes(
+    raw_dishes: list[dict], *, default_confidence: object = None
+) -> list[dict]:
+    """Chuẩn hóa tên, gram, loại món và tổng dinh dưỡng từng món.
 
     Linh hoạt chấp nhận nhiều biến thể model có thể trả:
       - gram / grams / weight_grams / total_grams cho khối lượng
@@ -204,27 +291,72 @@ def _normalize_dishes(raw_dishes: list[dict]) -> list[dict]:
       - nếu thiếu gram tổng mà có ingredients → tổng gram nguyên liệu (fallback)
     """
     normalized = []
-    for d in raw_dishes:
+    fallback_confidence = _as_confidence(default_confidence, default=1.0)
+    for index, d in enumerate(raw_dishes):
         name = d.get("dish_name")
         if not name:
             continue
         gram = d.get("gram")
         if not gram:
             gram = d.get("grams") or d.get("weight_grams") or d.get("total_grams")
-        gram = float(gram or 0)
+        gram = _as_non_negative_float(gram)
         if gram <= 0 and isinstance(d.get("ingredients"), list):
             gram = sum(
-                float(i.get("gram", 0) or i.get("grams", 0) or 0)
+                _as_non_negative_float(i.get("gram", 0) or i.get("grams", 0))
                 for i in d["ingredients"]
             )
-        if "is_side" in d:
+        if index == 0:
+            is_side = False
+        elif "is_side" in d:
             is_side = bool(d["is_side"])
         elif "is_main" in d:
             is_side = not bool(d["is_main"])
         else:
-            is_side = False
-        normalized.append({"dish_name": name, "gram": gram, "is_side": is_side})
-    return normalized
+            is_side = True
+
+        confidence = _as_confidence(
+            d.get("confidence", d.get("confidence_score")),
+            default=fallback_confidence,
+        )
+        threshold = MIN_SIDE_CONFIDENCE if is_side else MIN_MAIN_CONFIDENCE
+        if confidence < threshold:
+            if index == 0:
+                return []
+            continue
+        if is_side and normalized and _is_included_accompaniment(str(name)):
+            continue
+
+        normalized.append(
+            {
+                "dish_name": str(name).strip(),
+                "gram": gram,
+                "is_side": is_side,
+                "total_calories": _as_non_negative_float(
+                    d.get("total_calories", d.get("total_calories_g", 0))
+                ),
+                "total_protein_g": _as_non_negative_float(d.get("total_protein_g")),
+                "total_fat_g": _as_non_negative_float(d.get("total_fat_g")),
+                "total_carbs_g": _as_non_negative_float(d.get("total_carbs_g")),
+                "total_fiber_g": _as_non_negative_float(d.get("total_fiber_g")),
+            }
+        )
+    _canonicalize_com_tam_labels(normalized)
+    return normalized[:MAX_MENU_ITEMS]
+
+
+def _canonicalize_com_tam_labels(dishes: list[dict]) -> None:
+    """Chuẩn hóa tên menu cho combo cơm tấm mà không đổi gram/nutrition."""
+    if not dishes:
+        return
+
+    main_name = dishes[0]["dish_name"].casefold()
+    if "cơm sườn" not in main_name and "cơm tấm" not in main_name:
+        return
+
+    for dish in dishes[1:]:
+        side_name = dish["dish_name"].casefold()
+        if "chả" in side_name and "trứng" in side_name:
+            dish["dish_name"] = "Chả bì"
 
 
 async def suggest_nutrition(ingredient_name: str) -> dict:

@@ -1,9 +1,9 @@
 """Streamlit UI — FoodAI: nhận diện món ăn Việt + phân tích dinh dưỡng từ ảnh.
 
 Phiên bản Jul 23: chỉ còn 1 tab Analyze.
-  - Upload ảnh → CV local (giữ train sau) + Vision → dishes[{dish_name, gram, is_side}]
+  - Upload ảnh → CV local + Vision → dishes[{dish_name, gram, is_side, total_*}]
   - Mỗi món tra vn_dishes (+ Qdrant) + vn_ingredients (món ăn kèm) → scale gram
-  - Món mới → tự thêm vào vn_dishes (source=vision_auto)
+  - Món mới → dùng nutrition Vision và tự thêm vào vn_dishes (source=vision_auto)
   - KHÔNG còn per-ingredient edit / quick-add / Contribute / Search tab
 
 Usage:
@@ -17,6 +17,8 @@ import unicodedata
 
 import httpx
 import streamlit as st
+
+from schemas.nutrition import calculate_adjusted_totals
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -45,75 +47,87 @@ def _api(verb: str, path: str, **kwargs) -> httpx.Response:
 
 
 def _nutrition_card(totals: dict) -> None:
-    """Hiển thị nutrition card: per-100g + user nhập khẩu phần + danh sách món."""
+    """Hiển thị control khẩu phần và tính lại nutrition riêng từng món."""
 
-    total_grams = totals.get("total_grams", 0)
-    per_100g_cal = totals.get("per_100g_calories", 0)
-    per_100g_p = totals.get("per_100g_protein_g", 0)
-    per_100g_f = totals.get("per_100g_fat_g", 0)
-    per_100g_c = totals.get("per_100g_carbs_g", 0)
-    per_100g_fb = totals.get("per_100g_fiber_g", 0)
-
-    st.markdown("#### 📊 Dinh dưỡng trên 100g")
-    cols = st.columns(5)
-    cols[0].metric("🔥 Calories", f"{per_100g_cal:.0f} kcal")
-    cols[1].metric("🥩 Protein", f"{per_100g_p:.1f} g")
-    cols[2].metric("🧈 Fat", f"{per_100g_f:.1f} g")
-    cols[3].metric("🍚 Carbs", f"{per_100g_c:.1f} g")
-    cols[4].metric("🌿 Fiber", f"{per_100g_fb:.1f} g")
-
-    if total_grams > 0:
-        st.caption(f"(Dựa trên tổng khối lượng ước tính **{total_grams:.0f}g** từ ảnh)")
-    else:
-        st.caption("(Dựa trên dữ liệu dinh dưỡng từ DB)")
-
-    # ── User nhập khẩu phần thực tế ─────────────────────────────────────
-    st.markdown("#### 🔢 Bạn ăn/uống bao nhiêu?")
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        serving = st.number_input(
-            "Khẩu phần", min_value=1.0, max_value=5000.0,
-            value=float(total_grams) if total_grams > 0 else 100.0,
-            step=10.0, key="serving_size",
-            help="Nhập số gram (món ăn) hoặc ml (đồ uống) bạn đã dùng.",
-        )
-    with c2:
-        serving_unit = st.selectbox("Đơn vị", ["gram", "ml"], key="serving_unit")
-
-    if per_100g_cal > 0 or per_100g_p > 0 or per_100g_f > 0 or per_100g_c > 0 or per_100g_fb > 0:
-        factor = serving / 100.0
-        st.markdown(f"##### → Tổng cho **{serving:.0f} {serving_unit}**:")
-        c2_ = st.columns(5)
-        c2_[0].metric("🔥 Calories", f"{per_100g_cal * factor:.0f} kcal")
-        c2_[1].metric("🥩 Protein", f"{per_100g_p * factor:.1f} g")
-        c2_[2].metric("🧈 Fat", f"{per_100g_f * factor:.1f} g")
-        c2_[3].metric("🍚 Carbs", f"{per_100g_c * factor:.1f} g")
-        c2_[4].metric("🌿 Fiber", f"{per_100g_fb * factor:.1f} g")
-    else:
+    items = totals.get("items", [])
+    if not items:
         st.caption("_(Chưa có dữ liệu dinh dưỡng để tính)_")
+        return
+
+    st.markdown("#### 🔢 Điều chỉnh khẩu phần từng món")
+    adjusted_amounts: list[float] = []
+    selected_units: list[str] = []
+    with st.expander(f"🍽️ Các món trong ảnh ({len(items)} món)", expanded=True):
+        for index, item in enumerate(items):
+            item_name = item.get("item_name", f"Món {index + 1}")
+            original_grams = max(0.0, float(item.get("grams", 0) or 0))
+            badge = "✅" if item.get("found_in_db") else "🆕"
+            default_unit = _default_serving_unit(item_name)
+            unit_options = [default_unit, "g" if default_unit == "ml" else "ml"]
+
+            name_col, amount_col, unit_col = st.columns([3, 1.4, 1])
+            with name_col:
+                st.markdown(f"**{badge} {item_name}**")
+                st.caption(f"Vision ước tính: {original_grams:.0f}g")
+            with amount_col:
+                amount = st.number_input(
+                    f"Khẩu phần {item_name}",
+                    min_value=0.0,
+                    max_value=5000.0,
+                    value=original_grams,
+                    step=10.0,
+                    key=_item_control_key("amount", index, item),
+                    label_visibility="collapsed",
+                    help=f"Tăng hoặc giảm riêng khẩu phần {item_name}.",
+                )
+            with unit_col:
+                unit = st.selectbox(
+                    f"Đơn vị {item_name}",
+                    unit_options,
+                    key=_item_control_key("unit", index, item),
+                    label_visibility="collapsed",
+                )
+            adjusted_amounts.append(amount)
+            selected_units.append(unit)
+
+    if "ml" in selected_units:
+        st.caption("Món lỏng được quy đổi gần đúng **1 ml ≈ 1 g** để tính dinh dưỡng.")
+
+    adjusted = calculate_adjusted_totals(items, adjusted_amounts)
+    st.markdown("#### 📊 Tổng dinh dưỡng theo khẩu phần đã chọn")
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("🔥 Calories", f"{adjusted['total_calories']:.0f} kcal")
+    metric_cols[1].metric("🥩 Protein", f"{adjusted['total_protein_g']:.1f} g")
+    metric_cols[2].metric("🧈 Fat", f"{adjusted['total_fat_g']:.1f} g")
+    metric_cols[3].metric("🍚 Carbs", f"{adjusted['total_carbs_g']:.1f} g")
+    metric_cols[4].metric("🌿 Fiber", f"{adjusted['total_fiber_g']:.1f} g")
+    st.caption(f"Tổng lượng quy đổi: **{adjusted['total_grams']:.0f}g**")
 
     # ── Confidence & missing ─────────────────────────────────────────────
     conf = totals.get("confidence_score")
     missing = totals.get("missing_ingredients", [])
     foot = []
     if conf is not None:
-        foot.append(f"Độ tin cậy: **{conf:.0%}**")
+        foot.append(f"Độ phủ dữ liệu dinh dưỡng DB: **{conf:.0%}**")
     if missing:
-        foot.append(f"Thiếu DB: {len(missing)} món (Vision tự thêm, nutrition=0)")
+        foot.append(f"Thiếu DB: {len(missing)} món (đang dùng nutrition Vision)")
     if foot:
         st.caption(" · ".join(foot))
 
-    # ── Danh sách món trong ảnh ──────────────────────────────────────────
-    items = totals.get("items", [])
-    if items:
-        with st.expander(f"🍽️ Các món trong ảnh ({len(items)} món)"):
-            for it in items:
-                badge = "✅" if it.get("found_in_db") else "🆕"
-                st.write(
-                    f"{badge} **{it['item_name']}** — {it['grams']:.0f}g | "
-                    f"🔥 {it['calories']:.0f} kcal | 🥩 {it['protein_g']:.1f}g | "
-                    f"🧈 {it['fat_g']:.1f}g | 🍚 {it['carbs_g']:.1f}g"
-                )
+
+
+def _default_serving_unit(item_name: str) -> str:
+    """Món lỏng mặc định nhập thể tích, món đặc mặc định nhập khối lượng."""
+    normalized = _normalize_dish_name(item_name).replace("_", " ")
+    liquid_terms = ("canh", "sup", "nuoc", "tra", "ca phe", "sua")
+    return "ml" if any(term in normalized for term in liquid_terms) else "g"
+
+
+def _item_control_key(prefix: str, index: int, item: dict) -> str:
+    """Key ổn định trong một kết quả, nhưng đổi khi gram gốc thay đổi."""
+    name = _normalize_dish_name(str(item.get("item_name", index)))
+    grams = float(item.get("grams", 0) or 0)
+    return f"serving_{prefix}_{index}_{name}_{grams:.1f}"
 
 
 def _normalize_dish_name(name: str) -> str:
@@ -129,13 +143,14 @@ def _save_to_training(correct_name: str, uploaded_bytes: bytes, uploaded_type: s
     if not correct_name.strip() or uploaded_bytes is None:
         return
     slug = _normalize_dish_name(correct_name)
-    files = {
-        "file": (f"{slug}.jpg", uploaded_bytes, uploaded_type or "image/jpeg"),
-        "correct_dish_name": (None, correct_name.strip()),
-    }
-    r = _api("post", "/api/v1/feedback/training-data", files=files)
+    mime_type = uploaded_type or "image/jpeg"
+    extension = {"image/png": "png", "image/webp": "webp"}.get(mime_type, "jpg")
+    files = {"file": (f"{slug}.{extension}", uploaded_bytes, mime_type)}
+    form = {"correct_dish_name": correct_name.strip()}
+    r = _api("post", "/api/v1/feedback/training-data", files=files, data=form)
     if r.status_code == 200:
-        st.success(f"✅ Đã lưu ảnh '{correct_name}' vào training data ({r.json().get('count', '?')} ảnh)")
+        total = r.json().get("total_images", "?")
+        st.success(f"✅ Đã lưu ảnh '{correct_name}' vào training data ({total} ảnh)")
     else:
         st.error(f"Lỗi feedback {r.status_code}: {r.text[:300]}")
 
@@ -156,7 +171,7 @@ except Exception:
 st.title("📸 Nhận diện món ăn từ ảnh")
 st.caption(
     "Upload ảnh → Vision nhận diện từng món + khối lượng → tra vn_dishes/vn_ingredients "
-    "→ scale dinh dưỡng theo gram ảnh. Món chưa có DB → tự thêm."
+    "→ scale dinh dưỡng DB theo gram ảnh. Món chưa có DB → dùng Vision và tự thêm."
 )
 
 if "analyze_result" not in st.session_state:
@@ -175,6 +190,9 @@ def _store_upload(uploaded) -> None:
         new_bytes = uploaded.getvalue()
         if new_bytes != st.session_state.uploaded_bytes:
             st.session_state.analyze_result = None
+            for key in list(st.session_state):
+                if key.startswith("serving_amount_") or key.startswith("serving_unit_"):
+                    del st.session_state[key]
         st.session_state.uploaded_bytes = new_bytes
         st.session_state.uploaded_name = uploaded.name
         st.session_state.uploaded_type = uploaded.type
@@ -226,19 +244,25 @@ def _show_analyze_result(data: dict) -> None:
     if auto_added:
         st.success(
             f"🆕 **Tự thêm {len(auto_added)} món mới vào DB:** " + ", ".join(auto_added)
-            + " — nutrition=0 (chưa biết), lần sau vẫn nhận diện được tên."
+            + " — đã lưu gram và dinh dưỡng ước lượng từ Vision."
         )
 
     if data.get("dish_name"):
         st.subheader(f"🍽️ {data['dish_name']}")
 
-    # ── Danh sách món Vision nhận ───────────────────────────────────────
+    # ── Danh sách món sau khi đối chiếu DB ──────────────────────────────
     dishes = data.get("dishes", [])
     if dishes:
-        with st.expander(f"👁️ Vision nhận diện {len(dishes)} món"):
+        with st.expander(f"👁️ Kết quả đối chiếu {len(dishes)} món"):
             for d in dishes:
                 tag = "🥢 món kèm" if d.get("is_side") else "🍚 món chính"
-                st.write(f"- **{d['dish_name']}** — {d['grams']:.0f}g ({tag})")
+                source_tag = "DB" if d.get("found_in_db") else "Vision · món mới"
+                vision_name = d.get("vision_dish_name")
+                match_note = f" · Vision: {vision_name}" if vision_name else ""
+                st.write(
+                    f"- **{d['dish_name']}** — {d['grams']:.0f}g "
+                    f"({tag} · {source_tag}{match_note})"
+                )
 
     nutrition = data.get("nutrition")
     if nutrition:
@@ -249,7 +273,14 @@ def _show_analyze_result(data: dict) -> None:
     # ── Feedback: gửi ảnh đúng label để train CV sau ────────────────────
     st.markdown("---")
     with st.expander("📤 Gửi ảnh đúng tên (training data cho CV local)"):
-        suggested = data.get("dish_name") or ""
+        suggested = next(
+            (
+                dish.get("dish_name", "")
+                for dish in data.get("dishes", [])
+                if not dish.get("is_side")
+            ),
+            data.get("dish_name") or "",
+        )
         correct_name = st.text_input(
             "Tên món chính xác", value=suggested,
             help="Dùng để train lại CV local sau này (giữ code CV sẵn sàng).",

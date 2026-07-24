@@ -109,20 +109,30 @@ class VietFoodDataset(Dataset):
 
         if self.split == "train":
             return transforms.Compose([
-                transforms.RandomResizedCrop(size, scale=(0.8, 1.0)),
+                transforms.RandomResizedCrop(size, scale=(0.6, 1.0)),
                 transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomRotation(degrees=15),
-                transforms.ColorJitter(
-                    brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
+                transforms.RandomVerticalFlip(p=0.1),
+                transforms.RandomRotation(degrees=30),
+                transforms.RandomAffine(
+                    degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)
                 ),
+                transforms.ColorJitter(
+                    brightness=0.3, contrast=0.3, saturation=0.3, hue=0.15
+                ),
+                transforms.RandomPerspective(distortion_scale=0.2, p=0.3),
                 transforms.ToTensor(),
+                transforms.RandomErasing(p=0.1),
                 transforms.Normalize(
                     mean=self.IMAGENET_MEAN, std=self.IMAGENET_STD
                 ),
             ])
         else:
+            # Val/test: Resize cạnh ngắn + CenterCrop vuông (chuẩn ImageNet).
+            # Trước đây dùng Resize((size,size)) ép vuông → biến dạng tỉ lệ ảnh,
+            # làm val_acc không phản ánh đúng. Giờ giữ tỉ lệ rồi crop giữa.
             return transforms.Compose([
-                transforms.Resize((size, size)),
+                transforms.Resize(size),  # resize cạnh ngắn về `size`
+                transforms.CenterCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize(
                     mean=self.IMAGENET_MEAN, std=self.IMAGENET_STD
@@ -132,9 +142,34 @@ class VietFoodDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
+    def class_counts(self) -> list[int]:
+        """Số ảnh mỗi class (theo thứ tự self.classes).
+
+        Dùng cho class_weight (cân bằng loss khi số ảnh/class chênh lệch) và
+        WeightedSampler. VD pho_bo=200, banh_xeo=20 → weight banh_xeo cao hơn.
+        """
+        counts = [0] * len(self.classes)
+        for _, class_idx in self.samples:
+            counts[class_idx] += 1
+        return counts
+
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
         img_path, class_idx = self.samples[idx]
-        image = Image.open(img_path).convert("RGB")
+        try:
+            image = Image.open(img_path).convert("RGB")
+        except (OSError, UnicodeEncodeError) as e:
+            # Ảnh hỏng/không đọc được → thử ảnh kế tiếp (tối đa 5 lần),
+            # tránh recursion vô hạn nếu toàn bộ dataset hỏng.
+            print(f"⚠️ Bỏ qua ảnh hỏng: {img_path} ({e})")
+            retries = getattr(self, '_failed_retries', 0) + 1
+            if retries > len(self.samples):
+                raise RuntimeError(
+                    f"Không tìm được ảnh hợp lệ sau {len(self.samples)} lần thử. "
+                    f"Kiểm tra lại dữ liệu trong {self.data_dir / self.split}."
+                ) from e
+            self._failed_retries = retries
+            return self.__getitem__((idx + 1) % len(self.samples))
+        self._failed_retries = 0
         tensor = self.transform(image)
         return tensor, class_idx
 

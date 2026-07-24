@@ -5,11 +5,15 @@ Full fine-tune (không freeze backbone) với lr nhỏ 5e-5 — tốt cho food
 (texture/quang cảnh quan trọng, không chỉ shape).
 
 Usage:
-    python -m ml.training.train
+    python -m ml.training.train                                  # train ảnh raw
+    python -m ml.training.train --ckpt checkpoints/xxx.pth --resume
+    python -m ml.training.train --no-class-weight                  # baseline
 
-Yêu cầu: ảnh đã được tổ chức trong data/images/{train,val}/<ten_mon>/
+Yêu cầu: ảnh đã được tổ chức trong <data_dir>/{train,val}/<ten_mon>/
+(mặc định data/images).
 """
 
+import argparse
 import json
 import sys
 from datetime import datetime
@@ -34,6 +38,9 @@ NUM_EPOCHS = 18
 LEARNING_RATE = 5e-5  # nhỏ hơn ResNet 1e-4 — full fine-tune
 IMAGE_SIZE = 224
 NUM_WORKERS = 2
+# Mặc định BẬT class_weight — cân bằng loss khi số ảnh/class chênh lệch.
+# --no-class-weight để tắt (VD khi đã cân bằng data hoặc muốn so sánh baseline).
+USE_CLASS_WEIGHT = True
 
 DATA_DIR = PROJECT_ROOT / "data" / "images"
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
@@ -46,22 +53,98 @@ DEVICE = torch.device(
 )
 
 
-def create_model(num_classes: int) -> nn.Module:
+def find_latest_checkpoint() -> Path | None:
+    """Tìm checkpoint efficientnet mới nhất trong checkpoints/.
+
+    Sắp theo tên file (timestamp dẫn adelante), file cuối = mới nhất gần đúng.
+    Ưu tiên: dùng --ckpt <path> để resume chính xác, tránh đoán sai.
+    """
+    files = sorted(CHECKPOINT_DIR.glob("efficientnet_vietfood_*.pth"))
+    return files[-1] if files else None
+
+
+def load_checkpoint(checkpoint_path: Path) -> dict:
+    """Load checkpoint với đầy đủ state."""
+    return torch.load(checkpoint_path, map_location=DEVICE, weights_only=True)
+
+
+def create_model(num_classes: int, checkpoint: dict | None = None) -> nn.Module:
     """Tạo EfficientNet-B0 pretrained (timm) + classifier head cho num_classes.
 
-    Full fine-tune (không freeze) — drop_rate=0.3 dropout built-in.
-    timm tự thay classifier head khi truyền num_classes.
-
-    Args:
-        num_classes: Số lượng món ăn cần phân loại.
-
-    Returns:
-        Model sẵn sàng để train (toàn bộ param requires_grad=True).
+    Nếu checkpoint được cung cấp, load weights và classes từ checkpoint.
+    Nếu num_classes khác với checkpoint, classifier head được reset.
     """
-    model = timm.create_model(
-        ARCH, pretrained=True, num_classes=num_classes, drop_rate=0.3
-    )
+    if checkpoint:
+        saved_classes = checkpoint.get("classes", [])
+        saved_num_classes = len(saved_classes)
+
+        model = timm.create_model(
+            ARCH, pretrained=False, num_classes=saved_num_classes, drop_rate=0.3
+        )
+        # strict=False để resume linh hoạt khi đổi ARCH/số class. Báo mismatch
+        # key ra để biết backbone có load đủ không (classifier reset có chủ ý
+        # nên không đáng lo — chỉ lo khi backbone features.* bị thiếu).
+        result = model.load_state_dict(
+            checkpoint["model_state_dict"], strict=False
+        )
+        _report_load_mismatch(result, stage="resume")
+
+        if num_classes != saved_num_classes:
+            print(
+                f"⚠️ Class count changed: {saved_num_classes} -> {num_classes}. "
+                "Resetting classifier head."
+            )
+            model.reset_classifier(num_classes)
+    else:
+        model = timm.create_model(
+            ARCH, pretrained=True, num_classes=num_classes, drop_rate=0.3
+        )
     return model
+
+
+def _report_load_mismatch(result, stage: str = "load") -> None:
+    """In missing/unexpected keys sau load_state_dict(strict=False).
+
+    Lọc riêng 'classifier' vì head reset có chủ ý khi đổi số class — chỉ đáng
+    lo khi backbone (features., blocks.) bị thiếu/thừa.
+    """
+    missing = list(result.missing_keys)
+    unexpected = list(result.unexpected_keys)
+
+    def _backbone(keys):
+        return [k for k in keys if "classifier" not in k]
+
+    miss_bb = _backbone(missing)
+    unexp_bb = _backbone(unexpected)
+
+    print(
+        f"   [{stage}] missing={len(missing)} (backbone {len(miss_bb)}), "
+        f"unexpected={len(unexpected)} (backbone {len(unexp_bb)})"
+    )
+    if miss_bb:
+        print(f"   ⚠️ Backbone mất {len(miss_bb)} key — có thể ARCH lệch checkpoint.")
+        print(f"      VD: {miss_bb[:3]}")
+    if unexp_bb:
+        print(f"   ⚠️ Checkpoint có {len(unexp_bb)} key backbone dư — không nạp vào model.")
+        print(f"      VD: {unexp_bb[:3]}")
+
+
+def compute_class_weights(counts: list[int]) -> torch.Tensor:
+    """Tính class_weight cho CrossEntropyLoss (sklearn-style).
+
+    weight[c] = total_samples / (num_classes * count[c]).
+
+    Class ít ảnh → weight cao → sai bị phạt nặng hơn → ép model học lớp thiểu số,
+    tránh "accuracy paradox" (acc tổng cao nhưng lớp thiểu số near-random).
+    VD: counts=[200, 20] → weights ≈ [0.49, 4.95] (lớp 20 ảnh phạt gấp 10x).
+    """
+    total = sum(counts)
+    n_classes = len(counts)
+    weights = torch.tensor(
+        [total / (n_classes * max(c, 1)) for c in counts],
+        dtype=torch.float32,
+    )
+    return weights
 
 
 def train_epoch(
@@ -112,16 +195,23 @@ def evaluate(
     model: nn.Module,
     loader: DataLoader,
     criterion: nn.Module,
-) -> tuple[float, float]:
+    classes: list[str] | None = None,
+) -> tuple[float, float, dict[int, float]]:
     """Evaluate model trên validation/test set.
 
     Returns:
-        (avg_loss, accuracy).
+        (avg_loss, accuracy, per_class_acc).
+        per_class_acc: {class_idx: accuracy%} — bóc trần lớp thiểu số yếu,
+        acc tổng che giấu được.
     """
     model.eval()
     total_loss = 0.0
     correct = 0
     total = 0
+    # Confusion theo class: đúng/sai mỗi class
+    n_classes = len(classes) if classes else 0
+    per_class_correct = [0] * n_classes
+    per_class_total = [0] * n_classes
 
     for images, labels in loader:
         images, labels = images.to(DEVICE), labels.to(DEVICE)
@@ -133,12 +223,43 @@ def evaluate(
         total += labels.size(0)
         correct += predicted.eq(labels).sum().item()
 
+        if n_classes:
+            for true_c, pred_c in zip(labels.tolist(), predicted.tolist()):
+                per_class_total[true_c] += 1
+                if true_c == pred_c:
+                    per_class_correct[true_c] += 1
+
     avg_loss = total_loss / len(loader)
     accuracy = 100.0 * correct / total
-    return avg_loss, accuracy
+    per_class_acc = {}
+    for c in range(n_classes):
+        if per_class_total[c] > 0:
+            per_class_acc[c] = 100.0 * per_class_correct[c] / per_class_total[c]
+    return avg_loss, accuracy, per_class_acc
 
 
-def main() -> None:
+def _format_per_class(classes: list[str], per_class_acc: dict[int, float]) -> str:
+    """Định dạng bảng per-class accuracy, sắp xếp theo acc tăng dần."""
+    rows = []
+    for idx, name in enumerate(classes):
+        acc = per_class_acc.get(idx)
+        if acc is None:
+            rows.append((name.replace("_", " ").title(), float("nan")))
+        else:
+            rows.append((name.replace("_", " ").title(), acc))
+    rows.sort(key=lambda r: (r[1] != r[1], r[1]))  # NaN xếp cuối
+    lines = [f"   {'class':<16} {'acc':>6}"]
+    for name, acc in rows:
+        lines.append(f"   {name:<16} {acc:>5.1f}%" if acc == acc else f"   {name:<16}   n/a")
+    return "\n".join(lines)
+
+
+def main(resume: bool = False, ckpt: str | None = None, data_dir: str | None = None) -> None:
+    global DATA_DIR
+    if data_dir:
+        DATA_DIR = Path(data_dir)
+        if not DATA_DIR.is_absolute():
+            DATA_DIR = PROJECT_ROOT / DATA_DIR
     print(f"🔥 Device: {DEVICE}")
     print(f"📂 Data: {DATA_DIR}")
     print()
@@ -178,28 +299,69 @@ def main() -> None:
     )
 
     # ── Model ────────────────────────────────────────────────────────
+    checkpoint = None
+    start_epoch = 1
+    best_val_acc = 0.0
+    history: list[dict] = []
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
     print(f"\n🧠 Creating model ({ARCH}, {train_ds.num_classes} classes)...")
-    model = create_model(train_ds.num_classes)
+    # Ưu tiên --ckpt explicit; nếu không thì mới đoán latest (giới hạn).
+    if ckpt:
+        checkpoint_path = Path(ckpt)
+        if not checkpoint_path.is_absolute():
+            checkpoint_path = CHECKPOINT_DIR / checkpoint_path
+    elif resume:
+        checkpoint_path = find_latest_checkpoint()
+    else:
+        checkpoint_path = None
+    if checkpoint_path and checkpoint_path.exists():
+        print(f"🔁 Resuming from checkpoint: {checkpoint_path.name}")
+        checkpoint = load_checkpoint(checkpoint_path)
+        start_epoch = checkpoint.get("epoch", 0) + 1
+        best_val_acc = checkpoint.get("val_acc", 0.0)
+        history = checkpoint.get("history", [])
+    elif ckpt:
+        print(f"❌ Không tìm thấy --ckpt: {checkpoint_path}")
+        return
+
+    model = create_model(train_ds.num_classes, checkpoint)
     model = model.to(DEVICE)
     print(f"   Total params: {sum(p.numel() for p in model.parameters()):,}")
     print(f"   Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 
     criterion = nn.CrossEntropyLoss()
+    if USE_CLASS_WEIGHT:
+        # Cân bằng loss khi số ảnh/class chênh lệch — tránh "accuracy paradox"
+        # (acc tổng cao nhưng lớp thiểu số near-random).
+        class_weights = compute_class_weights(train_ds.class_counts()).to(DEVICE)
+        print(f"   Class weights: {[round(w, 3) for w in class_weights.tolist()]}")
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
+    else:
+        print("   Class weight: OFF (baseline)")
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
+    if checkpoint and "optimizer_state_dict" in checkpoint:
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=NUM_EPOCHS
     )
+    if checkpoint and "scheduler_state_dict" in checkpoint:
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
-    # ── Training loop ────────────────────────────────────────────────
-    best_val_acc = 0.0
-    history: list[dict] = []
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Total epochs is fixed; resume continues until NUM_EPOCHS is reached.
+    end_epoch = NUM_EPOCHS
+    if start_epoch > end_epoch:
+        print(f"\n⚠️ Checkpoint already at epoch {start_epoch - 1}, "
+              f"which is >= target {NUM_EPOCHS}. Nothing to train.")
+        return
 
-    print(f"\n🚀 Starting training ({NUM_EPOCHS} epochs)...")
+    print(f"\n🚀 Starting training (epochs {start_epoch} → {end_epoch}, "
+          f"total {end_epoch - start_epoch + 1} new epochs)...")
     print("-" * 60)
 
-    for epoch in range(1, NUM_EPOCHS + 1):
-        print(f"\n📅 Epoch {epoch}/{NUM_EPOCHS}")
+    for epoch in range(start_epoch, end_epoch + 1):
+        print(f"\n📅 Epoch {epoch}/{end_epoch}")
         print(f"   LR: {scheduler.get_last_lr()[0]:.2e}")
 
         # Train
@@ -208,11 +370,19 @@ def main() -> None:
         )
         print(f"   ✅ Train  — Loss: {train_loss:.4f} | Acc: {train_acc:.1f}%")
 
-        # Validate
-        val_loss, val_acc = evaluate(model, val_loader, criterion)
+        # Validate (kèm per-class acc — bóc trần lớp thiểu số yếu)
+        val_loss, val_acc, per_class_acc = evaluate(
+            model, val_loader, criterion, classes=train_ds.classes
+        )
         print(f"   📊 Val    — Loss: {val_loss:.4f} | Acc: {val_acc:.1f}%")
+        print("   Per-class accuracy (thấp lên đầu — xem model yếu chỗ nào):")
+        print(_format_per_class(train_ds.classes, per_class_acc))
 
         scheduler.step()
+
+        # Tìm lớp yếu nhất (acc thấp nhất) để lưu vào history — theo dõi xu hướng
+        valid_accs = [a for a in per_class_acc.values()]
+        worst = min(valid_accs) if valid_accs else None
 
         # Save history
         history.append({
@@ -221,6 +391,11 @@ def main() -> None:
             "train_acc": round(train_acc, 2),
             "val_loss": round(val_loss, 4),
             "val_acc": round(val_acc, 2),
+            "val_worst_class_acc": round(worst, 2) if worst is not None else None,
+            "val_per_class_acc": {
+                train_ds.classes[c]: round(a, 2)
+                for c, a in per_class_acc.items()
+            },
         })
 
         # Save best model
@@ -232,6 +407,7 @@ def main() -> None:
                 "arch": ARCH,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
                 "val_acc": val_acc,
                 "classes": train_ds.classes,
                 "history": history,
@@ -258,4 +434,32 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Train VietFood CV model")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume/fine-tune from the latest checkpoint",
+    )
+    parser.add_argument(
+        "--ckpt",
+        type=str,
+        default=None,
+        help="Đường dẫn checkpoint cụ thể (tên file hoặc path) — ưu tiên hơn --resume đoán",
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Thư mục data gốc (chứa train/val) — mặc định data/images.",
+    )
+    parser.add_argument(
+        "--no-class-weight",
+        action="store_true",
+        help="Tắt class_weight (mặc định bật) — dùng khi data đã cân bằng "
+        "hoặc muốn so sánh baseline.",
+    )
+    args = parser.parse_args()
+    if args.no_class_weight:
+        import ml.training.train as _self
+        _self.USE_CLASS_WEIGHT = False
+    main(resume=args.resume, ckpt=args.ckpt, data_dir=args.data_dir)

@@ -22,7 +22,8 @@ from backend.config import settings
 ARCH = "efficientnet_b0"  # timm model — phải khớp train script
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
-CONFIDENCE_THRESHOLD = 0.6  # Ngưỡng fallback sang cloud (hạ từ 0.8 — 12 class conf phân tán hơn)
+CONFIDENCE_THRESHOLD = 0.4  # Hạ xuống 0.4 — 12 class conf phân tán (phở 0.57, bún 0.55...)
+# Không fallback cloud trừ khi CV thực sự không chắc. Cloud đang offline (429 quota).
 CLASS_MAPPING = Path("checkpoints/class_mapping.json")
 IMAGE_SIZE = 224
 
@@ -41,7 +42,7 @@ DEFAULT_CHECKPOINT = _find_latest_checkpoint()
 
 
 class CVModel:
-    """Wrapper cho ResNet50 fine-tuned model."""
+    """Wrapper cho EfficientNet-B0 fine-tuned model (timm)."""
 
     def __init__(
         self,
@@ -63,9 +64,11 @@ class CVModel:
         self.classes: list[str] = []
         self._loaded = False
 
-        # Transform cho inference (giống validation)
+        # Transform cho inference — khớp val transform của train script
+        # (Resize cạnh ngắn + CenterCrop vuông, không ép vuông méo tỉ lệ).
         self.transform = transforms.Compose([
-            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+            transforms.Resize(IMAGE_SIZE),
+            transforms.CenterCrop(IMAGE_SIZE),
             transforms.ToTensor(),
             transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ])

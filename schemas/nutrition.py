@@ -127,32 +127,25 @@ def calculate_item_nutrition(
     )
 
 
-def calculate_item_nutrition_unknown(
+def create_item_nutrition_from_vision(
     item_name: str,
     grams: float,
     *,
-    per_gram: NutritionPerGram | None = None,
+    total_calories: float,
+    total_protein_g: float,
+    total_fat_g: float,
+    total_carbs_g: float,
+    total_fiber_g: float,
 ) -> NutritionPerIngredient:
-    """Item KHÔNG có trong DB (món mới) → nutrition = 0 hoặc theo ước lượng Vision.
-
-    Truyền per_gram=None → toàn 0 (chưa biết dinh dưỡng).
-    Truyền per_gram (Vision ước) → nhân bình thường (found_in_db=False).
-    """
-    g = max(0.0, grams)
-    if per_gram is None:
-        per_gram = NutritionPerGram(
-            name=item_name,
-            calories_per_g=0.0, protein_per_g=0.0, fat_per_g=0.0,
-            carbs_per_g=0.0, fiber_per_g=0.0, source="vision_auto",
-        )
+    """Giữ nguyên tổng dinh dưỡng Vision ước lượng cho món chưa có trong DB."""
     return NutritionPerIngredient(
         item_name=item_name,
-        grams=g,
-        calories=round(g * per_gram.calories_per_g, 1),
-        protein_g=round(g * per_gram.protein_per_g, 1),
-        fat_g=round(g * per_gram.fat_per_g, 1),
-        carbs_g=round(g * per_gram.carbs_per_g, 1),
-        fiber_g=round(g * per_gram.fiber_per_g, 1),
+        grams=max(0.0, grams),
+        calories=round(max(0.0, total_calories), 1),
+        protein_g=round(max(0.0, total_protein_g), 1),
+        fat_g=round(max(0.0, total_fat_g), 1),
+        carbs_g=round(max(0.0, total_carbs_g), 1),
+        fiber_g=round(max(0.0, total_fiber_g), 1),
         found_in_db=False,
     )
 
@@ -202,3 +195,44 @@ def calculate_totals(
         confidence_score=round(confidence, 2),
         missing_ingredients=missing,
     )
+
+
+_ADJUSTABLE_NUTRIENT_FIELDS = (
+    "calories",
+    "protein_g",
+    "fat_g",
+    "carbs_g",
+    "fiber_g",
+)
+
+
+def calculate_adjusted_totals(
+    items: list[dict], adjusted_grams: list[float]
+) -> dict:
+    """Scale từng món theo khẩu phần mới rồi cộng lại thành tổng bữa ăn.
+
+    Mỗi món dùng chính gram gốc của nó làm mẫu số. Vì vậy chỉnh canh không làm
+    thay đổi cơm sườn và ngược lại. Với món lỏng, UI có thể truyền ml theo quy
+    ước gần đúng 1 ml = 1 g.
+    """
+    if len(items) != len(adjusted_grams):
+        raise ValueError("Số khẩu phần điều chỉnh phải khớp số món")
+
+    scaled_items: list[dict] = []
+    for item, requested_grams in zip(items, adjusted_grams, strict=True):
+        original_grams = max(0.0, float(item.get("grams", 0) or 0))
+        new_grams = max(0.0, float(requested_grams or 0))
+        factor = new_grams / original_grams if original_grams > 0 else 0.0
+        scaled = {**item, "grams": round(new_grams, 1)}
+        for field in _ADJUSTABLE_NUTRIENT_FIELDS:
+            original_value = max(0.0, float(item.get(field, 0) or 0))
+            scaled[field] = round(original_value * factor, 1)
+        scaled_items.append(scaled)
+
+    result: dict = {"items": scaled_items}
+    result["total_grams"] = round(sum(item["grams"] for item in scaled_items), 1)
+    for field in _ADJUSTABLE_NUTRIENT_FIELDS:
+        result[f"total_{field}" if field != "calories" else "total_calories"] = round(
+            sum(item[field] for item in scaled_items), 1
+        )
+    return result

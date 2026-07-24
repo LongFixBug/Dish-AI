@@ -4,11 +4,6 @@ Gọi llama.cpp embedding server (port 8081) — cùng server và API format
 như scripts/generate_embeddings.py, nhưng cho 1 xâu query thay vì batch.
 """
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
 import httpx
 
 from backend.config import settings

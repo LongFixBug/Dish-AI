@@ -1,10 +1,10 @@
 """Pydantic schemas cho POST /analyze (ảnh → nutrition) — dish-level.
 
 Flow mới (Jul 23, không phân tích nguyên liệu):
-  ảnh → CV local (giữ cho train sau) → Vision → dishes[{dish_name, gram}]
+  ảnh → CV local → Vision → dishes[{dish_name, gram, total_*}]
        → lookup mỗi item trong vn_dishes (+ Qdrant fallback) + vn_ingredients
-       → scale nutrition = gram_vision × per_g_db
-       → món chưa có → Vision tự thêm vào vn_dishes (source=vision_auto)
+       → match: scale nutrition = gram_vision × per_g_db, bỏ nutrition Vision
+       → miss: dùng nutrition Vision và tự thêm vào vn_dishes
 """
 
 from typing import Literal
@@ -15,15 +15,23 @@ from schemas.nutrition import NutritionTotals
 
 
 class AnalyzeDish(BaseModel):
-    """1 món Vision nhận diện từ ảnh (món chính hoặc món ăn kèm)."""
+    """Một món sau khi đã đối chiếu Vision với DB."""
 
-    dish_name: str = Field(description="Tên món tiếng Việt (có dấu)")
+    dish_name: str = Field(description="Tên chuẩn trong DB nếu match, nếu không là tên Vision")
+    vision_dish_name: str | None = Field(
+        default=None,
+        description="Tên gốc Vision trả, chỉ có giá trị khi khác tên chuẩn trong DB",
+    )
     grams: float = Field(
         default=0.0, ge=0, description="Khối lượng ước lượng (gram) từ Vision"
     )
     is_side: bool = Field(
         default=False,
         description="True = món ăn kèm / đồ uống (tra cả vn_ingredients nếu vn_dishes thiếu)",
+    )
+    found_in_db: bool = Field(
+        default=False,
+        description="True nếu dùng tên và dinh dưỡng DB; False nếu dùng kết quả Vision",
     )
 
 
@@ -35,7 +43,7 @@ class AnalyzeResponse(BaseModel):
     - nutrition: NutritionTotals (dish-level, không có per-ingredient list).
     - dishes: list món Vision trả (tên + gram).
     - auto_added_dishes: món mới Vision tự INSERT vào vn_dishes.
-    - missing_items: item không có trong cả vn_dishes + vn_ingredients (nutrition=0).
+    - missing_items: item dùng Vision nhưng lưu DB thất bại.
     """
 
     dish_name: str | None = Field(default=None, description="Tên món chính / bữa ăn")

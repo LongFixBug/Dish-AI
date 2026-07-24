@@ -78,7 +78,7 @@ class VnDish(Base):
     Giá trị RAW từ API (per-serving). typical_grams = trọng lượng 1 khẩu phần:
       - Có → tính được per-gram chính xác → scale theo gram Vision.
       - NULL → giữ RAW, KHÔNG scale theo gram ảnh (tránh sai số).
-    Món mới Vision nhận (chưa có DB) → INSERT source='vision_auto', nutrition=0.
+    Món mới Vision nhận (chưa có DB) → INSERT source='vision_auto' cùng nutrition Vision.
     """
 
     __tablename__ = "vn_dishes"

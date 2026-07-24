@@ -1,11 +1,11 @@
 """Analyze endpoint — upload ảnh món ăn → nutrition (dish-level, không nguyên liệu).
 
 Giai đoạn A wire-up (phiên bản Jul 23):
-  ảnh → CV local (giữ để train sau) → Vision → dishes[{dish_name, gram, is_side}]
+  ảnh → CV local → Vision → dishes[{dish_name, gram, is_side, total_*}]
        → mỗi item lookup vn_dishes (+ Qdrant fallback)
        → nếu miss + is_side → lookup vn_ingredients (đồ uống/món kèm)
-       → nếu vẫn miss → auto-add vào vn_dishes (source=vision_auto)
-       → scale nutrition = gram_vision × per_g_db → calculate_totals
+       → match: bỏ nutrition Vision, scale gram_vision × per_g_db
+       → miss: dùng nutrition Vision + auto-add vào vn_dishes
 """
 
 import logging
@@ -18,13 +18,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.postgres import get_session
 from backend.services.dishes import (
+    _has_nutrition,
     _has_weight,
     _vn_dish_to_per_gram,
     _vn_ingredient_to_per_gram,
     auto_add_dish,
     auto_update_grams,
     lookup_dish,
-    lookup_ingredient,
+    lookup_dish_exact,
+    lookup_ingredient_text,
 )
 from ml.inference.cv import cv_model
 from ml.inference.vision import VisionError, identify_dish
@@ -32,8 +34,8 @@ from schemas.analyze import AnalyzeDish, AnalyzeResponse
 from schemas.nutrition import (
     NutritionPerIngredient,
     calculate_item_nutrition,
-    calculate_item_nutrition_unknown,
     calculate_totals,
+    create_item_nutrition_from_vision,
 )
 
 # ─── Constants ─────────────────────────────────────────────────────────────
@@ -72,49 +74,57 @@ async def _resolve_dish_item(
     dish_name: str,
     gram: float,
     is_side: bool,
-) -> tuple[NutritionPerIngredient | None, bool, bool]:
+) -> tuple[NutritionPerIngredient | None, str]:
     """Resolve 1 dish vision → NutritionPerIngredient.
 
     Tra vn_dishes trước → nếu miss + is_side → tra vn_ingredients → nếu vẫn miss → None.
 
     Returns:
-        (nutrition_item | None, item_found_in_db, is_new_dish_added).
-        nutrition None khi món ở vn_dishes thiếu typical_grams + không per-g thực
-        (xử lý tinh tế trong caller).
+        (nutrition_item | None, canonical_name). canonical_name là tên chuẩn DB
+        khi match, nếu miss thì giữ tên Vision.
     """
     gram = max(0.0, float(gram))
 
     # ── Tier 1: vn_dishes ────────────────────────────────────────────────
-    vn = await lookup_dish(session, dish_name)
+    vn = (
+        await lookup_dish_exact(session, dish_name)
+        if is_side
+        else await lookup_dish(session, dish_name)
+    )
+    resolved_name = vn.dish_name if vn is not None else dish_name
     if vn is not None:
         per_gram = _vn_dish_to_per_gram(vn)
-        if _has_weight(vn):
+        if _has_nutrition(vn) and _has_weight(vn):
             # DB có typical_grams → per_g thật → scale đúng gram Vision.
-            return calculate_item_nutrition(dish_name, gram, per_gram), True, False
-        # DB thiếu typical_grams → chốt gram Vision làm typical_grams (lưu DB),
-        # nutrition = raw total (coi gram_vision = 1 khẩu phần chuẩn).
-        await auto_update_grams(session, vn, gram)
-        await session.commit()
-        return NutritionPerIngredient(
-            item_name=vn.dish_name,
-            grams=gram,
-            calories=round(vn.total_calories, 1),
-            protein_g=round(vn.total_protein_g, 1),
-            fat_g=round(vn.total_fat_g, 1),
-            carbs_g=round(vn.total_carbs_g, 1),
-            fiber_g=round(vn.total_fiber_g, 1),
-            found_in_db=True,
-        ), True, False
+            return calculate_item_nutrition(vn.dish_name, gram, per_gram), vn.dish_name
+        if _has_nutrition(vn):
+            # DB có nutrition nhưng thiếu typical_grams → coi gram ảnh là 1 khẩu phần.
+            await auto_update_grams(session, vn, gram)
+            await session.commit()
+            return NutritionPerIngredient(
+                item_name=vn.dish_name,
+                grams=gram,
+                calories=round(vn.total_calories, 1),
+                protein_g=round(vn.total_protein_g, 1),
+                fat_g=round(vn.total_fat_g, 1),
+                carbs_g=round(vn.total_carbs_g, 1),
+                fiber_g=round(vn.total_fiber_g, 1),
+                found_in_db=True,
+            ), vn.dish_name
+        # Chỉ có tên/gram từ lần Vision cũ, chưa có nutrition → dùng Vision mới.
 
     # ── Tier 2: vn_ingredients (chỉ khi is_side — đồ uống/món kèm) ───────
     if is_side:
-        ing = await lookup_ingredient(session, dish_name)
+        ing = await lookup_ingredient_text(session, dish_name)
         if ing is not None:
             per_gram = _vn_ingredient_to_per_gram(ing)
-            return calculate_item_nutrition(dish_name, gram, per_gram), True, False
+            return (
+                calculate_item_nutrition(ing.ingredient_name, gram, per_gram),
+                ing.ingredient_name,
+            )
 
     # ── Không có ở đâu cả → món mới (caller sẽ auto-add) ─────────────────
-    return None, False, False
+    return None, resolved_name
 
 
 async def _analyze_vision_dishes(
@@ -138,29 +148,63 @@ async def _analyze_vision_dishes(
             continue
         gram = float(d.get("gram", 0) or 0)
         is_side = bool(d.get("is_side", False))
-        response_dishes.append(
-            AnalyzeDish(dish_name=dish_name, grams=gram, is_side=is_side)
+        item, resolved_name = await _resolve_dish_item(
+            session, dish_name, gram, is_side
         )
 
-        item, found, _ = await _resolve_dish_item(session, dish_name, gram, is_side)
-
-        if found and item is not None:
+        if item is not None:
             items.append(item)
+            response_dishes.append(
+                AnalyzeDish(
+                    dish_name=resolved_name,
+                    vision_dish_name=(dish_name if dish_name != resolved_name else None),
+                    grams=gram,
+                    is_side=is_side,
+                    found_in_db=True,
+                )
+            )
             continue
 
-        # Món mới → auto-add vào vn_dishes (nutrition=0, typical_grams=Vision gram)
+        # Món mới → dùng toàn bộ nutrition Vision và lưu làm 1 khẩu phần chuẩn.
+        vision_item = create_item_nutrition_from_vision(
+            resolved_name,
+            gram,
+            total_calories=float(d.get("total_calories", 0) or 0),
+            total_protein_g=float(d.get("total_protein_g", 0) or 0),
+            total_fat_g=float(d.get("total_fat_g", 0) or 0),
+            total_carbs_g=float(d.get("total_carbs_g", 0) or 0),
+            total_fiber_g=float(d.get("total_fiber_g", 0) or 0),
+        )
+        response_dishes.append(
+            AnalyzeDish(
+                dish_name=resolved_name,
+                vision_dish_name=(dish_name if dish_name != resolved_name else None),
+                grams=gram,
+                is_side=is_side,
+                found_in_db=False,
+            )
+        )
         try:
-            await auto_add_dish(session, dish_name, gram if gram > 0 else None)
+            await auto_add_dish(
+                session,
+                resolved_name,
+                gram if gram > 0 else None,
+                nutrition=vision_item,
+            )
             await session.commit()
-            auto_added.append(dish_name)
-            items.append(calculate_item_nutrition_unknown(dish_name, gram))
-            logger.info("auto-add '%s' gram=%s → vn_dishes (vision_auto)", dish_name, gram)
+            auto_added.append(resolved_name)
+            items.append(vision_item)
+            logger.info(
+                "auto-add '%s' gram=%s với nutrition Vision → vn_dishes",
+                resolved_name,
+                gram,
+            )
         except Exception as e:
             # Trùng tên (race) hoặc lỗi khác → rollback + báo missing
             await session.rollback()
             logger.warning("auto-add '%s' fail: %s", dish_name, e)
-            missing.append(dish_name)
-            items.append(calculate_item_nutrition_unknown(dish_name, gram))
+            missing.append(resolved_name)
+            items.append(vision_item)
 
     return items, response_dishes, auto_added, missing
 

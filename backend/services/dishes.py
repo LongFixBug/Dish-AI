@@ -4,15 +4,18 @@ Phiên bản mới (Jul 23): bỏ Dish/DishIngredient/NutritionIngredient/Conver
   - lookup_dish: tra vn_dishes (ILIKE → Qdrant vector fallback). Trả per-gram.
   - lookup_ingredient: tra vn_ingredients (ILIKE → vector). Dùng cho món ăn kèm
     (sữa hộp, nước uống) khi vn_dishes không có.
-  - auto_add_dish: Vision nhận món mới → INSERT vào vn_dishes (source=vision_auto).
-    Nutrition ước = 0 (chưa biết) — user/admin bổ sung sau. typical_grams theo Vision.
+  - auto_add_dish: Vision nhận món mới → INSERT tên, gram và tổng dinh dưỡng
+    vào vn_dishes (source=vision_auto).
 """
+
+import re
+import unicodedata
 
 from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import VnDish, VnIngredient
-from schemas.nutrition import NutritionPerGram
+from schemas.nutrition import NutritionPerGram, NutritionPerIngredient
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -65,7 +68,56 @@ def _has_weight(vn: VnDish) -> bool:
     return bool(vn.typical_grams and vn.typical_grams > 0)
 
 
+def _has_nutrition(vn: VnDish) -> bool:
+    """Bản ghi có số dinh dưỡng thực, không chỉ là tên Vision đã lưu trước đó."""
+    return any(
+        (value or 0) > 0
+        for value in (
+            vn.total_calories,
+            vn.total_protein_g,
+            vn.total_fat_g,
+            vn.total_carbs_g,
+            vn.total_fiber_g,
+        )
+    )
+
+
 # ─── Tier 1: Lookup vn_dishes ────────────────────────────────────────────────
+
+
+_DISH_FAMILY_TOKENS = {
+    "banh", "bun", "canh", "chao", "com", "goi", "hu", "lau", "mi",
+    "pho", "tieu", "xoi",
+}
+_MENU_STOP_TOKENS = {"cac", "kem", "kep", "loai", "mon", "va", "voi"}
+QDRANT_CANDIDATE_LIMIT = 10
+
+
+def _menu_tokens(name: str) -> set[str]:
+    """Chuẩn hóa tên món thành token không dấu để so khớp lexical."""
+    normalized = unicodedata.normalize("NFKD", name.casefold())
+    ascii_name = "".join(
+        char for char in normalized if not unicodedata.combining(char)
+    ).replace("đ", "d")
+    return set(re.findall(r"[a-z0-9]+", ascii_name)) - _MENU_STOP_TOKENS
+
+
+def _is_semantic_candidate_compatible(query: str, candidate: str) -> bool:
+    """Chỉ nhận vector candidate cùng họ món và chia sẻ đủ token menu."""
+    query_tokens = _menu_tokens(query)
+    candidate_tokens = _menu_tokens(candidate)
+    if not query_tokens or not candidate_tokens:
+        return False
+
+    query_families = query_tokens & _DISH_FAMILY_TOKENS
+    candidate_families = candidate_tokens & _DISH_FAMILY_TOKENS
+    if query_families and candidate_families and query_families.isdisjoint(
+        candidate_families
+    ):
+        return False
+
+    required_shared = min(2, len(query_tokens))
+    return len(query_tokens & candidate_tokens) >= required_shared
 
 
 async def _lookup_institute_exact(
@@ -75,6 +127,11 @@ async def _lookup_institute_exact(
     exact = await session.execute(
         select(VnDish)
         .where(func.vn_norm(VnDish.dish_name) == func.vn_norm(literal(name)))
+        .order_by(
+            (VnDish.total_calories > 0).desc(),
+            (VnDish.source == "vnmeal").desc(),
+            VnDish.created_at.asc(),
+        )
         .limit(1)
     )
     return exact.scalar_one_or_none()
@@ -87,9 +144,11 @@ async def _lookup_institute_by_qdrant(
     try:
         from backend.services.qdrant_dishes import search_dish
 
-        hits = await search_dish(name, limit=3)
+        hits = await search_dish(name, limit=QDRANT_CANDIDATE_LIMIT)
         for hit in hits:
             matched = hit["dish_name"]
+            if not _is_semantic_candidate_compatible(name, matched):
+                continue
             vn = await _lookup_institute_exact(session, matched)
             if vn is not None:
                 return vn
@@ -106,7 +165,7 @@ async def lookup_dish(session: AsyncSession, name: str) -> VnDish | None:
     Miss cả 2 → caller auto-add món mới.
 
     Returns:
-        VnDish | None. None khi không có món exact và Qdrant cũng miss.
+        VnDish | None. Bản ghi có dinh dưỡng được ưu tiên trước bản vision_auto rỗng.
     """
     if not name or not name.strip():
         return None
@@ -117,6 +176,13 @@ async def lookup_dish(session: AsyncSession, name: str) -> VnDish | None:
         return vn
 
     return await _lookup_institute_by_qdrant(session, name)
+
+
+async def lookup_dish_exact(session: AsyncSession, name: str) -> VnDish | None:
+    """Tìm đúng tên món, dùng cho món phụ để tránh match sang món composite khác."""
+    if not name or not name.strip():
+        return None
+    return await _lookup_institute_exact(session, name.strip())
 
 
 # ─── Lookup vn_ingredients (món ăn kèm / đồ uống) ────────────────────────────
@@ -135,6 +201,25 @@ async def _lookup_ingredient_ilike(
             )
         )
         .order_by(func.char_length(VnIngredient.ingredient_name).asc())
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def _lookup_ingredient_exact(
+    session: AsyncSession, name: str
+) -> VnIngredient | None:
+    """Tìm đúng tên ingredient, tránh tên ngắn match vào giữa từ khác."""
+    stmt = (
+        select(VnIngredient)
+        .where(
+            VnIngredient.item_type.in_(["ingredient", "fruit", "product"])
+            & (
+                func.vn_norm(VnIngredient.ingredient_name)
+                == func.vn_norm(literal(name))
+            )
+        )
         .limit(1)
     )
     result = await session.execute(stmt)
@@ -176,6 +261,15 @@ async def lookup_ingredient(session: AsyncSession, name: str) -> VnIngredient | 
     return await _lookup_ingredient_vector(session, name.strip())
 
 
+async def lookup_ingredient_text(
+    session: AsyncSession, name: str
+) -> VnIngredient | None:
+    """Chỉ exact text cho món phụ; không substring/vector sang tên khác."""
+    if not name or not name.strip():
+        return None
+    return await _lookup_ingredient_exact(session, name.strip())
+
+
 # ─── Auto-add món mới vào vn_dishes ──────────────────────────────────────────
 
 
@@ -184,7 +278,7 @@ async def auto_add_dish(
     dish_name: str,
     typical_grams: float | None,
     *,
-    per_gram: NutritionPerGram | None = None,
+    nutrition: NutritionPerIngredient | None = None,
 ) -> VnDish:
     """Vision nhận món chưa có DB → INSERT vào vn_dishes.
 
@@ -192,34 +286,36 @@ async def auto_add_dish(
         session: DB session.
         dish_name: tên món Vision nhận.
         typical_grams: gram Vision ước cho món (dùng làm khẩu phần chuẩn).
-        per_gram: Vision ước lượng nutrition per-gram (tùy chọn). None → toàn 0.
+        nutrition: Tổng dinh dưỡng Vision ước lượng cho đúng khẩu phần trong ảnh.
 
     Returns:
-        VnDish vừa insert (nutrition 0 nếu không ước được).
+        VnDish vừa insert hoặc bản vision_auto rỗng vừa được bổ sung nutrition.
     """
     g = typical_grams if typical_grams and typical_grams > 0 else None
 
-    if per_gram is not None and g:
-        # bottom_dish lưu total = per_g × typical_grams (đảo ngược _vn_dish_to_per_gram)
-        total_cal = per_gram.calories_per_g * g
-        total_p = per_gram.protein_per_g * g
-        total_f = per_gram.fat_per_g * g
-        total_c = per_gram.carbs_per_g * g
-        total_fb = per_gram.fiber_per_g * g
+    if nutrition is not None:
+        total_cal = nutrition.calories
+        total_p = nutrition.protein_g
+        total_f = nutrition.fat_g
+        total_c = nutrition.carbs_g
+        total_fb = nutrition.fiber_g
     else:
         total_cal = total_p = total_f = total_c = total_fb = 0.0
 
-    dish = VnDish(
-        dish_name=dish_name,
-        total_calories=round(total_cal, 1),
-        total_protein_g=round(total_p, 1),
-        total_fat_g=round(total_f, 1),
-        total_carbs_g=round(total_c, 1),
-        total_fiber_g=round(total_fb, 1),
-        typical_grams=g,
-        source="vision_auto",
-    )
-    session.add(dish)
+    dish = await _lookup_institute_exact(session, dish_name)
+    if dish is None:
+        dish = VnDish(dish_name=dish_name)
+        session.add(dish)
+
+    if not _has_nutrition(dish):
+        dish.total_calories = round(total_cal, 1)
+        dish.total_protein_g = round(total_p, 1)
+        dish.total_fat_g = round(total_f, 1)
+        dish.total_carbs_g = round(total_c, 1)
+        dish.total_fiber_g = round(total_fb, 1)
+        dish.typical_grams = g
+        dish.source = "vision_auto"
+
     await session.flush()
 
     # Index vào Qdrant (fire-and-forget) để lần sau vector search tìm được

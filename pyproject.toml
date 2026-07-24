@@ -19,6 +19,8 @@ dependencies = [
     "openai>=1.0.0",
     "datasets>=2.0.0",
     "pandas>=2.0.0",
+    "python-multipart>=0.0.32",
+    "qdrant-client>=1.18.0",
 ]
 
 [tool.pytest.ini_options]
