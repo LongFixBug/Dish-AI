@@ -3,6 +3,7 @@
 from io import BytesIO
 from types import SimpleNamespace
 
+from PIL import Image
 from starlette.datastructures import Headers, UploadFile
 
 from backend.api import analyze
@@ -20,6 +21,12 @@ class FakeSession:
 
     async def rollback(self) -> None:
         self.rollbacks += 1
+
+
+def _jpeg_bytes() -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (16, 16), (180, 120, 60)).save(output, format="JPEG")
+    return output.getvalue()
 
 
 async def test_high_confidence_cv_uses_db_and_skips_vision(monkeypatch) -> None:
@@ -64,7 +71,7 @@ async def test_high_confidence_cv_uses_db_and_skips_vision(monkeypatch) -> None:
     monkeypatch.setattr(analyze, "identify_dish", vision_must_not_run)
 
     upload = UploadFile(
-        BytesIO(b"fake-jpeg"),
+        BytesIO(_jpeg_bytes()),
         filename="xoi-xeo.jpg",
         headers=Headers({"content-type": "image/jpeg"}),
     )
@@ -135,7 +142,7 @@ async def test_high_confidence_cv_falls_back_when_db_misses(monkeypatch) -> None
     monkeypatch.setattr(analyze, "identify_dish", fake_vision)
 
     upload = UploadFile(
-        BytesIO(b"fake-jpeg"),
+        BytesIO(_jpeg_bytes()),
         filename="unknown.jpg",
         headers=Headers({"content-type": "image/jpeg"}),
     )

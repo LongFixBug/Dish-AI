@@ -19,8 +19,12 @@ from backend.db.postgres import get_session
 from backend.api.upload_utils import (
     MAX_IMAGE_UPLOAD_BYTES,
     read_upload_limited,
+    validate_and_sanitize_image,
     validate_image_content_type,
 )
+from backend.api.dependencies import CurrentUser, require_user
+from backend.config import settings
+from backend.metrics import ANALYSIS_RESULTS
 from backend.services.dishes import (
     _has_nutrition,
     _has_weight,
@@ -43,7 +47,6 @@ from schemas.nutrition import (
 
 # ─── Constants ─────────────────────────────────────────────────────────────
 
-CV_CONFIDENCE_THRESHOLD = 0.85
 MAX_UPLOAD_BYTES = MAX_IMAGE_UPLOAD_BYTES
 
 
@@ -63,12 +66,26 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 logger = logging.getLogger("foodai")
 
 
+def _analysis_response(**values: object) -> AnalyzeResponse:
+    source = values.get("source")
+    values.setdefault(
+        "model_version",
+        cv_model.model_version if source == "cv_local" else settings.vision_model,
+    )
+    response = AnalyzeResponse(**values)
+    ANALYSIS_RESULTS.labels(
+        source=response.source or "unknown",
+        outcome="error" if response.error else "success",
+    ).inc()
+    return response
+
+
 def _is_cv_high_conf(cv_conf: float | None, cv_dish: str | None) -> bool:
     """Return whether a local prediction is safe to use without Vision."""
     return (
         cv_model.is_loaded
         and cv_conf is not None
-        and cv_conf >= CV_CONFIDENCE_THRESHOLD
+        and cv_conf >= cv_model.serving_threshold
         and cv_dish is not None
     )
 
@@ -116,7 +133,7 @@ async def _analyze_cv_local(
     )
     totals = calculate_totals(vn.dish_name, [item])
 
-    return AnalyzeResponse(
+    return _analysis_response(
         dish_name=vn.dish_name,
         source="cv_local",
         cv_confidence=confidence,
@@ -294,13 +311,18 @@ async def _analyze_vision_dishes(
 async def analyze_food(
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_session),
+    _current_user: CurrentUser = Depends(require_user),
 ) -> AnalyzeResponse:
     """Upload ảnh món ăn → nhận diện + phân tích dinh dưỡng (dish-level)."""
     validate_image_content_type(file)
-    safe_name = _safe_filename(file.filename or "upload")
     content = await read_upload_limited(file, max_bytes=MAX_UPLOAD_BYTES)
-    temp_path = UPLOAD_DIR / f"upload_{uuid.uuid4().hex[:12]}_{safe_name}"
-    await asyncio.to_thread(temp_path.write_bytes, content)
+    image = await asyncio.to_thread(
+        validate_and_sanitize_image,
+        content,
+        file.content_type,
+    )
+    temp_path = UPLOAD_DIR / f"upload_{uuid.uuid4().hex[:12]}{image.extension}"
+    await asyncio.to_thread(temp_path.write_bytes, image.content)
 
     try:
         # Use local inference first to avoid a cloud call for reliable classes.
@@ -324,25 +346,27 @@ async def analyze_food(
         try:
             vision = await identify_dish(temp_path)
         except VisionError as e:
+            logger.warning("Vision analysis failed: %s", e)
             cv_high = _is_cv_high_conf(cv_conf, cv_dish)
-            return AnalyzeResponse(
+            return _analysis_response(
                 dish_name=cv_dish if cv_model.is_loaded and cv_dish else None,
                 source="cv_local_not_found_vision" if cv_high else "vision",
                 cv_confidence=cv_conf if cv_model.is_loaded else None,
-                error=f"Vision cloud offline: {str(e)[:200]}",
+                error="Dịch vụ nhận diện đang tạm gián đoạn. Vui lòng thử lại sau.",
             )
-        except (httpx.ConnectError, httpx.TimeoutException, OSError) as e:
+        except (httpx.ConnectError, httpx.TimeoutException, OSError):
+            logger.exception("Vision analysis connection failed")
             cv_high = _is_cv_high_conf(cv_conf, cv_dish)
-            return AnalyzeResponse(
+            return _analysis_response(
                 dish_name=cv_dish if cv_model.is_loaded and cv_dish else None,
                 source="cv_local_not_found_vision" if cv_high else "vision",
                 cv_confidence=cv_conf if cv_model.is_loaded else None,
-                error=f"Vision cloud unreachable: {e}",
+                error="Dịch vụ nhận diện đang tạm gián đoạn. Vui lòng thử lại sau.",
             )
 
         vision_dishes = vision.get("dishes", [])
         if not vision_dishes:
-            return AnalyzeResponse(
+            return _analysis_response(
                 source="vision",
                 cv_confidence=cv_conf if cv_model.is_loaded else None,
                 error="Vision không nhận diện được món ăn trong ảnh. "
@@ -355,7 +379,7 @@ async def analyze_food(
         )
 
         if not items:
-            return AnalyzeResponse(
+            return _analysis_response(
                 dish_name=vision.get("dish_name"),
                 source="vision",
                 cv_confidence=cv_conf if cv_model.is_loaded else None,
@@ -376,7 +400,7 @@ async def analyze_food(
             combined_name, items, missing if missing else None
         )
 
-        return AnalyzeResponse(
+        return _analysis_response(
             dish_name=combined_name,
             source=source,
             cv_confidence=cv_conf if cv_model.is_loaded else None,
@@ -395,21 +419,27 @@ async def analyze_food(
 async def analyze_vision_only(
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_session),
+    _current_user: CurrentUser = Depends(require_user),
 ) -> AnalyzeResponse:
     """Force Qwen Vision — bỏ qua CV local, gọi thẳng Vision."""
     validate_image_content_type(file)
-    safe_name = _safe_filename(file.filename or "upload")
     content = await read_upload_limited(file, max_bytes=MAX_UPLOAD_BYTES)
-
-    temp_path = UPLOAD_DIR / f"upload_vision_{uuid.uuid4().hex[:12]}_{safe_name}"
-    await asyncio.to_thread(temp_path.write_bytes, content)
+    image = await asyncio.to_thread(
+        validate_and_sanitize_image,
+        content,
+        file.content_type,
+    )
+    temp_path = UPLOAD_DIR / (
+        f"upload_vision_{uuid.uuid4().hex[:12]}{image.extension}"
+    )
+    await asyncio.to_thread(temp_path.write_bytes, image.content)
 
     try:
         vision = await identify_dish(temp_path)
 
         vision_dishes = vision.get("dishes", [])
         if not vision_dishes:
-            return AnalyzeResponse(
+            return _analysis_response(
                 source="vision",
                 cv_confidence=None,
                 error="Vision không nhận diện được món ăn trong ảnh. "
@@ -421,7 +451,7 @@ async def analyze_vision_only(
         )
 
         if not items:
-            return AnalyzeResponse(
+            return _analysis_response(
                 dish_name=vision.get("dish_name"),
                 source="vision",
                 cv_confidence=None,
@@ -434,7 +464,7 @@ async def analyze_vision_only(
 
         totals = calculate_totals(combined_name, items, missing if missing else None)
 
-        return AnalyzeResponse(
+        return _analysis_response(
             dish_name=combined_name,
             source="vision",
             cv_confidence=None,
@@ -446,14 +476,16 @@ async def analyze_vision_only(
             missing_items=missing,
         )
     except VisionError as e:
-        return AnalyzeResponse(
+        logger.warning("Vision-only analysis failed: %s", e)
+        return _analysis_response(
             source="vision",
-            error=f"Vision cloud offline: {str(e)[:200]}",
+            error="Dịch vụ nhận diện đang tạm gián đoạn. Vui lòng thử lại sau.",
         )
-    except (httpx.ConnectError, httpx.TimeoutException, OSError) as e:
-        return AnalyzeResponse(
+    except (httpx.ConnectError, httpx.TimeoutException, OSError):
+        logger.exception("Vision-only analysis connection failed")
+        return _analysis_response(
             source="vision",
-            error=f"Vision cloud unreachable: {e}",
+            error="Dịch vụ nhận diện đang tạm gián đoạn. Vui lòng thử lại sau.",
         )
     finally:
         await asyncio.to_thread(temp_path.unlink, missing_ok=True)

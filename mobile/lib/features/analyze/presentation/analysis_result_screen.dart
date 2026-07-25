@@ -199,6 +199,8 @@ class _ResultContent extends StatelessWidget {
         _ResultSummary(result: result, imageBytes: imageBytes),
         const SizedBox(height: 14),
         if (nutrition != null) _MacroRow(nutrition: nutrition),
+        const SizedBox(height: 12),
+        const _NutritionDisclaimer(),
         const SizedBox(height: 20),
         Row(
           children: [
@@ -220,6 +222,39 @@ class _ResultContent extends StatelessWidget {
           onEdit: onEdit,
         ),
       ],
+    );
+  }
+}
+
+class _NutritionDisclaimer extends StatelessWidget {
+  const _NutritionDisclaimer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: 'Cảnh báo dinh dưỡng',
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3CD),
+          border: Border.all(color: BalanceColors.ink, width: 1.4),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.health_and_safety_outlined, size: 20),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Dinh dưỡng được AI ước tính và không thay thế tư vấn y tế '
+                'hoặc chuyên gia dinh dưỡng.',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

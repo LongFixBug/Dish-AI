@@ -11,7 +11,7 @@ cũ thuộc loop đã đóng → asyncpg InterfaceError. Fixture này tạo engi
 session factory RIÊNG cho mỗi test, dispose khi xong → sạch, không xung đột.
 """
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,12 +23,28 @@ from sqlalchemy.ext.asyncio import (
 
 from backend.config import settings
 from backend.main import app
+from backend.services.auth import TokenManager
 
 
 @pytest.fixture
-def client() -> TestClient:
-    """FastAPI test client (sync)."""
-    return TestClient(app)
+def client() -> Generator[TestClient, None, None]:
+    """Authenticated FastAPI test client for existing endpoint contracts."""
+    token, _ = TokenManager.from_settings(settings).create_access_token(
+        user_id="00000000-0000-0000-0000-000000000001",
+        role="user",
+    )
+    with TestClient(
+        app,
+        headers={"Authorization": f"Bearer {token}"},
+    ) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def anonymous_client() -> Generator[TestClient, None, None]:
+    """FastAPI client without implicit authentication."""
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 @pytest.fixture

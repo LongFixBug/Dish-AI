@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 abstract interface class AppStorage {
   Future<Map<String, dynamic>?> read();
@@ -8,15 +8,15 @@ abstract interface class AppStorage {
   Future<void> write(Map<String, dynamic> value);
 }
 
-class SharedPreferencesAppStorage implements AppStorage {
-  SharedPreferencesAppStorage(this._preferences);
+class SecureAppStorage implements AppStorage {
+  SecureAppStorage(this._storage);
 
-  static const _key = 'balance.app_state.v1';
-  final SharedPreferences _preferences;
+  static const _key = 'balance.app_state.v2';
+  final FlutterSecureStorage _storage;
 
   @override
   Future<Map<String, dynamic>?> read() async {
-    final raw = _preferences.getString(_key);
+    final raw = await _storage.read(key: _key);
     if (raw == null || raw.isEmpty) return null;
     final decoded = jsonDecode(raw);
     return decoded is Map<String, dynamic> ? decoded : null;
@@ -24,8 +24,7 @@ class SharedPreferencesAppStorage implements AppStorage {
 
   @override
   Future<void> write(Map<String, dynamic> value) async {
-    final saved = await _preferences.setString(_key, jsonEncode(value));
-    if (!saved) throw StateError('Không thể lưu dữ liệu ứng dụng');
+    await _storage.write(key: _key, value: jsonEncode(value));
   }
 }
 

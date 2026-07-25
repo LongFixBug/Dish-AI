@@ -24,6 +24,8 @@ engine = create_async_engine(
     settings.database_url,
     pool_size=10,           # 10 connections sẵn sàng
     max_overflow=5,         # thêm tối đa 5 khi quá tải
+    pool_pre_ping=True,     # loại connection đã chết trước khi giao cho request
+    pool_recycle=1800,      # tránh connection sống lâu hơn timeout hạ tầng
     echo=settings.debug,    # in SQL ra console khi debug=True
 )
 

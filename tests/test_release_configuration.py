@@ -1,0 +1,62 @@
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_android_release_does_not_use_debug_signing() -> None:
+    gradle = (ROOT / "mobile/android/app/build.gradle.kts").read_text()
+
+    release_block = gradle.split("release {", maxsplit=1)[1]
+    assert 'signingConfigs.getByName("debug")' not in release_block
+    assert 'signingConfigs.getByName("release")' in release_block
+    assert "key.properties" in gradle
+
+
+def test_ci_covers_mobile_container_migrations_and_security() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+
+    required_commands = (
+        "flutter analyze",
+        "flutter test --coverage",
+        "flutter build apk --debug",
+        "docker build",
+        "alembic upgrade head",
+        "pip-audit==2.10.1 pip-audit",
+        "-r requirements.api.lock --require-hashes",
+        "--disable-pip",
+        "aquasecurity/trivy-action",
+    )
+    for command in required_commands:
+        assert command in workflow
+
+
+def test_release_mobile_requires_https_api_endpoint() -> None:
+    workflow = (ROOT / ".github/workflows/release-mobile.yml").read_text()
+    api_config = (ROOT / "mobile/lib/core/config/api_config.dart").read_text()
+
+    assert "secrets.API_BASE_URL" in workflow
+    assert "--dart-define=API_BASE_URL=$API_BASE_URL" in workflow
+    assert "kReleaseMode" in api_config
+    assert "uri.scheme != 'https'" in api_config
+
+
+def test_api_image_can_run_database_migrations() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    requirements = (ROOT / "requirements.api.txt").read_text()
+
+    assert "COPY alembic.ini" in dockerfile
+    assert "COPY alembic" in dockerfile
+    assert "alembic" in requirements
+
+
+def test_dependency_and_toolchain_versions_are_reproducible() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+    lockfile = (ROOT / "requirements.api.lock").read_text()
+    dockerfile = (ROOT / "Dockerfile").read_text()
+
+    assert 'version: "0.11.7"' in workflow
+    assert 'flutter-version: "3.44.8"' in workflow
+    assert "uv sync --all-groups --frozen" in workflow
+    assert "--hash=sha256:" in lockfile
+    assert "python:3.12-slim@sha256:" in dockerfile

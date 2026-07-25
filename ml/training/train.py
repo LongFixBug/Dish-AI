@@ -30,6 +30,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from ml.training.dataset import VietFoodDataset  # noqa: E402
+from ml.model_registry import (  # noqa: E402
+    build_manifest,
+    evaluate_quality_gate,
+    fingerprint_dataset,
+    write_manifest,
+)
 
 
 # ─── Config ──────────────────────────────────────────────────────────
@@ -48,6 +54,7 @@ DATA_DIR = PROJECT_ROOT / "data" / "images"
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
 CHECKPOINT_DIR.mkdir(exist_ok=True)
 BEST_CHECKPOINT_PATH = CHECKPOINT_DIR / "best_model.pth"
+BEST_MANIFEST_PATH = CHECKPOINT_DIR / "best_model.manifest.json"
 
 DEVICE = torch.device(
     "mps" if torch.backends.mps.is_available()
@@ -286,6 +293,54 @@ def compute_classification_metrics(
     }
 
 
+def compute_calibration_metrics(
+    confidences: list[float],
+    correctness: list[bool],
+    *,
+    target_accuracy: float = 0.85,
+    bins: int = 10,
+) -> dict[str, float]:
+    """Calculate ECE and the widest high-confidence operating region."""
+    if len(confidences) != len(correctness) or not confidences:
+        return {
+            "ece": 1.0,
+            "recommended_threshold": 1.0,
+            "selective_accuracy": 0.0,
+            "selective_coverage": 0.0,
+        }
+    total = len(confidences)
+    ece = 0.0
+    for index in range(bins):
+        lower, upper = index / bins, (index + 1) / bins
+        selected = [
+            item
+            for item, confidence in enumerate(confidences)
+            if lower <= confidence < upper or (index == bins - 1 and confidence == 1)
+        ]
+        if not selected:
+            continue
+        accuracy = sum(correctness[item] for item in selected) / len(selected)
+        average_confidence = sum(confidences[item] for item in selected) / len(selected)
+        ece += len(selected) / total * abs(accuracy - average_confidence)
+
+    best = (1.0, 0.0, 0.0)
+    for threshold in sorted(set(confidences)):
+        selected = [
+            item for item, confidence in enumerate(confidences)
+            if confidence >= threshold
+        ]
+        accuracy = sum(correctness[item] for item in selected) / len(selected)
+        coverage = len(selected) / total
+        if accuracy >= target_accuracy and coverage > best[2]:
+            best = (threshold, accuracy, coverage)
+    return {
+        "ece": round(ece, 4),
+        "recommended_threshold": round(best[0], 4),
+        "selective_accuracy": round(best[1] * 100, 2),
+        "selective_coverage": round(best[2], 4),
+    }
+
+
 @torch.no_grad()
 def evaluate(
     model: nn.Module,
@@ -309,6 +364,8 @@ def evaluate(
     per_class_correct = [0] * n_classes
     per_class_total = [0] * n_classes
     confusion_matrix = [[0] * n_classes for _ in range(n_classes)]
+    confidences: list[float] = []
+    correctness: list[bool] = []
 
     for images, labels in loader:
         images, labels = images.to(DEVICE), labels.to(DEVICE)
@@ -316,9 +373,14 @@ def evaluate(
         loss = criterion(outputs, labels)
 
         total_loss += loss.item()
-        _, predicted = outputs.max(1)
+        probabilities = torch.softmax(outputs, dim=1)
+        batch_confidences, predicted = probabilities.max(1)
         total += labels.size(0)
         correct += predicted.eq(labels).sum().item()
+        confidences.extend(float(value) for value in batch_confidences.tolist())
+        correctness.extend(
+            bool(value) for value in predicted.eq(labels).tolist()
+        )
 
         if n_classes:
             for true_c, pred_c in zip(labels.tolist(), predicted.tolist()):
@@ -334,6 +396,7 @@ def evaluate(
         if per_class_total[c] > 0:
             per_class_acc[c] = 100.0 * per_class_correct[c] / per_class_total[c]
     metrics = compute_classification_metrics(confusion_matrix, classes or [])
+    metrics.update(compute_calibration_metrics(confidences, correctness))
     return avg_loss, accuracy, per_class_acc, metrics
 
 
@@ -413,6 +476,7 @@ def main(
     best_val_acc = 0.0
     history: list[dict] = []
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dataset_fingerprint = fingerprint_dataset(DATA_DIR)
 
     print(f"\n🧠 Creating model ({ARCH}, {train_ds.num_classes} classes)...")
     # Ưu tiên --ckpt explicit; nếu không thì mới đoán latest (giới hạn).
@@ -519,7 +583,22 @@ def main(
 
         # Save best model
         if val_acc > best_val_acc:
-            best_val_acc = val_acc
+            model_version = f"{timestamp}-e{epoch}"
+            quality_metrics = {
+                "accuracy": round(val_acc, 2),
+                "macro_f1": float(classification_metrics["macro_f1"]),
+                "worst_class_accuracy": round(worst or 0.0, 2),
+                "ece": float(classification_metrics["ece"]),
+                "selective_accuracy": float(
+                    classification_metrics["selective_accuracy"]
+                ),
+                "selective_coverage": float(
+                    classification_metrics["selective_coverage"]
+                ),
+            }
+            confidence_threshold = float(
+                classification_metrics["recommended_threshold"]
+            )
 
             checkpoint_data = {
                 "epoch": epoch,
@@ -530,6 +609,9 @@ def main(
                 "val_acc": val_acc,
                 "classes": train_ds.classes,
                 "history": history,
+                "model_version": model_version,
+                "cv_confidence_threshold": confidence_threshold,
+                "quality_metrics": quality_metrics,
             }
 
             # Giữ lại checkpoint theo epoch để debug hoặc so sánh sau này.
@@ -538,11 +620,28 @@ def main(
             )
             torch.save(checkpoint_data, epoch_checkpoint_path)
 
-            # Đây là checkpoint duy nhất backend sẽ dùng khi predict.
-            torch.save(checkpoint_data, BEST_CHECKPOINT_PATH)
-
             print(f"   💾 Best model saved: {epoch_checkpoint_path.name}")
-            print(f"   ⭐ Serving model updated: {BEST_CHECKPOINT_PATH.name}")
+            gate = evaluate_quality_gate(
+                quality_metrics,
+                evaluation_split="validation",
+            )
+            if gate.passed:
+                best_val_acc = val_acc
+                torch.save(checkpoint_data, BEST_CHECKPOINT_PATH)
+                manifest = build_manifest(
+                    BEST_CHECKPOINT_PATH,
+                    model_version=model_version,
+                    arch=ARCH,
+                    classes=train_ds.classes,
+                    metrics=quality_metrics,
+                    confidence_threshold=confidence_threshold,
+                    dataset_fingerprint=dataset_fingerprint,
+                    evaluation_split="validation",
+                )
+                write_manifest(BEST_MANIFEST_PATH, manifest)
+                print(f"   ⭐ Serving model updated: {BEST_CHECKPOINT_PATH.name}")
+            else:
+                print(f"   ⛔ Not promoted: {gate.failures}")
 
     # Save class mapping
     mapping_path = CHECKPOINT_DIR / "class_mapping.json"

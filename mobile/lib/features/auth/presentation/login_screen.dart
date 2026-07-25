@@ -1,5 +1,4 @@
 import 'package:balance/core/state/app_scope.dart';
-import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/features/auth/presentation/auth_components.dart';
 import 'package:balance/features/auth/presentation/sign_up_screen.dart';
@@ -32,7 +31,10 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _submitting = true);
     try {
       final state = AppScope.of(context);
-      await state.signIn(email: _emailController.text);
+      await state.signIn(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
       if (!mounted) return;
       final nextPage = state.profile == null
           ? const ProfileSetupScreen()
@@ -41,11 +43,11 @@ class _LoginScreenState extends State<LoginScreen> {
         MaterialPageRoute<void>(builder: (_) => nextPage),
         (_) => false,
       );
-    } on Object {
+    } on Object catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không thể lưu phiên đăng nhập.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -92,48 +94,10 @@ class _LoginScreenState extends State<LoginScreen> {
               prefixIcon: Icons.lock_outline_rounded,
               validator: _validatePassword,
             ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Bản MVP chưa có máy chủ gửi email đặt lại mật khẩu.',
-                    ),
-                  ),
-                ),
-                child: const Text('Quên mật khẩu?'),
-              ),
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 20),
             PressableButton(
               label: _submitting ? 'Đang đăng nhập...' : 'Đăng nhập',
               onPressed: _submitting ? null : _submit,
-            ),
-            const SizedBox(height: 24),
-            const Row(
-              children: [
-                Expanded(child: Divider(color: BalanceColors.ink)),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 14),
-                  child: Text('hoặc'),
-                ),
-                Expanded(child: Divider(color: BalanceColors.ink)),
-              ],
-            ),
-            const SizedBox(height: 24),
-            PressableButton(
-              label: 'Đăng nhập với Google',
-              icon: Icons.g_mobiledata_rounded,
-              backgroundColor: BalanceColors.paper,
-              foregroundColor: BalanceColors.ink,
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Google Sign-In chưa được cấu hình cho bản MVP.',
-                  ),
-                ),
-              ),
             ),
             const SizedBox(height: 24),
             Row(

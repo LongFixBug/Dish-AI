@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class UserProfile {
   const UserProfile({
     required this.name,
@@ -9,6 +11,8 @@ class UserProfile {
     required this.gender,
     required this.activity,
     required this.goal,
+    this.allergies = const [],
+    this.medicalConditions = const [],
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -22,6 +26,8 @@ class UserProfile {
       gender: json['gender'] as String? ?? 'Khác',
       activity: json['activity'] as String? ?? 'Vừa phải',
       goal: json['goal'] as String? ?? 'Giữ cân',
+      allergies: _stringList(json['allergies']),
+      medicalConditions: _stringList(json['medical_conditions']),
     );
   }
 
@@ -34,6 +40,11 @@ class UserProfile {
   final String gender;
   final String activity;
   final String goal;
+  final List<String> allergies;
+  final List<String> medicalConditions;
+
+  bool get hasNutritionSafetyFlags =>
+      allergies.isNotEmpty || medicalConditions.isNotEmpty;
 
   int get dailyCalorieTarget {
     final genderOffset = switch (gender) {
@@ -67,6 +78,8 @@ class UserProfile {
     'gender': gender,
     'activity': activity,
     'goal': goal,
+    'allergies': allergies,
+    'medical_conditions': medicalConditions,
   };
 
   @override
@@ -80,11 +93,13 @@ class UserProfile {
         targetWeightKg == other.targetWeightKg &&
         gender == other.gender &&
         activity == other.activity &&
-        goal == other.goal;
+        goal == other.goal &&
+        listEquals(allergies, other.allergies) &&
+        listEquals(medicalConditions, other.medicalConditions);
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     name,
     email,
     age,
@@ -94,10 +109,17 @@ class UserProfile {
     gender,
     activity,
     goal,
-  );
+    ...allergies,
+    ...medicalConditions,
+  ]);
 }
 
 int _intValue(Object? value, int fallback) => switch (value) {
   final num number => number.round(),
   _ => fallback,
+};
+
+List<String> _stringList(Object? value) => switch (value) {
+  final List<Object?> values => values.whereType<String>().toList(),
+  _ => const [],
 };

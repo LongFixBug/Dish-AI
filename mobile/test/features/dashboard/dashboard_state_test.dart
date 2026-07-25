@@ -10,12 +10,17 @@ import 'package:balance/features/profile/domain/user_profile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/fake_auth_gateway.dart';
+
 void main() {
   testWidgets('dashboard reflects profile and today journal totals', (
     tester,
   ) async {
-    final state = await AppState.restore(MemoryAppStorage());
-    await state.signIn(email: _profile.email);
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: FakeAuthGateway(),
+    );
+    await state.signIn(email: _profile.email, password: 'matkhau123');
     await state.completeProfile(_profile);
     await state.addJournalEntry(
       JournalEntry.fromAnalysis(

@@ -87,3 +87,16 @@ def test_macro_metrics_expose_minority_class_quality() -> None:
     assert metrics["macro_recall"] == 75.0
     assert metrics["macro_f1"] == 73.33
     assert metrics["per_class"]["class_0"]["recall"] == 50.0
+
+
+def test_calibration_recommends_threshold_for_selective_accuracy() -> None:
+    metrics = train.compute_calibration_metrics(
+        confidences=[0.95, 0.9, 0.7, 0.6],
+        correctness=[True, True, False, True],
+        target_accuracy=0.9,
+    )
+
+    assert metrics["recommended_threshold"] == 0.9
+    assert metrics["selective_accuracy"] == 100.0
+    assert metrics["selective_coverage"] == 0.5
+    assert 0 <= metrics["ece"] <= 1

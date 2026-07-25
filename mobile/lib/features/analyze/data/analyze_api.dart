@@ -8,24 +8,36 @@ import 'package:balance/features/analyze/domain/analyze_result.dart';
 import 'package:http/http.dart' as http;
 
 class AnalyzeApi {
-  AnalyzeApi({http.Client? client, Uri? baseUrl, Duration? timeout})
-    : _client = client ?? http.Client(),
-      _ownsClient = client == null,
-      _baseUrl = baseUrl ?? ApiConfig.baseUrl,
-      _timeout = timeout ?? const Duration(seconds: 90);
+  AnalyzeApi({
+    http.Client? client,
+    Uri? baseUrl,
+    Duration? timeout,
+    String? accessToken,
+    Future<String> Function()? accessTokenProvider,
+  }) : _client = client ?? http.Client(),
+       _ownsClient = client == null,
+       _baseUrl = baseUrl ?? ApiConfig.baseUrl,
+       _timeout = timeout ?? const Duration(seconds: 90),
+       _tokenSource = _TokenSource(accessToken, accessTokenProvider);
 
   final http.Client _client;
   final bool _ownsClient;
   final Uri _baseUrl;
   final Duration _timeout;
+  final _TokenSource _tokenSource;
 
   Future<AnalyzeResult> analyzeImage({
     required Uint8List bytes,
     required String filename,
   }) async {
     _validateImage(bytes, filename);
+    final accessToken = await _tokenSource.read();
+    if (accessToken == null || accessToken.isEmpty) {
+      throw const AnalyzeApiException('Phiên đăng nhập đã kết thúc.');
+    }
     final request =
         http.MultipartRequest('POST', _baseUrl.resolve('/api/v1/analyze'))
+          ..headers['authorization'] = 'Bearer $accessToken'
           ..files.add(
             http.MultipartFile.fromBytes(
               'file',
@@ -86,6 +98,15 @@ class AnalyzeApi {
   void close() {
     if (_ownsClient) _client.close();
   }
+}
+
+class _TokenSource {
+  const _TokenSource(this.value, this.provider);
+
+  final String? value;
+  final Future<String> Function()? provider;
+
+  Future<String?> read() async => value ?? await provider?.call();
 }
 
 const _maxUploadBytes = 10 * 1024 * 1024;

@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 
 from backend.config import settings
+from backend.services.resilience import CircuitOpenError, ResilientHttpClient
 
 
 class VisionError(Exception):
@@ -21,6 +22,11 @@ MIN_SIDE_CONFIDENCE = 0.80
 MAX_REASONABLE_ITEM_GRAMS = 3000.0
 MAX_REASONABLE_KCAL_PER_GRAM = 10.0
 MAX_REASONABLE_MACRO_MASS_RATIO = 1.25
+vision_http_client = ResilientHttpClient(
+    service="vision",
+    timeout_seconds=30,
+    max_concurrency=settings.vision_max_concurrency,
+)
 
 INCLUDED_ACCOMPANIMENTS = (
     "do chua",
@@ -165,12 +171,18 @@ async def identify_dish(image_path: str | Path) -> dict:
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
+    try:
+        response = await vision_http_client.post(
             f"{settings.vision_api_base}/chat/completions",
             json=request_body,
             headers=headers,
         )
+    except CircuitOpenError as exc:
+        raise VisionError("Vision API tạm ngắt để bảo vệ hệ thống") from exc
+    except httpx.HTTPStatusError as exc:
+        raise VisionError(
+            f"Vision API lỗi HTTP {exc.response.status_code}"
+        ) from exc
 
     if response.status_code != 200:
         # Do not expose provider response bodies; they may contain internal details.
@@ -216,6 +228,10 @@ async def identify_dish(image_path: str | Path) -> dict:
     result.setdefault("reasoning", None)
 
     return result
+
+
+async def close_vision_client() -> None:
+    await vision_http_client.close()
 
 
 def _as_non_negative_float(value: object) -> float:

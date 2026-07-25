@@ -9,12 +9,17 @@ import 'package:balance/features/profile/domain/user_profile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/fake_auth_gateway.dart';
+
 void main() {
   testWidgets('analysis result can be saved once and appears in journal', (
     tester,
   ) async {
-    final state = await AppState.restore(MemoryAppStorage());
-    await state.signIn(email: 'an@example.com');
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: FakeAuthGateway(),
+    );
+    await state.signIn(email: 'an@example.com', password: 'matkhau123');
     await state.completeProfile(_profile);
     final result = AnalyzeResult.fromJson({
       'dish_name': 'Bún bò Huế',

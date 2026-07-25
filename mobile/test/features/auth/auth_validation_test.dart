@@ -1,7 +1,11 @@
 import 'package:balance/app.dart';
+import 'package:balance/core/state/app_state.dart';
+import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/fake_auth_gateway.dart';
 
 void main() {
   testWidgets('login blocks empty and malformed credentials', (tester) async {
@@ -23,7 +27,11 @@ void main() {
   });
 
   testWidgets('valid credentials open profile setup', (tester) async {
-    await tester.pumpWidget(const BalanceApp());
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: FakeAuthGateway(),
+    );
+    await tester.pumpWidget(BalanceApp(appState: state));
     await tester.tap(find.text('Tôi đã có tài khoản'));
     await tester.pumpAndSettle();
 

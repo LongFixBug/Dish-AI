@@ -1,12 +1,35 @@
-"""Shared validation helpers for image upload endpoints."""
+"""Decode, bound and sanitize untrusted image uploads."""
+
+from __future__ import annotations
+
+import warnings
+from dataclasses import dataclass
+from io import BytesIO
 
 from fastapi import HTTPException, UploadFile
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 ALLOWED_IMAGE_CONTENT_TYPES = frozenset(
     {"image/jpeg", "image/png", "image/webp"}
 )
 MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024
 UPLOAD_CHUNK_BYTES = 1024 * 1024
+MAX_IMAGE_PIXELS = 20_000_000
+
+IMAGE_FORMATS = {
+    "JPEG": ("image/jpeg", ".jpg"),
+    "PNG": ("image/png", ".png"),
+    "WEBP": ("image/webp", ".webp"),
+}
+
+
+@dataclass(frozen=True)
+class SanitizedImage:
+    content: bytes
+    content_type: str
+    extension: str
+    width: int
+    height: int
 
 
 def validate_image_content_type(file: UploadFile) -> None:
@@ -37,3 +60,77 @@ async def read_upload_limited(
     if not content:
         raise HTTPException(status_code=400, detail="File ảnh rỗng.")
     return bytes(content)
+
+
+def validate_and_sanitize_image(
+    content: bytes,
+    declared_content_type: str | None,
+    *,
+    max_pixels: int = MAX_IMAGE_PIXELS,
+) -> SanitizedImage:
+    """Decode once, enforce pixel limits and re-encode without metadata."""
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(BytesIO(content)) as source:
+                image_format = (source.format or "").upper()
+                if image_format not in IMAGE_FORMATS:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP.",
+                    )
+                expected_type, extension = IMAGE_FORMATS[image_format]
+                if declared_content_type != expected_type:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Định dạng khai báo không khớp nội dung ảnh.",
+                    )
+                width, height = source.size
+                if width <= 0 or height <= 0 or width * height > max_pixels:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Ảnh có độ phân giải quá lớn.",
+                    )
+                source.load()
+                sanitized = ImageOps.exif_transpose(source)
+                width, height = sanitized.size
+                output = BytesIO()
+                if image_format == "JPEG":
+                    sanitized.convert("RGB").save(
+                        output,
+                        format="JPEG",
+                        quality=90,
+                        optimize=True,
+                    )
+                elif image_format == "PNG":
+                    mode = "RGBA" if "A" in sanitized.getbands() else "RGB"
+                    sanitized.convert(mode).save(output, format="PNG", optimize=True)
+                else:
+                    mode = "RGBA" if "A" in sanitized.getbands() else "RGB"
+                    sanitized.convert(mode).save(
+                        output,
+                        format="WEBP",
+                        quality=90,
+                        method=4,
+                    )
+    except HTTPException:
+        raise
+    except (
+        UnidentifiedImageError,
+        OSError,
+        ValueError,
+        Image.DecompressionBombError,
+        Image.DecompressionBombWarning,
+    ) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="File tải lên không phải ảnh hợp lệ.",
+        ) from exc
+
+    return SanitizedImage(
+        content=output.getvalue(),
+        content_type=expected_type,
+        extension=extension,
+        width=width,
+        height=height,
+    )

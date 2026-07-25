@@ -1,6 +1,6 @@
 # FoodAI — Bộ câu hỏi phỏng vấn kỹ thuật và cách trả lời thông minh
 
-> Tài liệu mô phỏng phỏng vấn dựa trên code FoodAI tại ngày 24/07/2026.
+> Tài liệu mô phỏng phỏng vấn dựa trên code FoodAI tại ngày 25/07/2026.
 > Mục tiêu là giúp bạn **giải thích đúng điều mình đã làm**, không phóng đại những phần
 > project chưa có.
 
@@ -46,13 +46,15 @@ Câu thứ hai mạnh hơn vì có cơ chế, invariant, con số và giới h�
 | Hạng mục | Giá trị hiện tại |
 | --- | --- |
 | Backend | FastAPI, Python async |
+| Auth | Argon2id, JWT access 15 phút, rotating refresh 30 ngày |
 | Database chính | PostgreSQL port 5432 |
 | Semantic index | Qdrant port 6333 |
+| Production rate limit | Redis; analyze 10/phút, vision-only 3/phút |
 | Embedding | Qwen3-Embedding-0.6B qua llama.cpp port 8081 |
 | Vector size | 1.024 |
 | Similarity | Cosine, threshold 0,75 |
 | Local CV | EfficientNet-B0, input 224×224 |
-| Local production threshold | 0,85 |
+| Local serving threshold | default legacy 0,85; release lấy từ manifest |
 | Vision | Qwen Vision cloud, tối đa 3 menu item |
 | Vision main/side threshold | 0,55 / 0,80 |
 | Local classes | 8 |
@@ -66,7 +68,13 @@ Câu thứ hai mạnh hơn vì có cơ chế, invariant, con số và giới h�
 | Validation accuracy gần nhất | 61,21% |
 | Class validation yếu nhất | `ha_cao`, 42,11% |
 | Upload limit | 10 MB, JPEG/PNG/WebP |
+| Pixel limit | 20 triệu pixel, decode thật và strip EXIF |
 | Mobile API timeout | 90 giây |
+| `vn_dishes` có weight | 816/816; 652 estimate confidence <0,5 |
+| Backend test gần nhất | 170 pass, coverage CI 85,05% |
+| Flutter test gần nhất | 41 pass; `flutter analyze` sạch |
+| Alembic head | `0012_production_hardening` |
+| Model release | Test split độc lập + manifest/checksum; hiện chưa pass |
 
 Không cần đọc hết bảng trong phỏng vấn. Hãy dùng đúng con số khi interviewer hỏi sâu.
 
@@ -81,7 +89,8 @@ và ownership.
 
 > FoodAI là hệ thống nhận diện món Việt từ ảnh và ước tính dinh dưỡng. Mobile Flutter
 > gửi ảnh đến FastAPI. Backend thử EfficientNet-B0 local trước; chỉ khi confidence từ
-> 0,85 và catalog có đủ nutrition lẫn serving weight thì dùng fast-path. Các trường hợp
+> serving threshold của checkpoint và catalog có đủ nutrition lẫn serving weight thì dùng
+> fast-path. Checkpoint legacy mặc định 0,85. Các trường hợp
 > còn lại fallback sang Qwen Vision để nhận diện món ngoài tập class hoặc combo nhiều
 > món. Tên món được reconcile với PostgreSQL, có Qdrant semantic fallback, nhưng
 > PostgreSQL luôn là source of truth. Cuối cùng calorie và macro được tính bằng Python
@@ -101,10 +110,12 @@ và ownership.
 
 > Em làm và kiểm chứng luồng phân tích ảnh end-to-end: cấu trúc dataset, fine-tune model
 > local, logic CV-first/Vision-fallback, lookup catalog, tính nutrition, candidate review
-> và kết nối Flutter multipart API. Với những phần em dùng công cụ hỗ trợ để xây nhanh,
+> và kết nối Flutter multipart API. Em cũng hoàn thiện auth/token rotation, secure upload,
+> rate limit, observability, feedback retention, CI/container và model release gate. Với
+> những phần em dùng công cụ hỗ trợ để xây nhanh,
 > em vẫn đọc lại source, viết test và có thể giải thích các invariant chính. Những phần
-> như auth, diary persistence và recommendation production hiện chưa hoàn thiện, nên em
-> không xem chúng là feature đã xong.
+> như email verification/password reset, diary cloud sync và recommendation model chưa
+> hoàn thiện, nên em không xem chúng là feature đã xong.
 
 Không nói “em làm tất cả” nếu không thể sửa một bug trực tiếp trước mặt interviewer.
 
@@ -117,10 +128,11 @@ Không nói “em làm tất cả” nếu không thể sửa một bug trực t
 
 ### Câu 4: “Đây là demo AI hay một hệ thống phần mềm?”
 
-> Phần model vẫn ở mức prototype do dataset nhỏ, nhưng kiến trúc là một hệ thống phần
-> mềm end-to-end: có mobile client, upload validation, API schema, async database,
-> semantic index, model serving, fallback, human review, migration và test. Em sẽ gọi nó
-> là engineering prototype, chưa gọi là production medical-grade product.
+> Phần model vẫn ở mức prototype do dataset nhỏ và chưa pass release gate, nhưng phần mềm
+> đã có mobile client, auth, secure upload, async database, semantic index, fallback,
+> human review, migration, observability, CI security scan và runbook. Em gọi nó là
+> production-hardened engineering prototype, chưa phải production deployment hay sản phẩm
+> medical-grade.
 
 ### Câu 5: “Tại sao chọn món Việt?”
 
@@ -141,9 +153,10 @@ Không nói “em làm tất cả” nếu không thể sửa một bug trực t
 ### Câu 7: “Hãy mô tả luồng một request phân tích ảnh.”
 
 > Flutter đọc ảnh thành bytes và gửi multipart field `file` đến
-> `/api/v1/analyze`. FastAPI kiểm tra MIME, giới hạn 10 MB, làm sạch filename và ghi file
+> `/api/v1/analyze` kèm Bearer JWT. Middleware áp rate limit; FastAPI đọc tối đa 10 MB,
+> decode JPEG/PNG/WebP thật, giới hạn pixel, strip EXIF rồi ghi ảnh đã sanitize vào file
 > tạm. Nếu local model đã load, inference chạy trong worker thread. Kết quả chỉ được dùng
-> trực tiếp khi confidence ≥0,85 và PostgreSQL có record với nutrition cùng
+> trực tiếp khi confidence đạt serving threshold và PostgreSQL có record với nutrition cùng
 > `typical_grams`. Nếu không, backend gọi Vision. Mỗi menu item Vision được lookup exact,
 > semantic khi phù hợp, rồi dùng nutrition DB hoặc estimate Vision nếu chưa có. Python
 > cộng totals, API trả Pydantic response, mobile parse thành domain object và chuyển sang
@@ -252,16 +265,16 @@ Không nói “em làm tất cả” nếu không thể sửa một bug trực t
 
 ### Câu 21: “Upload được bảo vệ thế nào?”
 
-> Backend allowlist JPEG/PNG/WebP, đọc từng chunk 1 MB và dừng khi vượt 10 MB, chặn file
-> rỗng, sanitize tên và thêm UUID. File tạm xóa trong `finally`. Hạn chế hiện tại là MIME
-> do client gửi chưa đủ để chứng minh nội dung thật; production nên decode ảnh, kiểm tra
-> magic bytes, giới hạn pixel để tránh decompression bomb và lưu ngoài app filesystem.
+> Backend allowlist JPEG/PNG/WebP, đọc chunk 1 MB và dừng khi vượt 10 MB, rồi dùng Pillow
+> decode nội dung thật. Code đối chiếu format với MIME, giới hạn 20 triệu pixel, chặn
+> decompression bomb, áp EXIF orientation và re-encode để strip metadata. File tạm dùng
+> UUID + extension từ decoder và luôn xóa trong `finally`.
 
 ### Câu 22: “Có path traversal không?”
 
-> Code dùng `Path(filename).name` để bỏ thư mục, chỉ giữ ký tự an toàn và tự thêm UUID.
-> Vì vậy tên như `../../secret` không điều khiển đường dẫn. Em vẫn không dùng tên client
-> làm identifier chính.
+> Sau khi decode, code không dùng filename client trong đường dẫn tạm; chỉ dùng UUID và
+> extension suy từ format thật. Vì vậy `../../secret` không thể điều khiển path. Feedback
+> object key cũng được tạo server-side và filesystem backend từ chối absolute path/`..`.
 
 ### Câu 23: “Tại sao timeout mobile là 90 giây, Vision là 30 giây?”
 
@@ -280,8 +293,9 @@ Không nói “em làm tất cả” nếu không thể sửa một bug trực t
 
 > Đơn giản cho prototype và cả local CV lẫn Vision client đều nhận path. Khi chạy nhiều
 > replica/container, local disk không phù hợp cho dữ liệu cần giữ; nhưng ảnh analyze chỉ
-> sống trong request và được xóa. Production có thể decode từ bytes, dùng temp volume hoặc
-> object storage cho feedback cần lưu lâu.
+> sống trong request và được xóa. Feedback cần giữ lâu không dùng temp path: code đã có
+> abstraction filesystem local/S3 production, metadata retention trong PostgreSQL và
+> delete endpoint theo owner.
 
 ## 6. PostgreSQL và mô hình dữ liệu
 
@@ -542,54 +556,56 @@ Không nói “em làm tất cả” nếu không thể sửa một bug trực t
 ### Câu 65: “Checkpoint lưu những gì?”
 
 > Epoch, architecture, model state, optimizer state, scheduler state, validation accuracy,
-> class list và history. `best_model.pth` là contract serving ổn định; file epoch giữ để
-> debug. Class list nằm trong checkpoint bảo đảm index output map đúng tên khi inference;
-> mapping file ngoài chỉ là fallback legacy.
+> class list, history, model version, recommended threshold và quality metrics. File epoch
+> giữ để debug. Serving cần thêm manifest chứa checksum SHA-256, dataset fingerprint,
+> evaluation split và kết quả gate; class mapping ngoài chỉ là fallback legacy.
 
 ### Câu 66: “Tại sao lưu best theo validation accuracy, không lấy epoch cuối?”
 
-> Epoch cuối có thể overfit. Best validation giữ checkpoint tổng quát hơn theo metric đang
-> chọn. Điểm hạn chế là accuracy tổng có thể che class yếu; lựa chọn tốt hơn về sau là
-> macro-F1 hoặc objective gồm worst-class accuracy tùy yêu cầu sản phẩm.
+> Epoch cuối có thể overfit, nên validation vẫn cần để chọn experiment. Nhưng validation
+> đã tham gia quyết định model nên không được dùng làm bằng chứng phát hành. Code hiện chỉ
+> promote sau evaluation trên test split độc lập và gate gồm accuracy, macro-F1,
+> worst-class, ECE, selective accuracy và coverage.
 
 ### Câu 67: “Kết quả model hiện tại thế nào?”
 
 > Run gần nhất có validation accuracy 61,21% trên 165 ảnh; train accuracy 63,11%.
 > `ha_cao` thấp nhất 42,11%, trong khi `com_tam` 80%. Em không xem 61% là production-ready;
-> nó lý giải ngưỡng fast-path 0,85 và Vision fallback. Bước tiếp theo là dữ liệu ngoài tập
-> train, confusion matrix, macro-F1 và calibration.
+> thư mục test hiện có 0 ảnh và chưa có approved manifest. Vì vậy API image production
+> mặc định tắt CV; muốn bật phải có checkpoint test-gated trong image `Dockerfile.cv`.
 
 ### Câu 68: “Train và val gần nhau có nghĩa model tốt không?”
 
 > Chỉ cho thấy chưa có khoảng generalization gap lớn trên split hiện tại. Nó không chứng
-> minh data đại diện hay không leakage. Dataset nhỏ, split feedback theo thứ tự file và
-> chưa có test set độc lập; hai metric gần nhau vẫn có thể cùng thấp hoặc cùng biased.
+> minh data đại diện hay không leakage. Dataset nhỏ và test split chưa có ảnh; hai metric
+> gần nhau vẫn có thể cùng thấp hoặc cùng biased.
 
 ### Câu 69: “Accuracy có đủ không?”
 
 > Không. Dataset lệch class nên cần macro precision/recall/F1, per-class recall, confusion
 > matrix, top-k và calibration. Với routing threshold còn cần selective accuracy: trong
-> nhóm prediction confidence ≥0,85, tỷ lệ đúng là bao nhiêu và coverage bao nhiêu.
+> nhóm prediction đạt serving threshold, tỷ lệ đúng là bao nhiêu và coverage bao nhiêu.
 
 ### Câu 70: “Em chọn threshold 0,85 như thế nào?”
 
-> Hiện nó là threshold bảo thủ trong code, chưa được calibration chính thức trên test set.
-> Cách đúng là vẽ risk–coverage curve: mỗi threshold đo local accuracy trên request được
-> nhận, tỷ lệ request phải gọi cloud, latency và cost. Sau đó chọn theo SLA/cost thay vì
-> cảm tính.
+> 0,85 là fallback cho checkpoint legacy. Training đã tính ECE, risk–coverage và
+> recommended threshold, nhưng threshold chỉ đáng tin để serving sau khi lặp lại trên test
+> độc lập và manifest pass. Mỗi threshold phải cân selective accuracy, coverage, latency
+> và cloud cost thay vì chọn theo cảm tính.
 
 ### Câu 71: “Overfitting được giảm bằng gì?”
 
 > Transfer learning, augmentation, dropout 0,3, AdamW/weight decay và chọn best validation.
 > Nhưng biện pháp mạnh nhất vẫn là dữ liệu đa dạng và test độc lập. Code chưa có early
-> stopping; 18 epoch cố định và best checkpoint hạn chế tác hại nhưng vẫn tốn compute.
+> stopping; 18 epoch cố định và checkpoint theo epoch giúp chọn lại experiment, nhưng chỉ
+> test gate mới quyết định serving.
 
 ### Câu 72: “Data leakage có thể xảy ra ở đâu?”
 
 > Ảnh trùng/near-duplicate giữa train và val, ảnh cùng video burst chia sang hai bên, hoặc
-> background đặc trưng cho class. Script feedback hiện sort file rồi chia 80/20, chưa hash
-> perceptual và group split. Em sẽ deduplicate, group theo nguồn/user/session rồi split,
-> giữ test set bất biến.
+> background đặc trưng cho class. Script feedback local legacy sort file rồi chia 80/20,
+> chưa hash perceptual/group split và chưa nối storage mới. Importer production phải chỉ
+> lấy approved feedback, deduplicate, group theo nguồn/user/session và giữ test set bất biến.
 
 ### Câu 73: “Nếu thêm class mới thì sao?”
 
@@ -599,9 +615,11 @@ Không nói “em làm tất cả” nếu không thể sửa một bug trực t
 
 ### Câu 74: “Feedback có train online không?”
 
-> Không. Endpoint lưu ảnh + nhãn vào feedback, script split rồi retrain theo batch. Online
-> update sau một ảnh dễ overfit, poisoning và không reproduce. Trước retrain cần review
-> label, version dataset, benchmark và mới promote checkpoint.
+> Không. Endpoint yêu cầu user đăng nhập và consent, sanitize ảnh, lưu object S3/filesystem
+> cùng metadata `pending`, owner và retention. Feedback không tự đi vào dataset; schema có
+> trạng thái review nhưng admin review/import flow hiện chưa hoàn chỉnh. Sau khi bổ sung
+> bước đó, batch training vẫn phải qua independent-test gate; user có thể xóa submission
+> của chính mình.
 
 ## 10. Inference local
 
@@ -679,9 +697,9 @@ Không nói “em làm tất cả” nếu không thể sửa một bug trực t
 ### Câu 86: “Mobile được tổ chức thế nào?”
 
 > Theo feature: auth, onboarding, dashboard, analyze, suggestions; core chứa theme/config/
->widget dùng chung. Analyze tách presentation, data API và domain parser. Với quy mô hiện
-> tại state cục bộ và `MaterialPageRoute` đủ đơn giản; khi auth/diary phức tạp mới cần
-> router và state management tập trung.
+> widget dùng chung. `AppState` + `AppScope` giữ session/profile/diary/preferences tập
+> trung; auth và analyze tách API gateway khỏi presentation/domain. `MaterialPageRoute`
+> vẫn đủ đơn giản ở quy mô hiện tại, chưa cần router framework lớn.
 
 ### Câu 87: “Tại sao inject `pickImage` và `analyzeImage`?”
 
@@ -703,32 +721,50 @@ Không nói “em làm tất cả” nếu không thể sửa một bug trực t
 
 ### Câu 90: “Có integration bug nào em đã nhận ra?”
 
-> Mobile có thể gắn MIME HEIC cho ảnh iPhone, trong khi backend allowlist chỉ JPEG/PNG/WebP.
-> Vì vậy cần convert HEIC sang JPEG hoặc hỗ trợ decode HEIC có validation. Android debug
-> cho HTTP cleartext, nhưng production nên HTTPS. Nêu được điểm này chứng minh em kiểm tra
-> contract hai đầu, không chỉ từng module riêng.
+> Em từng thấy hai lỗi biên đáng chú ý: HEIC từ iPhone không nằm trong contract backend và
+> nhiều request đồng thời có thể cùng refresh một token xoay vòng. Mobile hiện chặn HEIC
+> sớm với thông báo rõ, còn `AppState` dùng một `_refreshInFlight` chung. Release build cũng
+> fail nếu `API_BASE_URL` không phải HTTPS.
 
 ### Câu 91: “Các screen đều đã nối backend chưa?”
 
-> Chưa nối hết backend. Analyze là luồng backend thật; auth là session demo cục bộ. Hồ sơ,
-> nhật ký, dashboard và sở thích đã persist trên thiết bị, nhưng chưa có token, cloud sync
-> hoặc recommendation model phía server.
+> Auth và Analyze đã nối backend thật. Register/login nhận JWT access + refresh token;
+> refresh xoay vòng và logout revoke token. Hồ sơ, nhật ký, dashboard và preferences vẫn
+> persist trong secure storage trên thiết bị, chưa cloud sync. Suggestions vẫn là rule
+> local, không phải recommendation model đã được train/evaluate.
+
+### Câu 91A: “Auth được thiết kế thế nào?”
+
+> Password được hash Argon2id; login dùng dummy hash khi email không tồn tại để giảm timing
+> leak. Access JWT HS256 sống 15 phút, kiểm issuer/audience/expiry/role. Refresh token là
+> chuỗi opaque 30 ngày, database chỉ giữ SHA-256; mỗi refresh lock row, revoke token cũ và
+> phát cặp mới. Analyze và feedback dùng `require_user`; dependency `require_admin` đã có
+> nhưng hiện chưa được gắn vào một admin HTTP workflow hoàn chỉnh.
+
+### Câu 91B: “Tại sao mobile phải single-flight refresh?”
+
+> Refresh token xoay vòng chỉ dùng hợp lệ một lần. Nếu hai request cùng thấy access token
+> sắp hết hạn và cùng refresh, request sau có thể dùng token đã bị revoke. `_refreshInFlight`
+> cho mọi caller chờ cùng một Future, giống nhiều người dùng chung một lượt đổi vé thay vì
+> mỗi người tự mang cùng vé cũ ra quầy.
 
 ## 13. Testing và evaluation
 
 ### Câu 92: “Em test những gì?”
 
 > Backend test các nhánh CV/DB/Vision, candidate lifecycle, nutrition basis, serving
-> adjustment, accent normalization, Qdrant UUID resolution, semantic guard, upload limit,
-> Alembic và eval report. Mobile test multipart contract, JSON parser, loading/error,
-> navigation, widget và golden screen.
+> adjustment, Qdrant UUID resolution, upload decode, auth security, token rotation, rate
+> limit, readiness, observability, object storage, resilience, Alembic và model registry.
+> Mobile test auth API/validation, refresh race, sign-out isolation, multipart, parser,
+> widget và golden screen. Lần gần nhất backend 170 pass/85,05% coverage; Flutter 41 pass.
 
 ### Câu 93: “Mock quá nhiều có làm test vô nghĩa không?”
 
 > Mock giúp kiểm branch và invariant nhanh nhưng không chứng minh service thật tương thích.
 > Vì vậy cần cả unit test, integration test với PostgreSQL/Qdrant/embedding test container,
-> contract test Vision response và end-to-end mobile–API. Project hiện mạnh hơn ở unit/
->component tests, production cần bổ sung integration CI.
+> contract test Vision response và end-to-end mobile–API. CI hiện đã chạy PostgreSQL,
+> Qdrant, Alembic/seed/audit, backend/mobile tests, Docker smoke test, pip-audit và Trivy;
+> khoảng trống còn lại là live provider E2E và staging deployment test.
 
 ### Câu 94: “Test quan trọng nhất là test nào?”
 
@@ -758,49 +794,54 @@ Không nói “em làm tất cả” nếu không thể sửa một bug trực t
 
 ### Câu 98: “Rủi ro bảo mật lớn nhất hiện tại?”
 
-> Chưa có auth/rate limit, Vision API là dependency có chi phí, MIME validation chưa decode
-> nội dung, HTTP local cleartext và feedback label có thể bị poisoning nếu mở công khai.
-> Trước production em sẽ thêm auth, quota, request size/pixel validation, secret manager,
-> HTTPS, audit log và moderation/review feedback.
+> Auth/rate limit/secure decode đã có. Rủi ro còn lại lớn nhất là vận hành: secret thật và
+> hạ tầng private chưa được cấu hình trong repo, chưa có email verification/password reset,
+> feedback sẽ có nguy cơ poisoning nếu approval flow review yếu, và model chưa pass release
+> gate. Production config fail fast với secret placeholder, memory limiter, local DB hoặc
+> filesystem object storage.
 
 ### Câu 99: “Có lộ Vision API key cho mobile không?”
 
-> Không nên. Mobile chỉ gọi FastAPI; key ở backend settings/.env. Nếu nhúng key cloud vào
-> app, người dùng có thể extract và dùng quota. Backend làm proxy có kiểm soát và nơi áp
-> rate limit.
+> Không. Mobile chỉ gọi FastAPI; key ở backend settings/secret manager. Nếu nhúng key cloud
+> vào app, người dùng có thể extract và dùng quota. Backend áp auth, rate limit và không
+> đưa provider error body thẳng về client.
 
 ### Câu 100: “Log có được ghi ảnh hoặc secret không?”
 
-> Code tránh expose provider response body trong Vision HTTP error vì có thể chứa chi tiết
-> nội bộ. Ảnh analyze là file tạm. Production cần tiếp tục tránh log base64/authorization,
-> gắn request ID và đặt retention cho feedback vì ảnh có thể là dữ liệu cá nhân.
+> JSON formatter gắn request ID, redact Bearer token/API-key pattern và không log base64
+> ảnh. Ảnh analyze là file tạm đã strip EXIF; feedback có object key, consent và retention.
+> Vẫn cần cấu hình log retention/access control ở nền tảng deploy vì application code không
+> tự thay thế chính sách vận hành.
 
 ### Câu 101: “Data poisoning xảy ra thế nào?”
 
-> User có thể gửi ảnh phở nhưng label bánh xèo. Nếu tự train mọi feedback, model bị nhiễm.
-> Pipeline hiện chỉ lưu offline; cần review, anomaly detection, nguồn user, minimum sample,
-> dataset version và approval trước training/promotion.
+> User có thể gửi ảnh phở nhưng label bánh xèo. Submission hiện gắn owner, consent và trạng
+> thái `pending`; không được tự vào training. Admin review/import hiện là khoảng trống cần
+> bổ sung cùng anomaly/duplicate checks, dataset version/fingerprint và independent-test
+> gate trước promotion.
 
 ### Câu 102: “Nếu cùng lúc nhiều request upload?”
 
-> UUID tránh ghi đè file. Async I/O giúp chờ network, nhưng inference concurrency có thể
-> quá tải. Cần semaphore/backpressure, giới hạn queue, per-user rate limit và theo dõi
-> memory. Candidate upsert đã atomic ở DB.
+> UUID tránh ghi đè file; per-user/IP rate limit chặn burst. Vision và embedding có
+> semaphore bulkhead, pooled HTTP client, retry/backoff và circuit breaker. Local PyTorch
+> vẫn chạy qua thread nên khi scale lớn cần tách bounded model workers/queue; candidate
+> upsert đã atomic ở DB.
 
 ### Câu 103: “Làm sao quan sát hệ thống?”
 
-> Hiện có log và health cơ bản nhưng chưa đủ. Em sẽ thêm structured log với request ID,
-> metric latency từng stage, local fast-path rate, Vision fallback/error rate, Qdrant miss,
-> candidate rate, model confidence distribution, DB pool saturation và cost per request.
+> Code có JSON log + request ID, `/live`, dependency-aware `/ready` và Prometheus `/metrics`
+> có token. Metrics hiện đo HTTP count/latency/in-progress, external call count/latency và
+> analyze outcome theo source. Hạ tầng deploy vẫn cần scrape, dashboard và alert cho p95,
+> error rate, readiness, Vision cost, DB pool và model-quality drift.
 
 ## 15. Scale và production
 
 ### Câu 104: “Nếu traffic tăng 100 lần, bottleneck ở đâu?”
 
 > Vision latency/quota, local model inference, embedding call và DB/Qdrant connection là
-> ứng viên chính. Trước khi tách service, em sẽ trace p50/p95 từng stage. Sau đó cache exact
-> lookup/embedding, batch inference, giới hạn concurrency, tách model worker và autoscale
-> theo queue/GPU utilization.
+> ứng viên chính. Vision/embedding đã có concurrency cap, retry và circuit breaker; rate
+> limit dùng Redis giữa replica. Bước tiếp theo là trace p50/p95 từng stage, cache exact/
+> embedding, tách bounded model worker, batch inference và autoscale theo queue/GPU.
 
 ### Câu 105: “Có cache được không?”
 
@@ -817,10 +858,11 @@ Không nói “em làm tất cả” nếu không thể sửa một bug trực t
 
 ### Câu 107: “Deploy model version mới an toàn ra sao?”
 
-> Version checkpoint, class mapping, preprocessing và metric cùng nhau; chạy offline eval,
-> shadow traffic hoặc canary, theo dõi risk–coverage và rollback bằng model registry/alias.
-> Chỉ copy đè `best_model.pth` rồi restart mọi replica là đủ cho local demo nhưng chưa đủ
-> cho production.
+> `cv_release.py` đánh giá test split độc lập rồi tạo checkpoint + manifest gồm version,
+> classes, threshold, metrics, dataset fingerprint và SHA-256. `promote_model.py` chỉ nhận
+> manifest pass và thay serving files atomically. `Dockerfile.cv` kiểm contract này khi
+> build; deploy nên canary, theo dõi quality/latency và rollback về release đã duyệt trước.
+> Validation metric một mình không bao giờ được promote.
 
 ### Câu 108: “Làm sao giảm chi phí Vision?”
 
@@ -881,8 +923,9 @@ Bạn có thể thay bằng bug thật mình từng trực tiếp sửa. Cần n
 ### Câu 115: “Feature tiếp theo ưu tiên gì?”
 
 > Không ưu tiên thêm screen. Em ưu tiên đóng vòng chất lượng: test set độc lập, confusion
-> matrix/calibration, review candidate/feedback, portion confirmation UI và diary persistence.
-> Những phần này biến demo thành sản phẩm đo được hơn là chỉ tăng bề rộng giao diện.
+> matrix/calibration, thêm dữ liệu class yếu, review candidate/feedback và portion
+> confirmation UI. Sau đó mới làm email recovery và diary cloud sync. Những phần này biến
+> prototype thành sản phẩm đo được hơn là chỉ tăng bề rộng giao diện.
 
 ### Câu 116: “Em học được gì?”
 
@@ -895,14 +938,15 @@ Bạn có thể thay bằng bug thật mình từng trực tiếp sửa. Cần n
 ### “Project dùng ResNet50 đúng không?”
 
 > Project có checkpoint ResNet50 lịch sử, nhưng serving/training hiện tại dùng
-> EfficientNet-B0. Em lấy source `ARCH="efficientnet_b0"` và `best_model.pth` hiện tại làm
-> chuẩn, không lấy ghi chú cũ.
+> EfficientNet-B0. Em lấy source `ARCH="efficientnet_b0"` làm chuẩn; production còn yêu
+> cầu checkpoint đó có approved manifest, không suy từ tên file lịch sử.
 
 ### “Validation 61% mà em gọi model tốt?”
 
 > Em không gọi nó production-ready. Nó là baseline có hoạt động và có per-class metric.
-> Kiến trúc dùng selective routing để chỉ nhận prediction confidence rất cao, còn lại
-> fallback. Em vẫn cần test set và calibration để chứng minh fast-path accuracy.
+> Kiến trúc có selective routing và Vision fallback, nhưng test split hiện trống nên local
+> CV production mặc định tắt. Chỉ model có independent-test manifest pass mới được đóng
+> gói vào CV image.
 
 ### “Qdrant là source of truth phải không?”
 
@@ -915,8 +959,8 @@ Bạn có thể thay bằng bug thật mình từng trực tiếp sửa. Cần n
 
 ### “Có auth và recommendation rồi chứ?”
 
-> Screen đã có nhưng backend production chưa có. Em phân biệt UI prototype với capability
-> end-to-end.
+> Auth đã end-to-end với Argon2id, JWT và rotating refresh token. Recommendation chưa có
+> model; suggestion hiện là rule local. Profile/diary cũng chưa cloud sync.
 
 ### “Đây là object detection à?”
 
@@ -940,8 +984,8 @@ Bạn có thể thay bằng bug thật mình từng trực tiếp sửa. Cần n
 | --- | --- |
 | “Model chính xác 95%” khi không có report | “Val 61,21%; fast-path cần calibration riêng” |
 | “Qdrant đảm bảo kết quả đúng” | “Qdrant đề xuất candidate, PostgreSQL xác nhận record” |
-| “AI tự học từ user” | “Feedback lưu offline, review rồi retrain có version” |
-| “App hoàn thiện full-stack” | “Analyze end-to-end; auth/diary/suggestion còn prototype” |
+| “AI tự học từ user” | “Feedback pending có consent; phải review/import rồi retrain có version” |
+| “App hoàn thiện production” | “Auth/analyze đã end-to-end; model gate, hạ tầng deploy, diary sync và recommendation còn thiếu” |
 | “Em chọn vì công nghệ này hot” | Nêu constraint, trade-off và benchmark cần làm |
 | “LLM hiểu nutrition” | Nêu rõ DB basis và phép toán deterministic |
 | “Không có lỗi vì đã test” | Nêu phạm vi test và khoảng trống integration/production |
@@ -982,9 +1026,10 @@ Mẫu trả lời khi chưa biết:
 **Bạn:**
 
 > Accuracy toàn bộ và confidence threshold là hai khái niệm khác. Router chỉ nhận subset
-> confidence cao, kỳ vọng selective accuracy cao hơn nhưng coverage thấp hơn. Hiện em chưa
-> có risk–coverage calibration chính thức, nên 0,85 là ngưỡng bảo thủ. Bước đúng là đo
-> accuracy của subset theo threshold trên test set, đồng thời tính cloud cost.
+> confidence cao, kỳ vọng selective accuracy cao hơn nhưng coverage thấp hơn. Training đã
+> tính risk–coverage trên validation, nhưng chưa có test split để xác nhận; 0,85 chỉ là
+> fallback legacy. Model vì vậy chưa được promote. Bước đúng là đo lại subset accuracy trên
+> test độc lập, đồng thời tính cloud cost.
 
 **Interviewer:** Weighted loss có thể làm accuracy tổng giảm không?
 

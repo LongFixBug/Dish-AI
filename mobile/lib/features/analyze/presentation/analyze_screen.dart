@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/core/widgets/food_photo.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
@@ -45,9 +46,12 @@ class _AnalyzeScreenState extends State<AnalyzeScreen> {
   bool _loading = false;
 
   @override
-  void initState() {
-    super.initState();
-    if (widget.analyzeImage == null) _api = AnalyzeApi();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.analyzeImage == null && _api == null) {
+      final state = AppScope.maybeOf(context);
+      _api = AnalyzeApi(accessTokenProvider: state?.validAccessToken);
+    }
   }
 
   @override

@@ -4,13 +4,17 @@ The query path uses the same model as ``scripts/reindex_qdrant.py`` so query
 and catalog vectors remain in the same semantic space.
 """
 
-import httpx
-
 from backend.config import settings
+from backend.services.resilience import ResilientHttpClient
 
 
 EMBEDDING_API = f"{settings.embedding_url}/v1/embeddings"
 TIMEOUT = 30.0
+embedding_http_client = ResilientHttpClient(
+    service="embedding",
+    timeout_seconds=TIMEOUT,
+    max_concurrency=settings.embedding_max_concurrency,
+)
 
 
 async def embed_query(text: str) -> list[float]:
@@ -19,12 +23,14 @@ async def embed_query(text: str) -> list[float]:
     Raises:
         httpx.HTTPError: The embedding server is unavailable or rejects the request.
     """
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            EMBEDDING_API,
-            json={"input": [text], "model": settings.embedding_model},
-            timeout=TIMEOUT,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["data"][0]["embedding"]
+    response = await embedding_http_client.post(
+        EMBEDDING_API,
+        json={"input": [text], "model": settings.embedding_model},
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data["data"][0]["embedding"]
+
+
+async def close_embedding_client() -> None:
+    await embedding_http_client.close()

@@ -6,6 +6,10 @@ __pycache__
 *.pyc
 backups
 checkpoints
+!checkpoints/
+checkpoints/*
+!checkpoints/best_model.pth
+!checkpoints/best_model.manifest.json
 data
 models
 uploads

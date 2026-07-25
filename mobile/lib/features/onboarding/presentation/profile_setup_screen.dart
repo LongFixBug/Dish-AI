@@ -22,6 +22,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   String _gender = 'Nam';
   String _activity = 'Vừa phải';
   String _goal = 'Giảm cân';
+  String _allergies = '';
+  String _medicalConditions = '';
   bool _saving = false;
   bool _initialized = false;
 
@@ -39,6 +41,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     _gender = profile.gender;
     _activity = profile.activity;
     _goal = profile.goal;
+    _allergies = profile.allergies.join(', ');
+    _medicalConditions = profile.medicalConditions.join(', ');
   }
 
   void _changeInt(ValueSetter<int> setter, int value, int min, int max) {
@@ -78,6 +82,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             gender: _gender,
             activity: _activity,
             goal: _goal,
+            allergies: _commaSeparatedValues(_allergies),
+            medicalConditions: _commaSeparatedValues(_medicalConditions),
           ),
         );
       }
@@ -166,6 +172,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         onSelected: (value) => setState(() => _goal = value),
         onWeightChanged: (value) =>
             _changeInt((next) => _targetWeight = next, value, 35, 180),
+        allergies: _allergies,
+        medicalConditions: _medicalConditions,
+        onAllergiesChanged: (value) => _allergies = value,
+        onMedicalConditionsChanged: (value) => _medicalConditions = value,
       ),
     };
   }
@@ -341,12 +351,20 @@ class _GoalStep extends StatelessWidget {
     required this.targetWeight,
     required this.onSelected,
     required this.onWeightChanged,
+    required this.allergies,
+    required this.medicalConditions,
+    required this.onAllergiesChanged,
+    required this.onMedicalConditionsChanged,
   });
 
   final String selected;
   final int targetWeight;
   final ValueChanged<String> onSelected;
   final ValueChanged<int> onWeightChanged;
+  final String allergies;
+  final String medicalConditions;
+  final ValueChanged<String> onAllergiesChanged;
+  final ValueChanged<String> onMedicalConditionsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -386,7 +404,41 @@ class _GoalStep extends StatelessWidget {
           onDecrement: () => onWeightChanged(targetWeight - 1),
           onIncrement: () => onWeightChanged(targetWeight + 1),
         ),
+        const SizedBox(height: 24),
+        TextFormField(
+          key: const ValueKey('profile-allergies'),
+          initialValue: allergies,
+          maxLength: 300,
+          decoration: const InputDecoration(
+            labelText: 'Dị ứng thực phẩm (nếu có)',
+            hintText: 'Ví dụ: hải sản, đậu phộng',
+          ),
+          onChanged: onAllergiesChanged,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          key: const ValueKey('profile-medical-conditions'),
+          initialValue: medicalConditions,
+          maxLength: 300,
+          decoration: const InputDecoration(
+            labelText: 'Bệnh nền liên quan dinh dưỡng (nếu có)',
+            hintText: 'Ví dụ: tiểu đường, tăng huyết áp',
+          ),
+          onChanged: onMedicalConditionsChanged,
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Balance chỉ dùng thông tin này để hiển thị cảnh báo an toàn; không '
+          'thay thế chẩn đoán hoặc tư vấn y tế.',
+          style: TextStyle(fontSize: 12),
+        ),
       ],
     );
   }
 }
+
+List<String> _commaSeparatedValues(String raw) => raw
+    .split(',')
+    .map((value) => value.trim())
+    .where((value) => value.isNotEmpty)
+    .toList(growable: false);

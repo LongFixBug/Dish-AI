@@ -35,19 +35,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
     setState(() => _submitting = true);
     try {
-      await AppScope.of(
-        context,
-      ).signIn(email: _emailController.text, displayName: _nameController.text);
+      await AppScope.of(context).signUp(
+        email: _emailController.text,
+        password: _passwordController.text,
+        displayName: _nameController.text,
+      );
       if (!mounted) return;
       await Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute<void>(builder: (_) => const ProfileSetupScreen()),
         (_) => false,
       );
-    } on Object {
+    } on Object catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không thể tạo tài khoản cục bộ.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -113,8 +115,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     setState(() => _acceptedPolicy = value ?? false);
                   },
                 ),
-                const Expanded(
-                  child: Text('Tôi đồng ý với Chính sách bảo mật'),
+                Expanded(
+                  child: TextButton(
+                    key: const ValueKey('privacy-policy-link'),
+                    onPressed: () => _showPrivacyPolicy(context),
+                    style: TextButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                    ),
+                    child: const Text('Tôi đồng ý với Chính sách bảo mật'),
+                  ),
                 ),
               ],
             ),
@@ -145,6 +155,31 @@ class _SignUpScreenState extends State<SignUpScreen> {
       ),
     );
   }
+}
+
+Future<void> _showPrivacyPolicy(BuildContext context) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Chính sách bảo mật'),
+      content: const SingleChildScrollView(
+        child: Text(
+          'Balance lưu thông tin tài khoản trên máy chủ và bảo vệ phiên đăng '
+          'nhập trong vùng lưu trữ an toàn của thiết bị. Hồ sơ sức khỏe và '
+          'nhật ký ăn uống được dùng để hiển thị trải nghiệm trong ứng dụng.\n\n'
+          'Ảnh phân tích không được giữ lại sau khi xử lý. Ảnh chỉ được lưu '
+          'làm dữ liệu cải thiện mô hình khi bạn đồng ý riêng tại bước gửi '
+          'phản hồi; bạn có thể yêu cầu xóa phản hồi đã gửi.',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Đã hiểu'),
+        ),
+      ],
+    ),
+  );
 }
 
 String? _validateEmail(String? raw) {

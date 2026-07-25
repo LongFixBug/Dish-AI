@@ -59,10 +59,13 @@ class _SuggestionsContent extends StatelessWidget {
     final consumed = state?.todayCalories(DateTime.now()) ?? 1240;
     final remaining = (target - consumed).round().clamp(0, 4000);
     final preferences = state?.preferences ?? AppState.defaultPreferences;
+    final hasSafetyFlags = state?.profile?.hasNutritionSafetyFlags ?? false;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _RemainingCaloriesCard(calories: remaining),
+        const SizedBox(height: 12),
+        _SuggestionDisclaimer(hasSafetyFlags: hasSafetyFlags),
         const SizedBox(height: 18),
         const _SuggestionCard(
           meal: FoodPhotoMeal.caKho,
@@ -97,6 +100,42 @@ class _SuggestionsContent extends StatelessWidget {
           onPressed: () => _showWeeklyMenu(context),
         ),
       ],
+    );
+  }
+}
+
+class _SuggestionDisclaimer extends StatelessWidget {
+  const _SuggestionDisclaimer({required this.hasSafetyFlags});
+
+  final bool hasSafetyFlags;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = hasSafetyFlags
+        ? 'Các món chỉ để tham khảo, chưa kiểm tra dị ứng hoặc bệnh nền của '
+              'bạn. Hãy xác nhận thành phần trước khi dùng.'
+        : 'Các món chỉ để tham khảo và chưa kiểm tra dị ứng. Hãy xác nhận '
+              'thành phần trước khi dùng.';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3CD),
+        border: Border.all(color: BalanceColors.ink, width: 1.4),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.warning_amber_rounded, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -104,6 +104,11 @@ def init_collection(force: bool = False) -> None:
     )
 
 
+def check_qdrant_health() -> None:
+    """Raise when Qdrant cannot answer a lightweight metadata request."""
+    _get_client().get_collections()
+
+
 def _catalog_filter(catalog_type: CatalogType) -> qmodels.Filter:
     return qmodels.Filter(must=[
         qmodels.FieldCondition(

@@ -1,6 +1,6 @@
 # FoodAI — Giải thích code, logic, luồng chạy và thuật toán training
 
-> Tài liệu này mô tả **code đang tồn tại trong repository tại ngày 24/07/2026**.
+> Tài liệu này mô tả **code đang tồn tại trong repository tại ngày 25/07/2026**.
 > Nếu tài liệu kế hoạch cũ mâu thuẫn với source code, source code hiện tại được xem là
 > nguồn sự thật.
 
@@ -16,11 +16,15 @@ FoodAI nhận một ảnh món ăn từ mobile, cố gắng trả lời ba câu 
 thành phần, mỗi thành phần chịu trách nhiệm cho một loại việc:
 
 - **Flutter mobile** chụp/chọn ảnh, upload và hiển thị kết quả.
+- **Auth backend + mobile** quản lý tài khoản, access token ngắn hạn và refresh token
+  xoay vòng.
 - **FastAPI** là người điều phối toàn bộ luồng.
 - **EfficientNet-B0 local** phân loại nhanh tám món đã được train.
 - **Qwen Vision cloud** xử lý ảnh khó, món ngoài tám class và combo nhiều món.
 - **PostgreSQL** giữ dữ liệu dinh dưỡng chính thức và trạng thái duyệt.
 - **Embedding model + Qdrant** tìm tên gần nghĩa khi text không khớp chính xác.
+- **Redis** chia sẻ rate limit giữa các API replica trong production.
+- **S3-compatible storage** giữ feedback đã có consent; ảnh analyze chỉ là file tạm.
 - **Python thuần** thực hiện phép nhân/cộng dinh dưỡng. LLM không được tự làm toán
   cho dữ liệu đã có trong database.
 
@@ -39,9 +43,11 @@ thành phần, mỗi thành phần chịu trách nhiệm cho một loại việc
 ```mermaid
 flowchart LR
     U["Người dùng"] --> M["Flutter mobile"]
-    M -->|"multipart image"| A["POST /api/v1/analyze"]
+    M -->|"login/register/refresh"| H["Auth API"]
+    H -->|"JWT access + rotating refresh"| M
+    M -->|"Bearer JWT + multipart image"| A["POST /api/v1/analyze"]
     A --> C["EfficientNet-B0 local"]
-    C -->|"confidence >= 0.85 và DB đủ dữ liệu"| P["PostgreSQL"]
+    C -->|"đạt serving threshold và DB đủ dữ liệu"| P["PostgreSQL"]
     C -->|"không đủ chắc chắn"| V["Qwen Vision cloud"]
     V --> L["Dish lookup service"]
     L --> P
@@ -50,6 +56,8 @@ flowchart LR
     Q -->|"UUID ứng viên"| P
     P --> N["Python nutrition math"]
     V -->|"món chưa được duyệt"| D["dish_candidates"]
+    M -->|"consent + feedback"| O["S3/MinIO + feedback metadata"]
+    R["Redis rate limit"] -.-> A
     N --> A
     A -->|"JSON"| M
 ```
@@ -68,7 +76,9 @@ food-ai/
 ├── backend/
 │   ├── main.py                 # tạo FastAPI app, startup và gắn router
 │   ├── config.py               # đọc .env thành cấu hình có type
+│   ├── logging_config.py       # JSON log, request ID và redaction
 │   ├── api/                    # tầng HTTP: nhận request, trả response
+│   │   ├── auth.py             # register/login/refresh/logout/me
 │   │   ├── analyze.py          # điều phối luồng phân tích ảnh
 │   │   ├── dishes.py           # tra cứu món đã duyệt
 │   │   ├── feedback.py         # nhận ảnh user sửa nhãn cho lần train sau
@@ -81,6 +91,11 @@ food-ai/
 │       ├── dishes.py           # exact/semantic lookup và đổi serving -> per gram
 │       ├── embeddings.py       # client gọi llama.cpp embedding
 │       ├── vector_catalog.py   # đọc/ghi semantic index Qdrant
+│       ├── auth.py             # Argon2id, JWT và refresh-token primitives
+│       ├── rate_limit.py       # memory local / Redis production
+│       ├── object_storage.py   # filesystem local / S3 production
+│       ├── readiness.py        # readiness theo capability bắt buộc
+│       ├── resilience.py       # retry, circuit breaker và bulkhead
 │       ├── dish_candidates.py  # hàng chờ món Vision chưa được người duyệt
 │       └── serving_estimates.py# heuristic ước lượng typical_grams có provenance
 ├── schemas/
@@ -93,7 +108,8 @@ food-ai/
 │   ├── inference/
 │   │   ├── cv.py               # load checkpoint và predict local
 │   │   └── vision.py           # prompt, gọi Qwen Vision, validate output
-│   └── evaluation/             # đánh giá lookup/RAG, tách khỏi pytest nhanh
+│   ├── model_registry.py       # manifest, checksum và quality gate
+│   └── evaluation/             # lookup/RAG và test-set model release
 ├── mobile/lib/
 │   ├── app.dart                # MaterialApp và màn hình đầu tiên
 │   ├── core/                   # theme, config, widget dùng chung
@@ -102,7 +118,10 @@ food-ai/
 ├── scripts/                    # seed, reindex, review, data pipeline
 ├── tests/                      # executable specification của backend
 ├── data/                       # JSON catalog, ảnh train/val/feedback, upload tạm
-└── checkpoints/                # model weights, class mapping, training history
+├── checkpoints/                # weights, manifest, class mapping và history
+├── Dockerfile                  # API image nhẹ, không đóng gói Torch/checkpoint
+├── Dockerfile.cv               # image CV riêng, cần manifest đã duyệt
+└── docs/PRODUCTION_RUNBOOK.md  # deploy, backup, retention và incident response
 ```
 
 ### Vì sao không để tất cả vào một file?
@@ -150,6 +169,13 @@ cd /Users/nguyenhailong/Documents/project/food-ai/mobile
 flutter run
 ```
 
+Redis chỉ cần khi test cấu hình rate limit phân tán; MinIO chỉ cần khi test S3-compatible
+feedback local:
+
+```bash
+docker compose up -d redis minio
+```
+
 Nếu simulator iOS chạy trên cùng Mac, mobile mặc định gọi `127.0.0.1:8000`. Android
 emulator dùng `10.0.2.2:8000`, vì `127.0.0.1` bên Android là chính emulator.
 
@@ -169,8 +195,8 @@ uv run uvicorn backend.main:app --reload --host 0.0.0.0
 
 - Sửa file Python khi chạy `uvicorn --reload`: thường **không cần restart thủ công**.
 - Sửa `.env`, cài dependency, đổi checkpoint hoặc service bị treo: nên restart backend.
-- Train ra `checkpoints/best_model.pth` mới: backend đang giữ model cũ trong RAM, nên
-  **phải restart backend** để `cv_model.load()` nạp weights mới.
+- Sau khi một release đã pass test gate và được promote thành `best_model.pth`, CV service
+  đang giữ model cũ trong RAM nên **phải rollout/restart** để nạp weights + manifest mới.
 - Sửa Flutter UI: nhấn `r` để hot reload; thay initialization/native config thì nhấn
   `R` để hot restart hoặc chạy lại `flutter run`.
 - PostgreSQL/Qdrant đã chạy ổn thì không cần restart chỉ vì mở lại mobile.
@@ -182,9 +208,16 @@ uv run uvicorn backend.main:app --reload --host 0.0.0.0
 ```python
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await asyncio.to_thread(cv_model.load)
+    if settings.cv_enabled:
+        await asyncio.to_thread(cv_model.load)
     await asyncio.to_thread(init_collection)
-    yield
+    try:
+        yield
+    finally:
+        await close_embedding_client()
+        await close_vision_client()
+        await rate_limit_store.close()
+        await engine.dispose()
 ```
 
 Giải thích từng dòng:
@@ -192,15 +225,18 @@ Giải thích từng dòng:
 - `@asynccontextmanager`: biến hàm thành vòng đời “trước khi app chạy / sau khi app
   dừng”.
 - `cv_model.load`: nạp class mapping và checkpoint vào RAM một lần, thay vì nạp lại
-  cho từng request.
+  cho từng request; API image production mặc định `CV_ENABLED=false`.
 - `asyncio.to_thread(...)`: việc load PyTorch và gọi Qdrant sync có thể chặn event
   loop; đưa sang worker thread giúp FastAPI không bị đứng.
 - `init_collection`: bảo đảm collection Qdrant tồn tại, nhưng không tự xóa dữ liệu cũ.
 - `yield`: từ đây app bắt đầu nhận request.
+- `finally`: đóng HTTP client dùng chung, rate-limit store và SQLAlchemy engine khi app
+  dừng để không rò connection.
 
 Hai bước đều được bọc `try/except`. CV hỏng thì hệ thống vẫn dùng Vision; Qdrant hỏng
-thì exact lookup PostgreSQL vẫn chạy. Đây gọi là **graceful degradation**: hỏng một
-dịch vụ phụ không kéo sập toàn bộ sản phẩm.
+thì exact lookup PostgreSQL vẫn chạy. Tuy nhiên `/ready` trả 503 nếu capability được cấu
+hình là bắt buộc nhưng không sẵn sàng. Graceful fallback bảo vệ request, còn readiness
+bảo vệ việc đưa một replica lỗi vào nhận traffic.
 
 ### 4.4 `config.py`, `postgres.py` và `models.py` phối hợp ra sao?
 
@@ -260,10 +296,11 @@ sequenceDiagram
     User->>Screen: chụp/chọn ảnh
     Screen->>Screen: đọc bytes, bật loading
     Screen->>API: analyzeImage(bytes, filename)
-    API->>FastAPI: multipart POST field=file
-    FastAPI->>FastAPI: validate, giới hạn 10 MB, lưu file tạm
+    API->>API: lấy/refresh access token nếu cần
+    API->>FastAPI: Bearer JWT + multipart field=file
+    FastAPI->>FastAPI: auth + rate limit + decode/strip EXIF + temp file
     FastAPI->>CV: predict
-    alt confidence >= 0.85 và catalog đủ nutrition + grams
+    alt đạt serving threshold và catalog đủ nutrition + grams
         CV-->>FastAPI: tên món chắc chắn
         FastAPI->>Catalog: lookup dish
     else local không đủ chắc hoặc catalog thiếu
@@ -282,30 +319,41 @@ sequenceDiagram
 
 ### 6.1 Entry point
 
-`mobile/lib/main.dart` chỉ có:
+`mobile/lib/main.dart` khởi tạo storage và khôi phục phiên trước khi render:
 
 ```dart
-void main() {
-  runApp(const BalanceApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  const secureStorage = FlutterSecureStorage();
+  final state = await AppState.restore(
+    SecureAppStorage(secureStorage),
+    authGateway: AuthApi(),
+  );
+  runApp(BalanceApp(appState: state));
 }
 ```
 
-- `main()` là cửa vào của app Dart.
-- `runApp` gắn cây widget vào màn hình.
-- `const` giúp Flutter tái sử dụng object bất biến, giảm rebuild không cần thiết.
-- `BalanceApp` nằm ở file riêng vì entry point nên càng nhỏ càng tốt.
+- `ensureInitialized()` cho phép gọi plugin native trước `runApp`.
+- `SecureAppStorage` dùng Keychain/Keystore qua `flutter_secure_storage`, thay cho
+  preferences plaintext.
+- `AppState.restore` đọc access token, refresh token, profile, diary và preferences.
+- `AuthApi` nối register/login/refresh/logout với backend thật.
+- `BalanceApp` chọn Welcome, Profile Setup hoặc Dashboard dựa trên session và profile.
 
-`app.dart` tạo `MaterialApp`, áp theme dùng chung và chọn `WelcomeScreen` làm màn hình
-đầu. Hiện navigation dùng `MaterialPageRoute` trực tiếp, chưa có named router hay
-GoRouter vì số route còn nhỏ.
+Navigation vẫn dùng `MaterialPageRoute` trực tiếp vì số route còn nhỏ. `AppScope` dùng
+`InheritedNotifier` để các screen đọc cùng `AppState` mà chưa cần framework state
+management lớn.
 
 ### 6.2 `ApiConfig`: chọn đúng địa chỉ backend
 
 ```dart
 const configuredUrl = String.fromEnvironment('API_BASE_URL');
 if (configuredUrl.isNotEmpty) {
-  return Uri.parse(_withoutTrailingSlash(configuredUrl));
+  final uri = Uri.parse(_withoutTrailingSlash(configuredUrl));
+  if (kReleaseMode && uri.scheme != 'https') throw StateError(...);
+  return uri;
 }
+if (kReleaseMode) throw StateError(...);
 final host = Platform.isAndroid ? '10.0.2.2' : '127.0.0.1';
 ```
 
@@ -313,6 +361,7 @@ final host = Platform.isAndroid ? '10.0.2.2' : '127.0.0.1';
 - Nếu user truyền URL thì ưu tiên URL đó.
 - Nếu không, Android emulator dùng địa chỉ đặc biệt `10.0.2.2` để quay về máy host.
 - iOS simulator dùng loopback `127.0.0.1`.
+- Bản release không được phép thiếu `API_BASE_URL` và chỉ chấp nhận HTTPS.
 - Bỏ dấu `/` cuối URL để `Uri.resolve('/api/v1/analyze')` ổn định.
 
 File này tồn tại để screen không hard-code IP. Nếu mai backend đổi domain production,
@@ -325,10 +374,9 @@ Native config cũng là một phần của kết nối:
 - `android/app/src/main/AndroidManifest.xml` khai báo Internet;
 - debug manifest Android bật `usesCleartextTraffic=true` để gọi backend HTTP local.
 
-Production không nên phụ thuộc HTTP cleartext; nên dùng HTTPS. Ngoài ra mobile hiện có
-thể gắn MIME `image/heic`, trong khi backend chỉ nhận JPEG/PNG/WebP. Nếu iPhone trả file
-HEIC thật, request sẽ bị HTTP 400. Khi hoàn thiện production cần convert HEIC sang JPEG
-ở mobile hoặc bổ sung decode/validation HEIC ở backend.
+HTTP cleartext chỉ được bật trong Android debug manifest. Mobile chủ động chặn HEIC/HEIF
+với thông báo chọn JPEG/PNG/WebP; backend vẫn kiểm tra lại nội dung thật nên không tin
+extension hay MIME do client khai báo.
 
 ### 6.3 `AnalyzeScreen`: state machine nhỏ của màn hình camera
 
@@ -376,12 +424,16 @@ Giải thích:
 final request = http.MultipartRequest(
   'POST',
   _baseUrl.resolve('/api/v1/analyze'),
-)..files.add(http.MultipartFile.fromBytes('file', bytes, ...));
+)
+  ..headers['authorization'] = 'Bearer $accessToken'
+  ..files.add(http.MultipartFile.fromBytes('file', bytes, ...));
 ```
 
 - Dùng `multipart/form-data` vì FastAPI khai báo `UploadFile = File(...)`.
 - Tên field bắt buộc là `file`. Đổi thành `image` ở mobile mà không đổi backend sẽ
   nhận HTTP 422.
+- Access token được lấy qua `AppState.validAccessToken()`. Khi sắp hết hạn, một refresh
+  request được dùng chung cho các caller đồng thời để tránh refresh-token rotation race.
 - MIME được suy từ extension, có kiểm tra magic bytes PNG nhỏ để tránh tên file sai.
 - Timeout mobile là 90 giây, dài hơn timeout 30 giây của Vision, đủ chỗ cho upload,
   DB lookup và response.
@@ -484,43 +536,55 @@ Một response rút gọn có dạng:
 Nó không đồng nghĩa toàn bộ con số đều do nguồn đó sinh. Ở nhánh Vision, tên/gram có
 thể do Vision đưa ra nhưng nutrition vẫn được thay bằng record PostgreSQL nếu match.
 
-### 6.6 Các screen nào hiện mới là UI prototype?
+### 6.6 Auth thật, nhưng dữ liệu cá nhân vẫn chủ yếu local
 
-Auth hiện là phiên demo cục bộ, chưa có token/backend. Hồ sơ, sở thích và nhật ký được
-lưu bền trên thiết bị; dashboard tính lại calories/macro từ các bữa đã lưu. Luồng kết
-nối backend thật vẫn tập trung ở:
+Auth đã nối backend end-to-end:
+
+```text
+Register/Login -> Argon2id password hash -> JWT access token 15 phút
+               -> opaque refresh token 30 ngày, chỉ lưu SHA-256 trong PostgreSQL
+               -> refresh xoay vòng, logout revoke token
+```
+
+Mobile lưu session bằng secure storage. `signOut()` xóa token, profile, diary và
+preferences trước khi gọi revoke từ xa, nên dữ liệu local của tài khoản cũ không rò sang
+tài khoản đăng nhập tiếp theo. `POST /analyze`, `/analyze/vision-only` và feedback đều
+yêu cầu Bearer token.
+
+Hồ sơ, sở thích và nhật ký vẫn được lưu trên thiết bị; dashboard tính lại calories/macro
+từ các bữa đã lưu. Chưa có cloud sync cho các dữ liệu này. Luồng analyze backend là:
 
 ```text
 DashboardScreen -> AnalyzeScreen -> AnalyzeApi -> FastAPI -> AnalysisResultScreen
 ```
 
-Suggestion card vẫn là rule/data cục bộ, chưa phải recommendation model. Tài liệu phải
-phân biệt **persistence trên thiết bị** với **feature backend đa thiết bị đã hoạt động**.
+Suggestion card vẫn là rule/data cục bộ, chưa phải recommendation model. Profile đã có
+field dị ứng và bệnh nền cùng disclaimer, nhưng hệ thống chưa làm clinical screening.
+Tài liệu phải phân biệt **auth backend đã hoạt động** với **profile/diary đa thiết bị**.
 
 ## 7. Backend nhận và bảo vệ file upload
 
-`upload_utils.py` chỉ chấp nhận JPEG, PNG và WebP, giới hạn 10 MB. File được đọc từng
-chunk 1 MB thay vì `await file.read()` không giới hạn.
+`upload_utils.py` chỉ chấp nhận JPEG, PNG và WebP, giới hạn 10 MB và 20 triệu pixel.
+File được đọc từng chunk 1 MB thay vì `await file.read()` không giới hạn.
 
 Vì sao?
 
 - Nếu đọc toàn bộ trước rồi mới kiểm tra size, attacker có thể gửi file vài GB làm
   đầy RAM.
 - Đọc chunk giống rót nước vào ca có vạch: vừa vượt 10 MB là dừng ngay.
-- MIME validation chặn file text/executable rõ ràng, dù production nghiêm ngặt hơn
-  vẫn nên decode ảnh thật để xác minh nội dung.
+- Pillow decode nội dung thật, đối chiếu format với MIME đã khai báo và chặn
+  decompression bomb.
+- EXIF orientation được áp dụng rồi ảnh được encode lại, vì vậy metadata/EXIF cũ bị loại.
+- Kích thước, format và pixel được kiểm tra trước khi đưa cho CV hoặc Vision.
 
-Trong `analyze.py`:
+Trong `analyze.py`, tên file client không còn được dùng trong đường dẫn tạm:
 
 ```python
-safe = Path(filename).name
-safe = "".join(c if c.isalnum() or c in "._- " else "_" for c in safe)
-temp_path = UPLOAD_DIR / f"upload_{uuid.uuid4().hex[:12]}_{safe_name}"
+temp_path = UPLOAD_DIR / f"upload_{uuid.uuid4().hex[:12]}{image.extension}"
 ```
 
-- `Path(...).name` loại thư mục trong tên như `../../secret`.
-- Ký tự lạ bị thay bằng `_`.
-- UUID làm hai request cùng tên ảnh không ghi đè nhau.
+- Extension lấy từ format đã decode, không lấy từ tên client.
+- UUID làm hai request không ghi đè nhau và loại đường path traversal từ đầu.
 - `finally: temp_path.unlink(missing_ok=True)` đảm bảo ảnh tạm bị xóa cả khi Vision
   lỗi. Đây là lý do dùng `try/finally`, không chỉ đặt lệnh xóa cuối hàm.
 
@@ -533,7 +597,7 @@ flowchart TD
     A["Ảnh hợp lệ"] --> B{"CV model đã load?"}
     B -->|"Không"| V["Gọi Vision"]
     B -->|"Có"| C["CV predict"]
-    C --> D{"confidence >= 0.85 và có label?"}
+    C --> D{"confidence >= serving threshold và có label?"}
     D -->|"Không"| V
     D -->|"Có"| E["Lookup dish catalog"]
     E --> F{"Có nutrition và typical_grams?"}
@@ -549,20 +613,16 @@ flowchart TD
     K --> T
 ```
 
-### 8.2 Vì sao confidence local phải tới 0,85?
+### 8.2 Ngưỡng local serving đến từ đâu?
 
-Trong `ml/inference/cv.py` có hai ngưỡng thấp hơn:
+`CVModel` có default 0,85 cho checkpoint legacy, nhưng checkpoint phát hành có thể mang
+`cv_confidence_threshold` được hiệu chỉnh từ evaluation. Backend dùng
+`cv_model.serving_threshold`, không hard-code một ngưỡng khác trong endpoint.
 
-- xác suất ≥ 0,30 thì trả `dish_name` top-1;
-- xác suất ≥ 0,40 thì source nội bộ ghi `local`.
-
-Nhưng endpoint production dùng `CV_CONFIDENCE_THRESHOLD = 0.85`. Ba ngưỡng không
-mâu thuẫn; chúng phục vụ ba mục đích:
-
-- 0,30: model có label top-1 đủ để quan sát/debug.
-- 0,40: inference wrapper đánh dấu dự đoán không hoàn toàn vô dụng.
-- 0,85: ngưỡng kinh doanh để **bỏ qua Vision cloud**. Sai ở nhánh này là sai tên và
-  sai luôn nutrition, nên phải bảo thủ hơn.
+Wrapper vẫn chỉ trả `dish_name` khi top-1 từ 0,30 để phục vụ debug/fallback context. Muốn
+**bỏ qua Vision cloud**, prediction phải vượt serving threshold và catalog phải có đủ
+nutrition + `typical_grams`. Sai ở fast-path sẽ làm sai cả tên lẫn nutrition nên ngưỡng
+phải được chọn theo risk–coverage trên test set, không dựa cảm tính.
 
 Ngoài confidence, `_analyze_cv_local` còn yêu cầu:
 
@@ -912,24 +972,33 @@ tính đúng dữ liệu chính hơn tính đồng bộ tức thời của index
 
 ```mermaid
 flowchart LR
-    U["User sửa đúng nhãn"] --> F["POST /feedback/training-data"]
-    F --> D["data/images/feedback/<class>"]
-    D --> S["split_feedback_images.py"]
-    S --> T["train/ và val/"]
-    T --> M["train EfficientNet"]
-    M --> B["best_model.pth"]
-    B --> R["restart backend"]
+    U["User sửa đúng nhãn + consent"] --> F["POST /api/v1/feedback/training-data"]
+    F --> O["S3/MinIO object pending"]
+    F --> D["feedback_submissions metadata"]
+    D --> H["Admin review/import (chưa có UI/workflow hoàn chỉnh)"]
+    H -->|"approved thủ công"| T["Dataset versioned"]
+    T --> M["Train EfficientNet"]
+    M --> E["Independent test evaluation"]
+    E -->|"pass gate"| B["Manifest + approved checkpoint"]
+    B --> R["Canary/restart CV service"]
 ```
 
-Feedback endpoint không train online ngay. Train trực tiếp sau mỗi ảnh sẽ:
+Feedback endpoint yêu cầu đăng nhập và `consent_to_training=true`. Ảnh được sanitize,
+lưu qua abstraction filesystem ở local hoặc S3-compatible storage trong production;
+PostgreSQL giữ owner, object key, kích thước, trạng thái và `retention_until`. User có
+endpoint xóa submission của chính mình; maintenance job dọn dữ liệu hết hạn.
+
+Feedback không train online ngay. Train trực tiếp sau mỗi ảnh sẽ:
 
 - rất chậm;
 - dễ overfit một ảnh;
 - có nguy cơ user nhập nhãn sai làm hỏng model;
 - khó reproduce version model.
 
-Thay vào đó ảnh và label được lưu làm dữ liệu thô, sau đó con người kiểm tra, split và
-train theo batch. Đây là pipeline ML an toàn và kiểm toán được hơn.
+Feedback `pending` không tự đi vào dataset. Schema đã có trạng thái review nhưng hiện chưa
+có admin API/UI hoặc importer approved hoàn chỉnh; đây là bước còn phải làm trước khi dùng
+feedback production để train. Sau khi train, validation dùng để chọn/thử nghiệm checkpoint;
+promotion bắt buộc dùng test split độc lập, manifest có dataset fingerprint và SHA-256.
 
 ## 13. Thuật toán training EfficientNet-B0
 
@@ -1112,7 +1181,7 @@ model serving.
 
 ### 13.10 Chọn checkpoint
 
-Mỗi epoch tốt hơn `best_val_acc` sẽ lưu:
+Mỗi epoch có metric tốt hơn sẽ lưu một checkpoint theo epoch gồm:
 
 - model state;
 - optimizer state;
@@ -1122,8 +1191,10 @@ Mỗi epoch tốt hơn `best_val_acc` sẽ lưu:
 - val accuracy;
 - history.
 
-File theo epoch phục vụ debug/so sánh. `best_model.pth` là tên ổn định mà backend luôn
-nạp. Nếu chỉ lưu epoch cuối, model có thể đã overfit và tệ hơn epoch trước.
+File theo epoch phục vụ debug/so sánh. Validation không được phép tự promote vào
+`best_model.pth`: quality gate yêu cầu `evaluation_split="test"`, nên checkpoint chỉ trở
+thành serving artifact sau khi `cv_release.py` đánh giá test độc lập và tạo manifest pass.
+Nếu chỉ lưu epoch cuối, model có thể đã overfit và tệ hơn epoch trước.
 
 Resume checkpoint khôi phục cả optimizer và scheduler, không chỉ weights. Nếu chỉ nạp
 weights, “trí nhớ vận tốc” của optimizer và lịch learning rate bị reset, nên đó không
@@ -1140,15 +1211,16 @@ Run `history_20260724_101658.json` kết thúc epoch 18:
 - `com_tam`: 80%; `xoi_xeo`: 75%.
 
 Khoảng cách train/val nhỏ không cho thấy overfit nặng ở metric tổng, nhưng accuracy
-61,21% vẫn chưa đủ để tin mọi dự đoán. Ngưỡng production 0,85 và Vision fallback là
-cần thiết.
+61,21% vẫn chưa đủ để tin mọi dự đoán. Vision fallback là cần thiết, nhưng bản thân
+threshold 0,85 cũng chưa được xem là đã chứng minh nếu chưa có calibration trên test set.
 
 Validation set chỉ 165 ảnh nên một vài ảnh có thể làm phần trăm đổi nhiều. Bước nâng
 chất lượng quan trọng hơn chỉ tăng epoch là:
 
 1. thêm ảnh thật đa dạng cho class yếu;
 2. kiểm tra label sai/ảnh trùng giữa train và val;
-3. tạo test set độc lập chưa dùng chọn checkpoint;
+3. tạo test set độc lập chưa dùng chọn checkpoint; thư mục `data/images/test` hiện có
+   **0 ảnh**, nên chưa thể phát hành model production;
 4. xem confusion matrix để biết `ha_cao` đang nhầm với món nào;
 5. calibration threshold trên test set thay vì chọn 0,85 theo cảm tính.
 
@@ -1175,17 +1247,18 @@ uv run python -m ml.training.train \
   --ckpt efficientnet_vietfood_20260724_101658_epoch18.pth
 ```
 
-Nhập feedback vào train/val rồi train lại:
+Workflow local cũ cho `data/images/feedback/feedback_log.jsonl`:
 
 ```bash
 uv run python scripts/split_feedback_images.py
 uv run python -m ml.training.train --resume
 ```
 
-Trước khi chạy split, nên review nhãn và ảnh trùng. Script hiện copy theo thứ tự tên
-file và tỷ lệ 80/20, chưa random theo seed và chưa phát hiện near-duplicate. Nếu ảnh gần
-như giống nhau rơi vào cả train và val, validation accuracy sẽ đẹp giả tạo do data
-leakage.
+Script này **chưa nối** với `feedback_submissions` + S3 object storage mới, nên không được
+xem là production feedback importer. Trước khi dùng feedback mới cần thêm admin approval,
+export object approved, deduplicate/group split và dataset version. Script local hiện copy
+theo thứ tự tên file và tỷ lệ 80/20, chưa random theo seed hay phát hiện near-duplicate;
+ảnh gần giống rơi vào cả train và val sẽ làm metric đẹp giả tạo.
 
 `--data-dir` cho phép dùng một bộ dữ liệu khác. `--no-class-weight` được truyền thành tham
 số rõ ràng cho `main`, tránh lỗi đổi global ở một module instance khác. Với dataset hiện
@@ -1193,17 +1266,18 @@ tại nên giữ class weight mặc định.
 
 Sau khi train xong:
 
-1. kiểm tra `checkpoints/best_model.pth` chứa đúng `classes` và `arch`;
-2. đọc history/per-class accuracy;
-3. restart FastAPI để nạp checkpoint mới;
-4. test ảnh ngoài train/val, không chỉ ảnh đã thấy;
-5. chỉ tăng phạm vi class local khi mỗi class có dữ liệu đủ đa dạng.
+1. đọc history, macro-F1, confusion matrix, calibration và per-class accuracy;
+2. giữ checkpoint experiment riêng, không copy thẳng đè `best_model.pth`;
+3. tạo test split độc lập rồi chạy `ml/evaluation/cv_release.py`;
+4. chỉ promote manifest pass bằng `scripts/promote_model.py`;
+5. build/deploy `Dockerfile.cv`, canary và rollback nếu live metric xấu.
 
 ## 14. Local inference sau training
 
-Backend startup đọc `classes` và `arch` trong `best_model.pth`, tạo đúng kiến trúc
-`efficientnet_b0`, rồi load `model_state_dict`. Mapping file ngoài chỉ hỗ trợ checkpoint
-cũ chưa lưu class list.
+Backend startup đọc `classes`, `arch`, `model_version` và serving threshold trong
+checkpoint, tạo `efficientnet_b0`, rồi load `model_state_dict`. Nếu có manifest, code
+kiểm SHA-256 và bắt quality gate phải pass. Ở production, thiếu manifest làm local CV
+không được load. Mapping file ngoài chỉ hỗ trợ checkpoint legacy ở development.
 
 Inference transform phải tương thích validation:
 
@@ -1242,15 +1316,25 @@ import thất bại hoàn toàn.
 - semantic guard không nối sai family món;
 - per-item serving adjustment không scale nhầm item khác;
 - upload quá lớn bị từ chối;
+- ảnh giả MIME, decompression bomb và EXIF bị xử lý an toàn;
+- Argon2id/JWT/refresh rotation và quyền truy cập endpoint;
+- Redis rate limit, readiness, metrics, object storage và model manifest;
 - `vn_norm` xử lý tiếng Việt đúng.
 
+Lần kiểm tra gần nhất: **170 backend tests pass**, coverage phạm vi CI **85,05%**.
 Đây là “luật hệ thống”, không đo model accuracy ảnh.
 
 ### 15.2 CV validation
 
-`train.py` đo accuracy tổng và per-class accuracy trên `data/images/val`. Đây mới là
-metric của image classifier. Hiện chưa có precision, recall, macro-F1 hay confusion
-matrix được xuất bởi train script.
+`train.py` đo accuracy, macro precision/recall/F1, confusion matrix, per-class accuracy,
+ECE và selective accuracy/coverage trên `data/images/val`. Validation dùng để chọn và
+so sánh experiment, **không được promote model**.
+
+`ml/evaluation/cv_release.py` chạy cùng bộ metric trên `data/images/test`, tạo release
+checkpoint + manifest gồm version, class list, threshold, dataset fingerprint và SHA-256.
+Gate hiện yêu cầu accuracy ≥75%, macro-F1 ≥70%, worst-class ≥60%, ECE ≤0,10,
+selective accuracy ≥85% và coverage ≥20%. Hiện test split trống, validation gần nhất chỉ
+61,21%, nên local CV chưa có approved production manifest.
 
 ### 15.3 Catalog/RAG evaluation
 
@@ -1296,6 +1380,16 @@ sửa/xóa; sau đó check constraint và functional unique index ngăn lỗi qu
 Tên canonical vẫn giữ dấu/thanh tiếng Việt, vì vậy `Mực xào dưa` và
 `Mực xào dứa` không bao giờ bị auto-merge.
 
+Các migration production mới:
+
+- `0010_auth`: `users`, Argon2 password hash metadata và refresh token xoay vòng;
+- `0011_feedback`: metadata feedback có consent, owner, retention và review status;
+- `0012_production_hardening`: index dọn token hết hạn và foreign key ownership.
+
+Alembic head hiện là `0012_production_hardening`. Catalog hiện có **816/816** dòng
+`vn_dishes` đã có `typical_grams`; 652 estimate có confidence dưới 0,5 nên vẫn phải giữ
+provenance và không trình bày như số cân chính thức.
+
 ### Vì sao reindex tạo toàn bộ embedding trước khi thay collection?
 
 `reindex_qdrant.py`:
@@ -1327,26 +1421,55 @@ lượng bản thân nutrition catalog. Hai phép kiểm tra khác nhau và đ�
 | Không có checkpoint | bỏ local CV, gọi Vision | app vẫn dùng được |
 | CV confidence thấp | gọi Vision | tránh fast-path sai |
 | CV chắc nhưng DB thiếu | gọi Vision | label chắc không đồng nghĩa nutrition đủ |
-| Vision offline | response có `error`, mobile hiện retry | không crash server |
+| Vision offline | response có `error`, mobile hiện nút thử lại | không crash server |
 | Qdrant offline | exact PostgreSQL vẫn chạy | semantic là phụ trợ |
 | Embedding offline | semantic miss, exact vẫn chạy | graceful degradation |
 | Món Vision chưa có DB | dùng estimate một lần + pending candidate | UX tốt nhưng không đầu độc catalog |
 | Candidate staging lỗi | rollback, vẫn trả estimate, đánh dấu missing | request không phụ thuộc hàng review |
 | Upload >10 MB/sai MIME | HTTP validation error | bảo vệ tài nguyên |
 | Temp file | xóa trong `finally` | không đầy disk |
+| Access token hết hạn | mobile single-flight refresh rồi dùng token mới | tránh nhiều refresh cùng xoay một token |
+| Refresh token lỗi/revoked | kết thúc session, yêu cầu đăng nhập lại | fail closed |
+| Quá quota | HTTP 429 + `Retry-After` | bảo vệ Vision và tài nguyên chung |
+| Redis rate limit lỗi ở production | HTTP 503 | không fail-open khi mất quota store |
+| Dependency bắt buộc lỗi | `/ready` trả 503, `/live` vẫn 200 | tách process sống khỏi khả năng phục vụ |
+| Feedback storage/DB lỗi | rollback metadata, xóa object orphan nếu có | tránh lệch hai nguồn |
 
-## 18. Những phần chưa phải production hoàn chỉnh
+## 18. Trạng thái production hiện tại
 
-1. Auth chỉ có session cục bộ, chưa có authentication backend/token.
-2. Dashboard và nhật ký đã dùng dữ liệu lưu trên thiết bị nhưng chưa đồng bộ server.
-3. “Thêm vào nhật ký” và chỉnh khẩu phần đã persist local, chưa có cloud sync.
-4. Suggestion screen dùng profile/calorie budget local, chưa chạy recommendation model.
-5. `chat.py` mới echo SSE, chưa nối business LLM.
-6. Local classifier chỉ có 8 class và validation accuracy khoảng 61%.
-7. Gram từ Vision và `typical_grams` heuristic vẫn là ước lượng, không phải cân thực tế.
-8. Nutrition món chưa duyệt lấy từ Vision chỉ nên xem tham khảo.
-9. Confidence nutrition hiện là coverage DB, chưa phải calibrated correctness.
-10. Chưa thấy monitoring, auth/rate limit, object storage và production deployment.
+Các hàng rào production đã có trong code:
+
+1. Auth Argon2id + JWT access token + hashed rotating refresh token; analyze/feedback
+   yêu cầu đăng nhập.
+2. Rate limit theo user/IP; production bắt buộc Redis và fail closed khi Redis lỗi.
+3. Upload decode JPEG/PNG/WebP thật, giới hạn byte/pixel, strip EXIF và xóa temp file.
+4. JSON log có request ID/redaction; Prometheus `/metrics` có token; `/live` và `/ready`
+   tách riêng.
+5. Vision/embedding dùng pooled client, timeout, retry/backoff, semaphore bulkhead và
+   circuit breaker.
+6. Feedback cần consent, có S3/filesystem abstraction, retention và delete endpoint.
+7. Config production từ chối secret placeholder, database local, memory limiter và
+   filesystem object storage.
+8. CI chạy lint/test/coverage, Alembic + catalog audit, pip-audit, mobile build và Trivy.
+9. API container chạy non-root; mobile release bắt buộc HTTPS và Android signing thật.
+10. Model release có independent-test gate, checksum, dataset fingerprint và có thể
+    rollback bằng cách re-promote artifact cũ đã duyệt.
+
+Những việc còn chặn một production rollout thật:
+
+1. Local classifier chỉ có 8 class, validation 61,21%, test split đang trống và chưa có
+   approved manifest; đây là blocker lớn nhất ngoài việc thu thêm dữ liệu ảnh tốt.
+2. Gram Vision và phần lớn `typical_grams` vẫn là estimate, không phải cân thực tế;
+   nutrition không phải tư vấn y tế.
+3. Cần secret manager, PostgreSQL/Redis/Qdrant/S3 thật, HTTPS ingress, backup/PITR đã diễn
+   tập và dashboard/alert trong hạ tầng deploy.
+4. Android release cần signing secrets; máy local hiện chưa có Android SDK để tự build.
+5. Chưa có email verification, password reset provider và quy trình account recovery.
+6. Profile, diary và preferences chưa sync server; suggestion vẫn rule local, không phải
+   recommendation model đã đánh giá.
+7. Dish candidate có review script, nhưng feedback training mới chỉ có trạng thái pending;
+   chưa có admin review/import flow, trust-score hay dataset version workflow hoàn chỉnh.
+8. `chat.py`, `/info` và `/stream-demo` chỉ là dev route và bị tắt trong production.
 
 ### API kế hoạch cũ và code hiện tại
 
@@ -1364,11 +1487,14 @@ kế lại và implement/test trong code hiện tại.
 
 ### Vòng 1 — hiểu luồng sản phẩm
 
-1. `mobile/lib/features/analyze/presentation/analyze_screen.dart`
-2. `mobile/lib/features/analyze/data/analyze_api.dart`
-3. `backend/api/analyze.py`
-4. `schemas/analyze.py`
-5. `schemas/nutrition.py`
+1. `mobile/lib/core/state/app_state.dart`
+2. `mobile/lib/features/auth/data/auth_api.dart`
+3. `mobile/lib/features/analyze/presentation/analyze_screen.dart`
+4. `mobile/lib/features/analyze/data/analyze_api.dart`
+5. `backend/api/auth.py`
+6. `backend/api/analyze.py`
+7. `schemas/analyze.py`
+8. `schemas/nutrition.py`
 
 Mục tiêu: kể lại được “bấm camera → JSON → result”.
 
@@ -1388,7 +1514,9 @@ Mục tiêu: giải thích được PostgreSQL vs Qdrant và pending vs reviewed
 2. `ml/training/train.py`
 3. `ml/inference/cv.py`
 4. `ml/inference/vision.py`
-5. `tests/test_analyze_dish_flow.py`.
+5. `ml/model_registry.py`
+6. `ml/evaluation/cv_release.py`
+7. `tests/test_analyze_dish_flow.py`.
 
 Mục tiêu: phân biệt training local, inference local và prompt Vision cloud.
 
@@ -1428,9 +1556,12 @@ Bạn có thể trình bày theo khung sau:
 7. “Local model dùng transfer learning EfficientNet-B0, weighted CrossEntropy, AdamW,
    cosine schedule và augmentation; best checkpoint chọn theo validation accuracy.”
 8. “Mobile gửi multipart image, parse schema có type và có retry/error state.”
-9. “Hệ thống có graceful fallback khi CV, Qdrant hoặc embedding không sẵn sàng.”
-10. “Giới hạn hiện tại là dataset nhỏ, gram ước lượng và các feature diary/auth/recommendation
-    chưa nối backend thật.”
+9. “Auth dùng Argon2id, JWT access ngắn hạn và rotating refresh token; mobile lưu trong
+   secure storage và chống refresh race.”
+10. “Production có Redis rate limit, secure image decode, readiness, metrics, S3 feedback,
+    CI security scan và model release gate.”
+11. “Giới hạn hiện tại là model chưa pass test gate, gram còn ước lượng, hạ tầng deploy
+    chưa cấu hình thật và diary/recommendation chưa nối backend.”
 
 Trình bày cả ưu điểm lẫn giới hạn làm câu chuyện kỹ thuật đáng tin hơn việc chỉ nói
 “dùng AI nhận diện món ăn”.

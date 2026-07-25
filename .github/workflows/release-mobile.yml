@@ -1,0 +1,50 @@
+name: Release Mobile
+
+on:
+  push:
+    tags:
+      - "mobile-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    env:
+      API_BASE_URL: ${{ secrets.API_BASE_URL }}
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.8"
+          channel: stable
+          cache: true
+      - name: Restore Android signing files
+        env:
+          ANDROID_KEY_PROPERTIES: ${{ secrets.ANDROID_KEY_PROPERTIES }}
+          ANDROID_UPLOAD_KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+        run: |
+          test -n "$ANDROID_KEY_PROPERTIES"
+          test -n "$ANDROID_UPLOAD_KEYSTORE"
+          printf '%s' "$ANDROID_KEY_PROPERTIES" > android/key.properties
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE" | base64 --decode > android/app/upload-keystore.jks
+      - name: Validate production API endpoint
+        run: |
+          case "$API_BASE_URL" in
+            https://*) ;;
+            *) printf '%s\n' "API_BASE_URL must use HTTPS" >&2; exit 1 ;;
+          esac
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: >-
+          flutter build appbundle --release
+          --dart-define=API_BASE_URL=$API_BASE_URL
+      - uses: actions/upload-artifact@v4
+        with:
+          name: foodai-android-aab
+          path: mobile/build/app/outputs/bundle/release/app-release.aab

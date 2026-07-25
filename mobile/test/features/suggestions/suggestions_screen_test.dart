@@ -7,6 +7,8 @@ import 'package:balance/features/suggestions/presentation/suggestions_screen.dar
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/fake_auth_gateway.dart';
+
 void main() {
   testWidgets('shows dinner budget, meal cards, preferences and menu action', (
     tester,
@@ -25,13 +27,18 @@ void main() {
     expect(find.text('Ít dầu'), findsOneWidget);
     expect(find.text('Món Việt'), findsOneWidget);
     expect(find.text('Xem thực đơn'), findsOneWidget);
+    expect(find.textContaining('chỉ để tham khảo'), findsOneWidget);
+    expect(find.textContaining('dị ứng'), findsOneWidget);
   });
 
   testWidgets('preferences can be changed and are persisted in app state', (
     tester,
   ) async {
-    final state = await AppState.restore(MemoryAppStorage());
-    await state.signIn(email: _profile.email);
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: FakeAuthGateway(),
+    );
+    await state.signIn(email: _profile.email, password: 'matkhau123');
     await state.completeProfile(_profile);
     await tester.pumpWidget(
       AppScope(
@@ -51,6 +58,44 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(state.preferences, isNot(contains('Ít dầu')));
+  });
+
+  testWidgets('warns when profile has allergy or medical safety flags', (
+    tester,
+  ) async {
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: FakeAuthGateway(),
+    );
+    await state.signIn(email: _profile.email, password: 'matkhau123');
+    await state.completeProfile(
+      const UserProfile(
+        name: 'An',
+        email: 'an@example.com',
+        age: 25,
+        heightCm: 170,
+        weightKg: 65,
+        targetWeightKg: 60,
+        gender: 'Nam',
+        activity: 'Vừa phải',
+        goal: 'Giảm cân',
+        allergies: ['đậu phộng'],
+        medicalConditions: ['tiểu đường'],
+      ),
+    );
+
+    await tester.pumpWidget(
+      AppScope(
+        notifier: state,
+        child: MaterialApp(
+          theme: BalanceTheme.light,
+          home: const SuggestionsScreen(),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('chưa kiểm tra dị ứng'), findsOneWidget);
+    expect(find.textContaining('bệnh nền'), findsOneWidget);
   });
 }
 

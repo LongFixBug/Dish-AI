@@ -5,10 +5,15 @@ import 'package:balance/features/profile/domain/user_profile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/fake_auth_gateway.dart';
+
 void main() {
   testWidgets('profile tab shows saved data and can sign out', (tester) async {
-    final state = await AppState.restore(MemoryAppStorage());
-    await state.signIn(email: _profile.email);
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: FakeAuthGateway(),
+    );
+    await state.signIn(email: _profile.email, password: 'matkhau123');
     await state.completeProfile(_profile);
     await tester.pumpWidget(BalanceApp(appState: state));
 
@@ -21,6 +26,8 @@ void main() {
       180,
       scrollable: find.byType(Scrollable).last,
     );
+    await tester.drag(find.byType(ListView), const Offset(0, -80));
+    await tester.pumpAndSettle();
     expect(find.text('Đăng xuất'), findsOneWidget);
 
     await tester.tap(find.text('Đăng xuất'));

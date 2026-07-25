@@ -74,10 +74,24 @@ class ProfileScreen extends StatelessWidget {
                       _ProfileRow('Chiều cao', '${profile.heightCm} cm'),
                       _ProfileRow('Cân nặng', '${profile.weightKg} kg'),
                       _ProfileRow('Mục tiêu', profile.goal),
+                      if (profile.allergies.isNotEmpty)
+                        _ProfileRow('Dị ứng', profile.allergies.join(', ')),
+                      if (profile.medicalConditions.isNotEmpty)
+                        _ProfileRow(
+                          'Bệnh nền',
+                          profile.medicalConditions.join(', '),
+                        ),
                       _ProfileRow(
-                        'Năng lượng/ngày',
+                        'Mục tiêu ước tính',
                         '${profile.dailyCalorieTarget} kcal',
                         showDivider: false,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Mức năng lượng dùng công thức Mifflin–St Jeor và chỉ '
+                        'là ước tính; không phù hợp để tự điều trị, dùng cho '
+                        'trẻ em, thai kỳ hoặc bệnh lý.',
+                        style: TextStyle(fontSize: 12),
                       ),
                     ],
                   ),
@@ -139,7 +153,15 @@ class _ProfileRow extends StatelessWidget {
           child: Row(
             children: [
               Expanded(child: Text(label)),
-              Text(value, style: const TextStyle(fontWeight: FontWeight.w900)),
+              Flexible(
+                child: Text(
+                  value,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
             ],
           ),
         ),

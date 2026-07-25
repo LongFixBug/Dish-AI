@@ -17,7 +17,15 @@ if config.config_file_name is not None:
 
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 target_metadata = Base.metadata
-MANAGED_TABLES = {"vn_ingredients", "vn_dishes", "dish_candidates"}
+MANAGED_TABLES = {
+    "vn_ingredients",
+    "vn_dishes",
+    "dish_candidates",
+    "catalog_cleanup_log",
+    "users",
+    "refresh_tokens",
+    "feedback_submissions",
+}
 
 
 def include_object(object_, name, type_, reflected, compare_to) -> bool:

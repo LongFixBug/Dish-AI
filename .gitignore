@@ -2,6 +2,9 @@ venv/
 .venv/
 __pycache__/
 .env
+**/key.properties
+*.jks
+*.keystore
 .DS_Store
 *.pyc
 *.pyo

@@ -57,6 +57,7 @@ void main() {
     expect(find.text('Kết quả phân tích'), findsOneWidget);
     expect(find.text('Cơm tấm sườn'), findsOneWidget);
     expect(find.text('650 kcal'), findsOneWidget);
+    expect(find.textContaining('không thay thế tư vấn y tế'), findsOneWidget);
     expect(find.text('Nhận diện: 86%'), findsOneWidget);
     expect(find.text('Dữ liệu catalog: 92%'), findsOneWidget);
     expect(find.textContaining('Độ tin cậy:'), findsNothing);

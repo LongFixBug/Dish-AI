@@ -21,6 +21,7 @@ void main() {
       final api = AnalyzeApi(
         client: client,
         baseUrl: Uri.parse('http://10.0.2.2:8000'),
+        accessToken: 'access-token',
       );
 
       final result = await api.analyzeImage(
@@ -36,6 +37,7 @@ void main() {
       expect(capturedRequest.files.single.field, 'file');
       expect(capturedRequest.files.single.filename, 'com-tam.jpg');
       expect(capturedRequest.files.single.contentType.toString(), 'image/jpeg');
+      expect(capturedRequest.headers['authorization'], 'Bearer access-token');
       expect(result.dishName, 'Cơm tấm');
     },
   );
@@ -50,6 +52,7 @@ void main() {
           }, statusCode: 422),
         ),
         baseUrl: Uri.parse('http://localhost:8000'),
+        accessToken: 'access-token',
       );
 
       expect(
@@ -80,6 +83,7 @@ void main() {
           }),
         ),
         baseUrl: Uri.parse('http://localhost:8000'),
+        accessToken: 'access-token',
       );
 
       expect(
@@ -108,6 +112,7 @@ void main() {
           return _jsonResponse({'source': 'vision', 'dishes': <Object>[]});
         }),
         baseUrl: Uri.parse('http://localhost:8000'),
+        accessToken: 'access-token',
       );
 
       await expectLater(
@@ -140,6 +145,7 @@ void main() {
         ),
       ),
       baseUrl: Uri.parse('http://localhost:8000'),
+      accessToken: 'access-token',
     );
 
     await expectLater(

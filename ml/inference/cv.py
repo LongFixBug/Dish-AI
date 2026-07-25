@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
+from backend.config import settings
+from ml.model_registry import load_manifest, validate_manifest
+
 # ─── Constants ───────────────────────────────────────────────────────
 ARCH = "efficientnet_b0"  # timm model — phải khớp train script
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -16,6 +19,20 @@ IMAGE_SIZE = 224
 
 
 BEST_CHECKPOINT = CHECKPOINT_DIR / "best_model.pth"
+BEST_MANIFEST = CHECKPOINT_DIR / "best_model.manifest.json"
+DEFAULT_SERVING_THRESHOLD = 0.85
+
+
+def _resolve_serving_metadata(checkpoint: dict) -> tuple[str, float]:
+    version = checkpoint.get("model_version")
+    if not isinstance(version, str) or not version:
+        version = "unversioned"
+    raw_threshold = checkpoint.get("cv_confidence_threshold")
+    try:
+        threshold = float(raw_threshold)
+    except (TypeError, ValueError):
+        threshold = DEFAULT_SERVING_THRESHOLD
+    return version, min(0.99, max(0.5, threshold))
 
 
 def _resolve_checkpoint_classes(
@@ -72,6 +89,8 @@ class CVModel:
         self,
         checkpoint_path: Optional[Path] = None,
         device: Optional[str] = None,
+        manifest_path: Optional[Path] = None,
+        require_manifest: bool = False,
     ) -> None:
         """
         Args:
@@ -80,11 +99,15 @@ class CVModel:
         """
         self.device = device or _default_device()
         self.checkpoint_path = checkpoint_path or DEFAULT_CHECKPOINT
+        self.manifest_path = manifest_path or BEST_MANIFEST
+        self.require_manifest = require_manifest
         self.model: Any | None = None
         self.classes: list[str] = []
         self._loaded = False
         self.transform: Any | None = None
         self._torch: Any | None = None
+        self.model_version = "unavailable"
+        self.serving_threshold = DEFAULT_SERVING_THRESHOLD
 
     def load(self) -> None:
         """Load trained weights; keep local inference disabled if unavailable."""
@@ -106,6 +129,17 @@ class CVModel:
             self.checkpoint_path,
             map_location=self.device,
             weights_only=True,
+        )
+        if self.manifest_path.exists():
+            validate_manifest(
+                load_manifest(self.manifest_path),
+                self.checkpoint_path,
+                require_passed_gate=True,
+            )
+        elif self.require_manifest:
+            raise RuntimeError("Production CV model manifest is missing")
+        self.model_version, self.serving_threshold = _resolve_serving_metadata(
+            checkpoint
         )
         self.classes = _resolve_checkpoint_classes(checkpoint, CLASS_MAPPING)
         if not self.classes:
@@ -192,9 +226,14 @@ class CVModel:
             "dish_name": all_predictions[0]["class_name"] if best_prob >= 0.3 else None,
             "confidence": best_prob,
             "all_predictions": all_predictions,
-            "source": "local" if best_prob >= CONFIDENCE_THRESHOLD else "fallback_required",
+            "source": (
+                "local"
+                if best_prob >= self.serving_threshold
+                else "fallback_required"
+            ),
+            "model_version": self.model_version,
         }
 
 
-# Singleton instance
-cv_model = CVModel()
+# Singleton instance. Production refuses unmanifested local weights.
+cv_model = CVModel(require_manifest=settings.environment == "production")

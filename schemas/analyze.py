@@ -51,6 +51,10 @@ class AnalyzeResponse(BaseModel):
 
     dish_name: str | None = Field(default=None, description="Tên món chính / bữa ăn")
     source: Literal["cv_local", "vision", "cv_local_not_found_vision"]
+    model_version: str | None = Field(
+        default=None,
+        description="Version của CV checkpoint hoặc tên cloud Vision model.",
+    )
     cv_confidence: float | None = Field(
         default=None, description="Confidence CV local (0-1), None nếu CV disabled"
     )
