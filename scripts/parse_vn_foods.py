@@ -92,6 +92,11 @@ def _calc_calories_per_g(protein_g: float, fat_g: float, carb_g: float) -> float
     return round(kcal_per_100g / 100, 6)
 
 
+def _clamp_tiny_negative(value: float) -> float:
+    """Clamp at most 0.1 g/100 g of source noise; retain larger errors."""
+    return 0.0 if -0.1 <= value < 0 else value
+
+
 # ─── API 1: Thực phẩm (nguyên liệu thô) ────────────────────────────────────────
 
 def parse_food_item(item: dict) -> dict | None:
@@ -107,6 +112,9 @@ def parse_food_item(item: dict) -> dict | None:
     fat = _extract_nutrient_value(nutrients, "Total lipid (Fat)")
     carb = _extract_nutrient_value(nutrients, "Carbohydrate by difference")
     fiber = _extract_nutrient_value(nutrients, "Fiber")
+    protein, fat, carb, fiber = (
+        _clamp_tiny_negative(value) for value in (protein, fat, carb, fiber)
+    )
 
     # Bỏ qua món không có dữ liệu dinh dưỡng
     if protein == 0 and fat == 0 and carb == 0:

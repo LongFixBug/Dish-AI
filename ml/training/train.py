@@ -15,6 +15,7 @@ Yêu cầu: ảnh đã được tổ chức trong <data_dir>/{train,val}/<ten_mo
 
 import argparse
 import json
+import random
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -41,6 +42,7 @@ NUM_WORKERS = 2
 # Mặc định BẬT class_weight — cân bằng loss khi số ảnh/class chênh lệch.
 # --no-class-weight để tắt (VD khi đã cân bằng data hoặc muốn so sánh baseline).
 USE_CLASS_WEIGHT = True
+RANDOM_SEED = 42
 
 DATA_DIR = PROJECT_ROOT / "data" / "images"
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
@@ -52,6 +54,47 @@ DEVICE = torch.device(
     else "cuda" if torch.cuda.is_available()
     else "cpu"
 )
+
+
+def set_reproducible_seed(seed: int = RANDOM_SEED) -> None:
+    """Seed Python and Torch so repeated runs start from the same random state."""
+    random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def _class_folders(data_dir: Path, split: str) -> list[str]:
+    split_dir = data_dir / split
+    if not split_dir.exists():
+        raise FileNotFoundError(f"Không tìm thấy thư mục {split_dir}.")
+    return sorted(path.name for path in split_dir.iterdir() if path.is_dir())
+
+
+def load_training_datasets(
+    data_dir: str | Path,
+) -> tuple[VietFoodDataset, VietFoodDataset]:
+    """Load train/val with one shared class mapping and reject split drift."""
+    root = Path(data_dir)
+    train_classes = _class_folders(root, "train")
+    val_classes = _class_folders(root, "val")
+    if train_classes != val_classes:
+        raise ValueError(
+            "Validation class folders must exactly match train class folders: "
+            f"train={train_classes}, val={val_classes}"
+        )
+    train_ds = VietFoodDataset(root, classes=train_classes, split="train")
+    val_ds = VietFoodDataset(root, classes=train_classes, split="val")
+    empty_val_classes = [
+        name
+        for name, count in zip(train_classes, val_ds.class_counts(), strict=True)
+        if count == 0
+    ]
+    if empty_val_classes:
+        raise ValueError(
+            f"Validation classes without images: {empty_val_classes}"
+        )
+    return train_ds, val_ds
 
 
 def find_latest_checkpoint() -> Path | None:
@@ -191,17 +234,69 @@ def train_epoch(
     return avg_loss, accuracy
 
 
+def compute_classification_metrics(
+    confusion_matrix: list[list[int]],
+    classes: list[str],
+) -> dict[str, object]:
+    """Calculate macro metrics from a true-row/predicted-column confusion matrix."""
+    if len(confusion_matrix) != len(classes) or any(
+        len(row) != len(classes) for row in confusion_matrix
+    ):
+        raise ValueError("Confusion matrix shape must match the class list")
+
+    total = sum(sum(row) for row in confusion_matrix)
+    correct = sum(confusion_matrix[index][index] for index in range(len(classes)))
+    per_class: dict[str, dict[str, float | int]] = {}
+    precisions: list[float] = []
+    recalls: list[float] = []
+    f1_scores: list[float] = []
+
+    for index, class_name in enumerate(classes):
+        true_positive = confusion_matrix[index][index]
+        support = sum(confusion_matrix[index])
+        predicted_total = sum(row[index] for row in confusion_matrix)
+        precision = true_positive / predicted_total if predicted_total else 0.0
+        recall = true_positive / support if support else 0.0
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if precision + recall > 0
+            else 0.0
+        )
+        if support > 0:
+            precisions.append(precision)
+            recalls.append(recall)
+            f1_scores.append(f1)
+        per_class[class_name] = {
+            "precision": round(precision * 100, 2),
+            "recall": round(recall * 100, 2),
+            "f1": round(f1 * 100, 2),
+            "support": support,
+        }
+
+    def _macro(values: list[float]) -> float:
+        return round(100 * sum(values) / len(values), 2) if values else 0.0
+
+    return {
+        "accuracy": round(100 * correct / total, 2) if total else 0.0,
+        "macro_precision": _macro(precisions),
+        "macro_recall": _macro(recalls),
+        "macro_f1": _macro(f1_scores),
+        "per_class": per_class,
+        "confusion_matrix": confusion_matrix,
+    }
+
+
 @torch.no_grad()
 def evaluate(
     model: nn.Module,
     loader: DataLoader,
     criterion: nn.Module,
     classes: list[str] | None = None,
-) -> tuple[float, float, dict[int, float]]:
+) -> tuple[float, float, dict[int, float], dict[str, object]]:
     """Evaluate model trên validation/test set.
 
     Returns:
-        (avg_loss, accuracy, per_class_acc).
+        (avg_loss, accuracy, per_class_acc, classification_metrics).
         per_class_acc: {class_idx: accuracy%} — bóc trần lớp thiểu số yếu,
         acc tổng che giấu được.
     """
@@ -213,6 +308,7 @@ def evaluate(
     n_classes = len(classes) if classes else 0
     per_class_correct = [0] * n_classes
     per_class_total = [0] * n_classes
+    confusion_matrix = [[0] * n_classes for _ in range(n_classes)]
 
     for images, labels in loader:
         images, labels = images.to(DEVICE), labels.to(DEVICE)
@@ -227,6 +323,7 @@ def evaluate(
         if n_classes:
             for true_c, pred_c in zip(labels.tolist(), predicted.tolist()):
                 per_class_total[true_c] += 1
+                confusion_matrix[true_c][pred_c] += 1
                 if true_c == pred_c:
                     per_class_correct[true_c] += 1
 
@@ -236,7 +333,8 @@ def evaluate(
     for c in range(n_classes):
         if per_class_total[c] > 0:
             per_class_acc[c] = 100.0 * per_class_correct[c] / per_class_total[c]
-    return avg_loss, accuracy, per_class_acc
+    metrics = compute_classification_metrics(confusion_matrix, classes or [])
+    return avg_loss, accuracy, per_class_acc, metrics
 
 
 def _format_per_class(classes: list[str], per_class_acc: dict[int, float]) -> str:
@@ -255,22 +353,30 @@ def _format_per_class(classes: list[str], per_class_acc: dict[int, float]) -> st
     return "\n".join(lines)
 
 
-def main(resume: bool = False, ckpt: str | None = None, data_dir: str | None = None) -> None:
+def main(
+    resume: bool = False,
+    ckpt: str | None = None,
+    data_dir: str | None = None,
+    *,
+    use_class_weight: bool = USE_CLASS_WEIGHT,
+    seed: int = RANDOM_SEED,
+) -> None:
     global DATA_DIR
     if data_dir:
         DATA_DIR = Path(data_dir)
         if not DATA_DIR.is_absolute():
             DATA_DIR = PROJECT_ROOT / DATA_DIR
+    set_reproducible_seed(seed)
     print(f"🔥 Device: {DEVICE}")
     print(f"📂 Data: {DATA_DIR}")
+    print(f"🎲 Seed: {seed}")
     print()
 
     # ── Load datasets ────────────────────────────────────────────────
     print("📦 Loading datasets...")
     try:
-        train_ds = VietFoodDataset(DATA_DIR, split="train")
-        val_ds = VietFoodDataset(DATA_DIR, split="val")
-    except FileNotFoundError as e:
+        train_ds, val_ds = load_training_datasets(DATA_DIR)
+    except (FileNotFoundError, ValueError) as e:
         print(f"\n❌ {e}")
         print("\n💡 Tạo cấu trúc thư mục mẫu trước khi train:")
         print("   mkdir -p data/images/train/pho_bo")
@@ -286,11 +392,13 @@ def main(resume: bool = False, ckpt: str | None = None, data_dir: str | None = N
         print("\n❌ Cần ít nhất 2 class để train. Hiện tại mới có 1 class.")
         return
 
+    train_generator = torch.Generator().manual_seed(seed)
     train_loader = DataLoader(
         train_ds,
         batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=NUM_WORKERS,
+        generator=train_generator,
     )
     val_loader = DataLoader(
         val_ds,
@@ -332,7 +440,7 @@ def main(resume: bool = False, ckpt: str | None = None, data_dir: str | None = N
     print(f"   Trainable params: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 
     criterion = nn.CrossEntropyLoss()
-    if USE_CLASS_WEIGHT:
+    if use_class_weight:
         # Cân bằng loss khi số ảnh/class chênh lệch — tránh "accuracy paradox"
         # (acc tổng cao nhưng lớp thiểu số near-random).
         class_weights = compute_class_weights(train_ds.class_counts()).to(DEVICE)
@@ -372,10 +480,16 @@ def main(resume: bool = False, ckpt: str | None = None, data_dir: str | None = N
         print(f"   ✅ Train  — Loss: {train_loss:.4f} | Acc: {train_acc:.1f}%")
 
         # Validate (kèm per-class acc — bóc trần lớp thiểu số yếu)
-        val_loss, val_acc, per_class_acc = evaluate(
+        val_loss, val_acc, per_class_acc, classification_metrics = evaluate(
             model, val_loader, criterion, classes=train_ds.classes
         )
         print(f"   📊 Val    — Loss: {val_loss:.4f} | Acc: {val_acc:.1f}%")
+        print(
+            "   Macro  — "
+            f"P: {classification_metrics['macro_precision']:.2f}% | "
+            f"R: {classification_metrics['macro_recall']:.2f}% | "
+            f"F1: {classification_metrics['macro_f1']:.2f}%"
+        )
         print("   Per-class accuracy (thấp lên đầu — xem model yếu chỗ nào):")
         print(_format_per_class(train_ds.classes, per_class_acc))
 
@@ -392,6 +506,10 @@ def main(resume: bool = False, ckpt: str | None = None, data_dir: str | None = N
             "train_acc": round(train_acc, 2),
             "val_loss": round(val_loss, 4),
             "val_acc": round(val_acc, 2),
+            "val_macro_precision": classification_metrics["macro_precision"],
+            "val_macro_recall": classification_metrics["macro_recall"],
+            "val_macro_f1": classification_metrics["macro_f1"],
+            "val_confusion_matrix": classification_metrics["confusion_matrix"],
             "val_worst_class_acc": round(worst, 2) if worst is not None else None,
             "val_per_class_acc": {
                 train_ds.classes[c]: round(a, 2)
@@ -442,7 +560,8 @@ def main(resume: bool = False, ckpt: str | None = None, data_dir: str | None = N
     print(f"📈 History saved: {history_path}")
 
 
-if __name__ == "__main__":
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser without executing training, so options are testable."""
     parser = argparse.ArgumentParser(description="Train VietFood CV model")
     parser.add_argument(
         "--resume",
@@ -467,8 +586,18 @@ if __name__ == "__main__":
         help="Tắt class_weight (mặc định bật) — dùng khi data đã cân bằng "
         "hoặc muốn so sánh baseline.",
     )
-    args = parser.parse_args()
-    if args.no_class_weight:
-        import ml.training.train as _self
-        _self.USE_CLASS_WEIGHT = False
-    main(resume=args.resume, ckpt=args.ckpt, data_dir=args.data_dir)
+    return parser
+
+
+def run_from_args(args: argparse.Namespace) -> None:
+    """Translate CLI flags into explicit main arguments."""
+    main(
+        resume=args.resume,
+        ckpt=args.ckpt,
+        data_dir=args.data_dir,
+        use_class_weight=not args.no_class_weight,
+    )
+
+
+if __name__ == "__main__":
+    run_from_args(build_parser().parse_args())

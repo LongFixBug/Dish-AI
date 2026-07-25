@@ -1,0 +1,173 @@
+import 'package:balance/core/state/app_scope.dart';
+import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/pressable_button.dart';
+import 'package:balance/features/auth/presentation/auth_components.dart';
+import 'package:balance/features/auth/presentation/sign_up_screen.dart';
+import 'package:balance/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:balance/features/onboarding/presentation/profile_setup_screen.dart';
+import 'package:flutter/material.dart';
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting || !_formKey.currentState!.validate()) return;
+    setState(() => _submitting = true);
+    try {
+      final state = AppScope.of(context);
+      await state.signIn(email: _emailController.text);
+      if (!mounted) return;
+      final nextPage = state.profile == null
+          ? const ProfileSetupScreen()
+          : const DashboardScreen();
+      await Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => nextPage),
+        (_) => false,
+      );
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể lưu phiên đăng nhập.')),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AuthPageShell(
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Đăng nhập',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.displaySmall,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Chào mừng bạn quay lại với Balance.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 32),
+            LabeledTextField(
+              key: const ValueKey('login-email'),
+              controller: _emailController,
+              label: 'Email',
+              hint: 'nhap@email.com',
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              prefixIcon: Icons.email_outlined,
+              validator: _validateEmail,
+            ),
+            const SizedBox(height: 20),
+            LabeledTextField(
+              key: const ValueKey('login-password'),
+              controller: _passwordController,
+              label: 'Mật khẩu',
+              hint: 'Nhập mật khẩu',
+              obscureText: true,
+              textInputAction: TextInputAction.done,
+              prefixIcon: Icons.lock_outline_rounded,
+              validator: _validatePassword,
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Bản MVP chưa có máy chủ gửi email đặt lại mật khẩu.',
+                    ),
+                  ),
+                ),
+                child: const Text('Quên mật khẩu?'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            PressableButton(
+              label: _submitting ? 'Đang đăng nhập...' : 'Đăng nhập',
+              onPressed: _submitting ? null : _submit,
+            ),
+            const SizedBox(height: 24),
+            const Row(
+              children: [
+                Expanded(child: Divider(color: BalanceColors.ink)),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14),
+                  child: Text('hoặc'),
+                ),
+                Expanded(child: Divider(color: BalanceColors.ink)),
+              ],
+            ),
+            const SizedBox(height: 24),
+            PressableButton(
+              label: 'Đăng nhập với Google',
+              icon: Icons.g_mobiledata_rounded,
+              backgroundColor: BalanceColors.paper,
+              foregroundColor: BalanceColors.ink,
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Google Sign-In chưa được cấu hình cho bản MVP.',
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('Chưa có tài khoản?'),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pushReplacement(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SignUpScreen(),
+                    ),
+                  ),
+                  child: const Text('Đăng ký'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String? _validateEmail(String? raw) {
+  final value = raw?.trim() ?? '';
+  if (value.isEmpty) return 'Vui lòng nhập email';
+  if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value)) {
+    return 'Email chưa đúng định dạng';
+  }
+  return null;
+}
+
+String? _validatePassword(String? value) {
+  if (value == null || value.isEmpty) return 'Vui lòng nhập mật khẩu';
+  if (value.length < 8) return 'Mật khẩu cần ít nhất 8 ký tự';
+  return null;
+}

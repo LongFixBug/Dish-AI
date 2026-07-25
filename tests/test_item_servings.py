@@ -60,3 +60,13 @@ def test_zero_original_weight_does_not_divide_by_zero() -> None:
 def test_adjusted_grams_must_match_item_count() -> None:
     with pytest.raises(ValueError, match="khớp số món"):
         calculate_adjusted_totals(BASE_ITEMS, [350.0])
+
+
+def test_source_serving_without_weight_cannot_be_rescaled() -> None:
+    source_serving = {
+        **BASE_ITEMS[0],
+        "nutrition_basis": "source_serving",
+    }
+
+    with pytest.raises(ValueError, match="thiếu khối lượng chuẩn"):
+        calculate_adjusted_totals([source_serving], [500.0])

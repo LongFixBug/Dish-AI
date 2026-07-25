@@ -1,6 +1,6 @@
 """The Institute meal endpoint reports nutrition for a dish serving."""
 
-from scripts.parse_vn_foods import parse_meal_item
+from scripts.parse_vn_foods import parse_food_item, parse_meal_item
 from scripts.recreate_vn_dishes import serving_totals
 
 
@@ -32,3 +32,21 @@ def test_recreate_supports_the_legacy_meal_export_without_reinterpreting_it() ->
     }
 
     assert serving_totals(legacy_item) == (450.0, 30.0, 12.0, 60.0, 3.0)
+
+
+def test_food_parser_clamps_tiny_negative_rounding_artifacts() -> None:
+    parsed = parse_food_item({
+        "name_vi": "Thịt ngan luộc",
+        "nutrition": [
+            {"name_en": "Protein", "value": 23.68, "unit": "g"},
+            {"name_en": "Total lipid (Fat)", "value": 33.96, "unit": "g"},
+            {
+                "name_en": "Carbohydrate by difference",
+                "value": -0.03,
+                "unit": "g",
+            },
+        ],
+    })
+
+    assert parsed is not None
+    assert parsed["carbs_per_g"] == 0.0

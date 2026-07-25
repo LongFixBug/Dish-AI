@@ -18,6 +18,30 @@ IMAGE_SIZE = 224
 BEST_CHECKPOINT = CHECKPOINT_DIR / "best_model.pth"
 
 
+def _resolve_checkpoint_classes(
+    checkpoint: dict,
+    mapping_path: Path = CLASS_MAPPING,
+) -> list[str]:
+    """Prefer the mapping stored atomically inside the serving checkpoint."""
+    saved_classes = checkpoint.get("classes")
+    if (
+        isinstance(saved_classes, list)
+        and saved_classes
+        and all(isinstance(name, str) and name for name in saved_classes)
+    ):
+        return list(saved_classes)
+    if not mapping_path.exists():
+        return []
+    with mapping_path.open(encoding="utf-8") as file:
+        legacy_classes = json.load(file).get("classes", [])
+    return (
+        list(legacy_classes)
+        if isinstance(legacy_classes, list)
+        and all(isinstance(name, str) and name for name in legacy_classes)
+        else []
+    )
+
+
 def _find_best_checkpoint() -> Optional[Path]:
     """Return the serving checkpoint, with legacy checkpoints as fallback."""
     if BEST_CHECKPOINT.exists():
@@ -67,17 +91,8 @@ class CVModel:
         self.model = None
         self._loaded = False
 
-        if CLASS_MAPPING.exists():
-            with CLASS_MAPPING.open(encoding="utf-8") as f:
-                self.classes = json.load(f)["classes"]
-        else:
-            self.classes = []
-
-        if (
-            not self.classes
-            or self.checkpoint_path is None
-            or not self.checkpoint_path.exists()
-        ):
+        self.classes = []
+        if self.checkpoint_path is None or not self.checkpoint_path.exists():
             return
 
         try:
@@ -87,13 +102,21 @@ class CVModel:
         except ImportError:
             return
 
-        self.model = timm.create_model(ARCH, num_classes=len(self.classes), drop_rate=0.3)
-
         checkpoint = torch.load(
             self.checkpoint_path,
             map_location=self.device,
             weights_only=True,
         )
+        self.classes = _resolve_checkpoint_classes(checkpoint, CLASS_MAPPING)
+        if not self.classes:
+            return
+        checkpoint_arch = checkpoint.get("arch")
+        if checkpoint_arch and checkpoint_arch != ARCH:
+            raise ValueError(
+                f"Checkpoint architecture {checkpoint_arch!r} does not match {ARCH!r}"
+            )
+
+        self.model = timm.create_model(ARCH, num_classes=len(self.classes), drop_rate=0.3)
         self.model.load_state_dict(checkpoint["model_state_dict"])
 
         self.model = self.model.to(self.device)

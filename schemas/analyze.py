@@ -26,6 +26,16 @@ class AnalyzeDish(BaseModel):
         default=False,
         description="True nếu dùng tên và dinh dưỡng DB; False nếu dùng kết quả Vision",
     )
+    recognition_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence nhận diện riêng của item, không phải độ phủ catalog.",
+    )
+    portion_source: Literal["vision", "catalog_default", "unknown"] = Field(
+        default="unknown",
+        description="Nguồn gram hiển thị cho item.",
+    )
 
 
 class AnalyzeResponse(BaseModel):
@@ -43,6 +53,12 @@ class AnalyzeResponse(BaseModel):
     source: Literal["cv_local", "vision", "cv_local_not_found_vision"]
     cv_confidence: float | None = Field(
         default=None, description="Confidence CV local (0-1), None nếu CV disabled"
+    )
+    recognition_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence nhận diện tổng thể của nhánh tạo kết quả cuối.",
     )
     nutrition: NutritionTotals | None = None
     dishes: list[AnalyzeDish] = Field(

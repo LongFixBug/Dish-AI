@@ -6322,7 +6322,7 @@
     "calories_per_g": 4.0024,
     "protein_per_g": 0.2368,
     "fat_per_g": 0.3396,
-    "carbs_per_g": -0.0003,
+    "carbs_per_g": 0.0,
     "fiber_per_g": 0.0,
     "source": "vnfood"
   },

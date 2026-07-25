@@ -14,8 +14,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import text
+from sqlalchemy import select, text
+
+from backend.db.models import VnDish
 from backend.db.postgres import async_session
+from backend.services.catalog_quality import canonical_name_key, deduplicate_catalog_rows
 
 _HAS_EN = re.compile(r"[A-Za-z]{3,}")
 
@@ -77,39 +80,47 @@ async def main() -> None:
     dishes = [d for d in all_items if d.get("source") == "vnmeal"]
     print(f"Loaded {len(dishes)} dishes from vn_foods.json")
 
-    # Clean + dedup
-    seen: dict[str, dict] = {}
+    # Clean + dedup bằng cùng quy tắc với migration/audit.
+    normalized: list[dict[str, object]] = []
     cleaned_count = 0
     for d in dishes:
         name = d["ingredient_name"]
         cleaned = clean_dish_name(name)
         if cleaned != name:
             cleaned_count += 1
-        if cleaned not in seen:
-            seen[cleaned] = d
+        cal, p, f_val, c, fb = serving_totals(d)
+        normalized.append({
+            "dish_name": cleaned,
+            "total_calories": cal,
+            "total_protein_g": p,
+            "total_fat_g": f_val,
+            "total_carbs_g": c,
+            "total_fiber_g": fb,
+            "source": "vnmeal",
+        })
+    selected = list(deduplicate_catalog_rows(normalized, entity_type="dish"))
 
     print(f"Cleaned names: {cleaned_count}")
-    print(f"Unique dishes (after dedup): {len(seen)}")
+    print(f"Unique dishes (after dedup): {len(selected)}")
 
     async with async_session() as session:
         print("\n[1/2] Upserting institute nutrition (preserving serving metadata)...")
-        count = 0
-        for cleaned_name, d in seen.items():
-            cal, p, f_val, c, fb = serving_totals(d)
-            result = await session.execute(text("""
-                INSERT INTO vn_dishes (dish_name, total_calories,
-                    total_protein_g, total_fat_g, total_carbs_g, total_fiber_g, source)
-                VALUES (:name, :cal, :p, :f, :c, :fb, 'vnmeal')
-                ON CONFLICT ON CONSTRAINT uq_vn_dishes_dish_name DO UPDATE SET
-                    total_calories = EXCLUDED.total_calories,
-                    total_protein_g = EXCLUDED.total_protein_g,
-                    total_fat_g = EXCLUDED.total_fat_g,
-                    total_carbs_g = EXCLUDED.total_carbs_g,
-                    total_fiber_g = EXCLUDED.total_fiber_g,
-                    source = 'vnmeal'
-            """), {"name": cleaned_name, "cal": cal, "p": p, "f": f_val, "c": c, "fb": fb})
-            count += result.rowcount
-        print(f"  -> Upserted {count} dishes")
+        current = list((await session.scalars(select(VnDish))).all())
+        existing = {canonical_name_key(row.dish_name): row for row in current}
+        for item in selected:
+            key = canonical_name_key(str(item["dish_name"]))
+            row = existing.get(key)
+            if row is None:
+                row = VnDish(dish_name=str(item["dish_name"]))
+                session.add(row)
+                existing[key] = row
+            row.total_calories = float(item["total_calories"])
+            row.total_protein_g = float(item["total_protein_g"])
+            row.total_fat_g = float(item["total_fat_g"])
+            row.total_carbs_g = float(item["total_carbs_g"])
+            row.total_fiber_g = float(item["total_fiber_g"])
+            row.source = "vnmeal"
+        print(f"  -> Upserted {len(selected)} dishes")
         await session.commit()
 
         print("[2/2] Verifying serving-size coverage...")

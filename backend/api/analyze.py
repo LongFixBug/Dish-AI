@@ -73,6 +73,31 @@ def _is_cv_high_conf(cv_conf: float | None, cv_dish: str | None) -> bool:
     )
 
 
+def _recognition_confidence(dish: dict) -> float | None:
+    """Return one normalized item confidence when Vision supplied it."""
+    value = dish.get("confidence")
+    if value is None:
+        return None
+    try:
+        return min(1.0, max(0.0, float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _portion_source(requested_grams: float, item_grams: float) -> str:
+    """Describe whether displayed grams came from Vision or catalog fallback."""
+    if requested_grams > 0:
+        return "vision"
+    if item_grams > 0:
+        return "catalog_default"
+    return "unknown"
+
+
+def _has_usable_vision_nutrition(item: NutritionPerIngredient) -> bool:
+    """Reject zero-filled Vision rows that carry no usable serving evidence."""
+    return item.grams > 0 and item.calories > 0
+
+
 async def _analyze_cv_local(
     session: AsyncSession,
     dish_name: str,
@@ -95,6 +120,7 @@ async def _analyze_cv_local(
         dish_name=vn.dish_name,
         source="cv_local",
         cv_confidence=confidence,
+        recognition_confidence=confidence,
         nutrition=totals,
         dishes=[
             AnalyzeDish(
@@ -102,6 +128,8 @@ async def _analyze_cv_local(
                 grams=grams,
                 is_side=False,
                 found_in_db=True,
+                recognition_confidence=confidence,
+                portion_source="catalog_default",
             )
         ],
     )
@@ -133,7 +161,11 @@ async def _resolve_dish_item(
     if vn is not None:
         if _has_nutrition(vn) and _has_weight(vn):
             per_gram = _vn_dish_to_per_gram(vn)
-            return calculate_item_nutrition(vn.dish_name, gram, per_gram), vn.dish_name
+            effective_grams = gram if gram > 0 else float(vn.typical_grams)
+            return (
+                calculate_item_nutrition(vn.dish_name, effective_grams, per_gram),
+                vn.dish_name,
+            )
         if _has_nutrition(vn):
             return NutritionPerIngredient(
                 item_name=vn.dish_name,
@@ -144,6 +176,7 @@ async def _resolve_dish_item(
                 carbs_g=round(vn.total_carbs_g, 1),
                 fiber_g=round(vn.total_fiber_g, 1),
                 found_in_db=True,
+                nutrition_basis="source_serving",
             ), vn.dish_name
         # Catalog rows without nutrition fall back to the Vision estimate.
 
@@ -192,9 +225,11 @@ async def _analyze_vision_dishes(
                 AnalyzeDish(
                     dish_name=resolved_name,
                     vision_dish_name=(dish_name if dish_name != resolved_name else None),
-                    grams=gram,
+                    grams=item.grams,
                     is_side=is_side,
                     found_in_db=True,
+                    recognition_confidence=_recognition_confidence(d),
+                    portion_source=_portion_source(gram, item.grams),
                 )
             )
             continue
@@ -217,8 +252,17 @@ async def _analyze_vision_dishes(
                 grams=gram,
                 is_side=is_side,
                 found_in_db=False,
+                recognition_confidence=_recognition_confidence(d),
+                portion_source="vision" if gram > 0 else "unknown",
             )
         )
+        if not _has_usable_vision_nutrition(vision_item):
+            missing.append(resolved_name)
+            logger.warning(
+                "Vision dish '%s' has no usable gram/nutrition estimate",
+                resolved_name,
+            )
+            continue
         try:
             await stage_dish_candidate(
                 session,
@@ -336,6 +380,7 @@ async def analyze_food(
             dish_name=combined_name,
             source=source,
             cv_confidence=cv_conf if cv_model.is_loaded else None,
+            recognition_confidence=vision.get("confidence"),
             nutrition=totals,
             dishes=response_dishes,
             vision_reasoning=vision.get("reasoning"),
@@ -393,6 +438,7 @@ async def analyze_vision_only(
             dish_name=combined_name,
             source="vision",
             cv_confidence=None,
+            recognition_confidence=vision.get("confidence"),
             nutrition=totals,
             dishes=response_dishes,
             vision_reasoning=vision.get("reasoning"),

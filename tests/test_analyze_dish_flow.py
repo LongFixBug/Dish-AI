@@ -7,6 +7,7 @@ from starlette.datastructures import Headers, UploadFile
 
 from backend.api import analyze
 from ml.inference.vision import _normalize_dishes
+from schemas.nutrition import calculate_totals
 
 
 class FakeSession:
@@ -72,6 +73,7 @@ async def test_high_confidence_cv_uses_db_and_skips_vision(monkeypatch) -> None:
     assert response.source == "cv_local"
     assert response.dish_name == "Xôi xéo"
     assert response.cv_confidence == 0.95
+    assert response.recognition_confidence == 0.95
     assert response.nutrition is not None
     assert response.nutrition.total_grams == 300.0
     assert response.nutrition.total_calories == 425.0
@@ -101,11 +103,13 @@ async def test_high_confidence_cv_falls_back_when_db_misses(monkeypatch) -> None
         vision_calls += 1
         return {
             "dish_name": "Phở bò",
+            "confidence": 0.88,
             "dishes": [
                 {
                     "dish_name": "Phở bò",
                     "gram": 500.0,
                     "is_side": False,
+                    "confidence": 0.9,
                     "total_calories": 0.0,
                     "total_protein_g": 0.0,
                     "total_fat_g": 0.0,
@@ -140,6 +144,9 @@ async def test_high_confidence_cv_falls_back_when_db_misses(monkeypatch) -> None
     assert vision_calls == 1
     assert response.source == "cv_local_not_found_vision"
     assert response.dish_name == "Phở bò"
+    assert response.recognition_confidence == 0.88
+    assert response.dishes[0].recognition_confidence == 0.9
+    assert response.dishes[0].portion_source == "vision"
     assert response.nutrition is not None
 
 
@@ -185,6 +192,7 @@ async def test_db_match_uses_canonical_name_and_ignores_vision_nutrition(
     assert dishes[0].dish_name == "Bánh mì thịt nướng"
     assert dishes[0].vision_dish_name == "Bánh mì kẹp thịt"
     assert dishes[0].found_in_db is True
+    assert dishes[0].portion_source == "vision"
     assert auto_added == []
     assert missing == []
 
@@ -232,6 +240,7 @@ async def test_db_miss_uses_vision_values_and_stages_candidate(monkeypatch) -> N
         "carbs_g": 55.0,
         "fiber_g": 4.0,
         "found_in_db": False,
+        "nutrition_basis": "vision_estimate",
     }
     assert saved["dish_name"] == "Món mới"
     assert saved["typical_grams"] == 250
@@ -315,6 +324,37 @@ async def test_side_item_does_not_use_semantic_dish_or_ingredient_match(
     assert resolved_name == "Trứng ốp la"
 
 
+async def test_known_dish_uses_catalog_portion_when_vision_omits_grams(
+    monkeypatch,
+) -> None:
+    """A missing Vision weight must not turn trusted nutrition into zeroes."""
+    db_dish = SimpleNamespace(
+        dish_name="Cơm sườn",
+        typical_grams=400.0,
+        total_calories=640.0,
+        total_protein_g=28.0,
+        total_fat_g=20.0,
+        total_carbs_g=90.0,
+        total_fiber_g=4.0,
+        source="vnmeal",
+    )
+
+    async def fake_lookup(_session, _name):
+        return db_dish
+
+    monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
+
+    item, resolved_name = await analyze._resolve_dish_item(
+        FakeSession(), "Cơm sườn", 0.0, False
+    )
+
+    assert resolved_name == "Cơm sườn"
+    assert item is not None
+    assert item.grams == 400.0
+    assert item.calories == 640.0
+    assert item.nutrition_basis == "per_gram_scaled"
+
+
 async def test_missing_weight_does_not_persist_vision_estimate(monkeypatch) -> None:
     """A single image estimate must not mutate an institute nutrition record."""
     db_dish = SimpleNamespace(
@@ -341,7 +381,48 @@ async def test_missing_weight_does_not_persist_vision_estimate(monkeypatch) -> N
     assert item is not None
     assert item.grams == 350.0
     assert item.calories == 80.0
+    assert item.nutrition_basis == "source_serving"
+    totals = calculate_totals("Canh rau", [item])
+    assert totals.per_100g_available is False
+    assert totals.per_100g_calories == 0.0
     assert session.commits == 0
+
+
+async def test_unknown_dish_without_usable_nutrition_is_not_staged(
+    monkeypatch,
+) -> None:
+    """Zero-filled Vision output is not useful catalog evidence or a valid result."""
+
+    async def fake_lookup(_session, _name):
+        return None
+
+    async def stage_must_not_run(*_args, **_kwargs):
+        raise AssertionError("Không được stage candidate toàn số 0")
+
+    monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
+    monkeypatch.setattr(analyze, "stage_dish_candidate", stage_must_not_run)
+
+    items, dishes, staged, missing = await analyze._analyze_vision_dishes(
+        FakeSession(),
+        [
+            {
+                "dish_name": "Món chưa rõ",
+                "gram": 0,
+                "is_side": False,
+                "confidence": 0.8,
+                "total_calories": 0,
+                "total_protein_g": 0,
+                "total_fat_g": 0,
+                "total_carbs_g": 0,
+                "total_fiber_g": 0,
+            }
+        ],
+    )
+
+    assert items == []
+    assert dishes[0].found_in_db is False
+    assert staged == []
+    assert missing == ["Món chưa rõ"]
 
 
 def test_normalize_vision_dishes_keeps_nutrition_and_calorie_alias() -> None:
@@ -365,6 +446,7 @@ def test_normalize_vision_dishes_keeps_nutrition_and_calorie_alias() -> None:
             "dish_name": "Phở bò",
             "gram": 500.0,
             "is_side": False,
+            "confidence": 1.0,
             "total_calories": 450.0,
             "total_protein_g": 30.0,
             "total_fat_g": 0.0,

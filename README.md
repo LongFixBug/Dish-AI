@@ -57,7 +57,18 @@ Nạp dữ liệu và dựng lại semantic index:
 DEBUG=false uv run python scripts/seed_nutrition.py
 DEBUG=false uv run python scripts/recreate_vn_dishes.py
 DEBUG=false uv run python scripts/rebuild_dish_servings.py --apply
+DEBUG=false uv run python scripts/cleanup_vn_dishes.py
+DEBUG=false uv run python scripts/cleanup_vn_dishes.py --apply
 DEBUG=false uv run python scripts/reindex_qdrant.py
+```
+
+Lệnh cleanup đầu tiên luôn là **dry-run** để in đúng các thay đổi dự kiến. Bản
+`--apply` ghi snapshot trước khi sửa/xóa vào `catalog_cleanup_log`, nên mọi thay
+đổi tự động đều truy vết được. Nếu cleanup có xóa duplicate sau khi Qdrant đã
+được dựng, đồng bộ các UUID đã lưu trong journal sau khi PostgreSQL commit:
+
+```bash
+DEBUG=false uv run python scripts/cleanup_vn_dishes.py --sync-qdrant
 ```
 
 Kiểm tra Qdrant có khớp tuyệt đối với UUID trong PostgreSQL mà không thay đổi dữ liệu:
@@ -79,8 +90,15 @@ API docs: `http://localhost:8000/docs`.
 ```bash
 uv run alembic check
 uv run pytest -q
+DEBUG=false uv run python scripts/audit_catalog.py --fail-on error
 DEBUG=false uv run python -m ml.evaluation.catalog_eval --output reports/catalog_eval.md
 ```
+
+`audit_catalog.py` chỉ đọc dữ liệu và kiểm tra số âm, khẩu phần bất khả thi,
+candidate không thể duyệt, duplicate khác hoa/thường và độ lệch calories so với
+macro. Va chạm tìm kiếm bỏ dấu như “dưa/dứa” chỉ là warning, tuyệt đối không tự
+gộp. CI seed catalog thật, chạy cleanup rồi thất bại nếu audit còn `error`; báo
+cáo Markdown được giữ lại cùng coverage artifact.
 
 `catalog_eval` đo accuracy và coverage trên bộ câu truy vấn tiếng Việt có dấu/không dấu. RAGAS evaluation chậm hơn và dùng LLM judge được chạy riêng:
 

@@ -154,6 +154,11 @@ _FALLBACK = ServingProfile(
     0.2,
 )
 
+MAX_SAFE_KCAL_PER_GRAM = 8.5
+MAX_SAFE_MACRO_GRAMS_RATIO = 1.0
+MAX_ENERGY_MACRO_MISMATCH = 0.5
+MAX_DERIVED_SERVING_GRAMS = 3000.0
+
 
 def _normalize_name(name: str) -> str:
     normalized = unicodedata.normalize("NFKD", name.casefold())
@@ -171,6 +176,10 @@ def _profile_for_name(dish_name: str) -> ServingProfile:
 
 def _round_to_25(grams: float) -> float:
     return round(grams / 25.0) * 25.0
+
+
+def _ceil_to_25(grams: float) -> float:
+    return math.ceil(grams / 25.0) * 25.0
 
 
 def estimate_serving_grams(
@@ -193,4 +202,56 @@ def estimate_serving_grams(
         grams=_round_to_25(bounded),
         category=profile.category,
         confidence=profile.confidence,
+    )
+
+
+def estimate_catalog_serving(
+    dish_name: str,
+    *,
+    total_calories: float,
+    protein_g: float,
+    fat_g: float,
+    carbs_g: float,
+    fiber_g: float,
+) -> ServingEstimate | None:
+    """Reconcile the family heuristic with conservative physical lower bounds.
+
+    A coherent source record may raise its estimated weight, never lower it, to
+    keep energy density below 8.5 kcal/g and macro mass below total food mass.
+    Internally conflicting nutrition uses a separately labelled, very
+    low-confidence floor so catalog rows remain scalable without presenting the
+    result as a normal serving estimate.
+    """
+    values = (total_calories, protein_g, fat_g, carbs_g, fiber_g)
+    if any(not math.isfinite(value) or value < 0 for value in values):
+        return None
+    if total_calories <= 0:
+        return None
+
+    estimate = estimate_serving_grams(dish_name, total_calories)
+    macro_mass = protein_g + fat_g + carbs_g + fiber_g
+    physical_floor = max(
+        total_calories / MAX_SAFE_KCAL_PER_GRAM,
+        macro_mass / MAX_SAFE_MACRO_GRAMS_RATIO,
+    )
+    if estimate.grams >= physical_floor:
+        return estimate
+
+    atwater_calories = 4 * protein_g + 9 * fat_g + 4 * carbs_g
+    grams = _ceil_to_25(physical_floor)
+    if grams > MAX_DERIVED_SERVING_GRAMS:
+        return None
+    mismatch = abs(total_calories - atwater_calories) / total_calories
+    if mismatch > MAX_ENERGY_MACRO_MISMATCH:
+        return ServingEstimate(
+            grams=grams,
+            category="physical_floor_energy_macro_mismatch",
+            confidence=0.05,
+            source="nutrition_conflict_floor_v1",
+        )
+    return ServingEstimate(
+        grams=grams,
+        category="physical_floor",
+        confidence=0.15,
+        source="nutrition_physical_floor_v1",
     )

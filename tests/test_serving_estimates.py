@@ -1,6 +1,9 @@
 """Serving-size estimates must be reproducible and explicitly low-confidence."""
 
-from backend.services.serving_estimates import estimate_serving_grams
+from backend.services.serving_estimates import (
+    estimate_catalog_serving,
+    estimate_serving_grams,
+)
 
 
 def test_noodle_soup_uses_a_large_bowl_profile() -> None:
@@ -62,3 +65,66 @@ def test_unknown_dish_has_bounded_fallback_and_low_confidence() -> None:
     assert estimate.category == "fallback"
     assert 100.0 <= estimate.grams <= 450.0
     assert estimate.confidence <= 0.25
+
+
+def test_catalog_estimate_raises_coherent_portion_to_physical_floor() -> None:
+    estimate = estimate_catalog_serving(
+        "Bánh gà Hồng Mai",
+        total_calories=1603.0,
+        protein_g=70.0,
+        fat_g=91.0,
+        carbs_g=78.5,
+        fiber_g=0.0,
+    )
+
+    assert estimate is not None
+    assert estimate.grams == 250.0
+    assert estimate.source == "nutrition_physical_floor_v1"
+    assert estimate.confidence == 0.15
+    assert 1603.0 / estimate.grams <= 8.5
+    assert 70.0 + 91.0 + 78.5 <= estimate.grams
+
+
+def test_catalog_estimate_keeps_normal_family_estimate() -> None:
+    estimate = estimate_catalog_serving(
+        "Phở bò",
+        total_calories=450.0,
+        protein_g=25.0,
+        fat_g=12.0,
+        carbs_g=60.0,
+        fiber_g=4.0,
+    )
+
+    assert estimate is not None
+    assert estimate.source == "nutrition_heuristic_v1"
+    assert estimate.grams >= 450.0
+
+
+def test_catalog_estimate_uses_low_confidence_floor_for_conflicting_nutrition() -> None:
+    estimate = estimate_catalog_serving(
+        "Kẹo sô cô la",
+        total_calories=27.0,
+        protein_g=3.0,
+        fat_g=4.0,
+        carbs_g=85.0,
+        fiber_g=0.2,
+    )
+
+    assert estimate is not None
+    assert estimate.grams == 100.0
+    assert estimate.source == "nutrition_conflict_floor_v1"
+    assert estimate.category == "physical_floor_energy_macro_mismatch"
+    assert estimate.confidence == 0.05
+
+
+def test_catalog_estimate_refuses_an_unbounded_conflict_floor() -> None:
+    estimate = estimate_catalog_serving(
+        "Món lỗi nguồn",
+        total_calories=100.0,
+        protein_g=3500.0,
+        fat_g=0.0,
+        carbs_g=0.0,
+        fiber_g=0.0,
+    )
+
+    assert estimate is None

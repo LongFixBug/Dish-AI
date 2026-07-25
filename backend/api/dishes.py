@@ -47,6 +47,7 @@ async def get_dish_lookup(
             carbs_g=round(vn.total_carbs_g, 1),
             fiber_g=round(vn.total_fiber_g, 1),
             found_in_db=True,
+            nutrition_basis="source_serving",
         )
 
     totals = calculate_totals(vn.dish_name, [item])

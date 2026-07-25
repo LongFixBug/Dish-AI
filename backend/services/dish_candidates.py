@@ -20,6 +20,10 @@ class DishCandidateStateError(ValueError):
     """Raised when a reviewed candidate is submitted for review again."""
 
 
+class DishCandidateDataError(ValueError):
+    """Raised when a candidate lacks a usable serving estimate for approval."""
+
+
 def normalize_dish_name_key(dish_name: str) -> str:
     """Normalize case and whitespace while preserving Vietnamese tones."""
     normalized = unicodedata.normalize("NFC", dish_name)
@@ -47,6 +51,50 @@ def _candidate_values(
         "status": "pending",
         "observation_count": 1,
     }
+
+
+def _has_positive_nutrition(record: object) -> bool:
+    """Return whether a candidate or catalog row carries any nutrition value."""
+    return any(
+        float(getattr(record, field, 0.0) or 0.0) > 0
+        for field in (
+            "total_calories",
+            "total_protein_g",
+            "total_fat_g",
+            "total_carbs_g",
+            "total_fiber_g",
+        )
+    )
+
+
+def _validate_candidate_for_approval(candidate: DishCandidate) -> None:
+    """Prevent zero-filled or weightless Vision estimates entering the catalog."""
+    if not candidate.typical_grams or candidate.typical_grams <= 0:
+        raise DishCandidateDataError("candidate is missing a positive serving weight")
+    if not candidate.total_calories or candidate.total_calories <= 0:
+        raise DishCandidateDataError("candidate has no positive calorie estimate")
+
+
+def _enrich_existing_catalog_row(dish: VnDish, candidate: DishCandidate) -> None:
+    """Fill reviewed gaps without overwriting complete institute nutrition."""
+    if not _has_positive_nutrition(dish):
+        dish.typical_grams = candidate.typical_grams
+        dish.total_calories = candidate.total_calories
+        dish.total_protein_g = candidate.total_protein_g
+        dish.total_fat_g = candidate.total_fat_g
+        dish.total_carbs_g = candidate.total_carbs_g
+        dish.total_fiber_g = candidate.total_fiber_g
+        dish.typical_grams_source = "vision_review"
+        dish.typical_grams_confidence = 0.4
+        dish.typical_grams_rule = "candidate_review"
+        dish.source = "vision_reviewed"
+        return
+
+    if not dish.typical_grams or dish.typical_grams <= 0:
+        dish.typical_grams = candidate.typical_grams
+        dish.typical_grams_source = "vision_review"
+        dish.typical_grams_confidence = 0.4
+        dish.typical_grams_rule = "candidate_review_weight_only"
 
 
 async def stage_dish_candidate(
@@ -116,6 +164,7 @@ async def approve_dish_candidate(
         raise DishCandidateNotFoundError(candidate_id)
     if candidate.status != "pending":
         raise DishCandidateStateError(candidate.status)
+    _validate_candidate_for_approval(candidate)
 
     dish = await _lookup_catalog_by_name(session, candidate.dish_name)
     if dish is None:
@@ -134,6 +183,8 @@ async def approve_dish_candidate(
             source="vision_reviewed",
         )
         session.add(dish)
+    else:
+        _enrich_existing_catalog_row(dish, candidate)
 
     candidate.status = "approved"
     candidate.approved_dish_id = dish.id

@@ -129,3 +129,30 @@ def test_normalizer_keeps_confident_standalone_side_dish() -> None:
         "Cơm sườn",
         "Canh rau củ",
     ]
+
+
+def test_normalizer_preserves_item_confidence_for_the_api() -> None:
+    normalized = _normalize_dishes(
+        [{"dish_name": "Phở bò", "gram": 500, "confidence": 0.87}]
+    )
+
+    assert normalized[0]["confidence"] == 0.87
+
+
+def test_normalizer_rejects_physically_implausible_nutrition() -> None:
+    normalized = _normalize_dishes(
+        [
+            {
+                "dish_name": "Món lỗi",
+                "gram": 100,
+                "confidence": 0.95,
+                "total_calories": 2000,
+                "total_protein_g": 20,
+                "total_fat_g": 10,
+                "total_carbs_g": 30,
+                "total_fiber_g": 2,
+            }
+        ]
+    )
+
+    assert normalized == []

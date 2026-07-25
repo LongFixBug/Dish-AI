@@ -20,6 +20,10 @@ from sqlalchemy import select
 
 from backend.db.models import VnIngredient  # noqa: E402
 from backend.db.postgres import async_session  # noqa: E402
+from backend.services.catalog_quality import (  # noqa: E402
+    canonical_name_key,
+    deduplicate_catalog_rows,
+)
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 BATCH_SIZE = 500
@@ -53,23 +57,34 @@ async def seed() -> None:
 
     async with async_session() as session:
         # Lấy danh sách tên đã có trong DB để tránh trùng lặp
-        existing_result = await session.execute(select(VnIngredient.ingredient_name))
-        existing_names = {row[0] for row in existing_result}
-        if existing_names:
-            print(f"  ℹ️  DB đã có {len(existing_names)} ingredients — chỉ INSERT món mới.")
+        existing_rows = (await session.execute(
+            select(VnIngredient.ingredient_name, VnIngredient.source)
+        )).all()
+        existing_keys = {
+            (source, canonical_name_key(name)) for name, source in existing_rows
+        }
+        if existing_keys:
+            print(f"  ℹ️  DB đã có {len(existing_keys)} ingredients — chỉ INSERT món mới.")
 
         # Lọc ra các ingredient chưa có trong DB
         # `vnmeal` rows belong to `vn_dishes` and are seeded by
         # `recreate_vn_dishes.py`; mixing them here breaks the catalog boundary.
-        ingredient_rows = [
+        source_rows = [
             item for item in ingredients if item.get("source") != "vnmeal"
         ]
+        ingredient_rows = list(deduplicate_catalog_rows(
+            source_rows,
+            entity_type="ingredient",
+        ))
         new_ingredients = [
             item
             for item in ingredient_rows
-            if item["ingredient_name"] not in existing_names
+            if (
+                str(item.get("source", "unknown")),
+                canonical_name_key(str(item["ingredient_name"])),
+            ) not in existing_keys
         ]
-        skipped = len(ingredient_rows) - len(new_ingredients)
+        skipped = len(source_rows) - len(new_ingredients)
         if skipped:
             print(f"  ⏭️  Bỏ qua {skipped} ingredient đã tồn tại.")
 

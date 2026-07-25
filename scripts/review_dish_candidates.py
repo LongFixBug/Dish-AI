@@ -16,6 +16,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.db.postgres import async_session  # noqa: E402
 from backend.services.dish_candidates import (  # noqa: E402
+    DishCandidateDataError,
     DishCandidateNotFoundError,
     DishCandidateStateError,
     approve_dish_candidate,
@@ -94,6 +95,9 @@ def main() -> None:
         raise SystemExit(2) from exc
     except DishCandidateStateError as exc:
         print(f"Candidate is already reviewed (status={exc}).", file=sys.stderr)
+        raise SystemExit(2) from exc
+    except DishCandidateDataError as exc:
+        print(f"Candidate data is not approvable: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
 
 

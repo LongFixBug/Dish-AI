@@ -188,6 +188,21 @@ async def upsert_catalog_vectors(
     return len(points)
 
 
+async def delete_catalog_records(record_ids: list[str]) -> int:
+    """Delete derived vectors after the authoritative DB rows are committed."""
+    unique_ids = list(dict.fromkeys(record_ids))
+    if not unique_ids:
+        return 0
+    client = _get_client()
+    await asyncio.to_thread(
+        client.delete,
+        collection_name=COLLECTION_NAME,
+        points_selector=qmodels.PointIdsList(points=unique_ids),
+        wait=True,
+    )
+    return len(unique_ids)
+
+
 def compute_index_drift(
     database_ids: set[str],
     qdrant_ids: set[str],

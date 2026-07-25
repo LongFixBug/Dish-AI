@@ -91,3 +91,23 @@ def test_compute_index_drift_reports_missing_and_orphan_ids() -> None:
     assert drift.missing_in_qdrant == {"missing"}
     assert drift.orphaned_in_qdrant == {"orphan"}
     assert drift.is_clean is False
+
+
+async def test_delete_catalog_records_waits_for_qdrant_acknowledgement(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def delete(self, **kwargs):
+            captured.update(kwargs)
+
+    async def fake_to_thread(function, /, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(vector_catalog, "_get_client", lambda: FakeClient())
+    monkeypatch.setattr(vector_catalog.asyncio, "to_thread", fake_to_thread)
+
+    deleted = await vector_catalog.delete_catalog_records(["dish-id", "ingredient-id"])
+
+    assert deleted == 2
+    assert captured["wait"] is True
+    assert captured["points_selector"].points == ["dish-id", "ingredient-id"]

@@ -1,0 +1,105 @@
+import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/food_photo.dart';
+import 'package:balance/features/analyze/domain/analyze_result.dart';
+import 'package:balance/features/analyze/presentation/analyze_screen.dart';
+import 'package:balance/features/analyze/presentation/analysis_result_screen.dart';
+import 'package:balance/features/suggestions/presentation/suggestions_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final font = FontLoader('Baloo 2')
+      ..addFont(rootBundle.load('assets/fonts/Baloo2-Variable.ttf'));
+    await font.load();
+  });
+
+  testWidgets('camera screen matches the approved visual', (tester) async {
+    await _setPhoneSize(tester);
+    await tester.pumpWidget(_testApp(const AnalyzeScreen()));
+    await tester.pumpAndSettle();
+
+    await expectLater(
+      find.byType(AnalyzeScreen),
+      matchesGoldenFile('goldens/camera_screen.png'),
+    );
+  });
+
+  testWidgets('analysis result screen matches the approved visual', (
+    tester,
+  ) async {
+    await _setPhoneSize(tester);
+    await tester.pumpWidget(
+      _testApp(AnalysisResultScreen(result: _sampleResult)),
+    );
+    final context = tester.element(find.byType(AnalysisResultScreen));
+    await tester.runAsync(
+      () => precacheImage(const AssetImage(FoodPhoto.comTamAssetPath), context),
+    );
+    await tester.pumpAndSettle();
+
+    await expectLater(
+      find.byType(AnalysisResultScreen),
+      matchesGoldenFile('goldens/analysis_result_screen.png'),
+    );
+  });
+
+  testWidgets('suggestions screen matches the approved visual', (tester) async {
+    await _setPhoneSize(tester);
+    await tester.pumpWidget(_testApp(const SuggestionsScreen()));
+    final context = tester.element(find.byType(SuggestionsScreen));
+    await tester.runAsync(() async {
+      await precacheImage(const AssetImage(FoodPhoto.caKhoAssetPath), context);
+      await precacheImage(const AssetImage(FoodPhoto.bunGaAssetPath), context);
+    });
+    await tester.pumpAndSettle();
+
+    await expectLater(
+      find.byType(SuggestionsScreen),
+      matchesGoldenFile('goldens/suggestions_screen.png'),
+    );
+  });
+}
+
+Future<void> _setPhoneSize(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(390, 844));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+}
+
+Widget _testApp(Widget home) {
+  return MaterialApp(theme: BalanceTheme.light, home: home);
+}
+
+final _sampleResult = AnalyzeResult.fromJson({
+  'dish_name': 'Cơm tấm sườn',
+  'source': 'vision',
+  'recognition_confidence': 0.86,
+  'nutrition': {
+    'total_calories': 650,
+    'total_protein_g': 32,
+    'total_fat_g': 22,
+    'total_carbs_g': 78,
+    'total_fiber_g': 4,
+    'total_grams': 370,
+    'confidence_score': 0.92,
+    'catalog_coverage_score': 0.92,
+    'items': [
+      {
+        'item_name': 'Cơm tấm',
+        'grams': 200,
+        'calories': 260,
+        'found_in_db': true,
+      },
+      {
+        'item_name': 'Sườn nướng',
+        'grams': 120,
+        'calories': 320,
+        'found_in_db': true,
+      },
+      {'item_name': 'Trứng', 'grams': 50, 'calories': 70, 'found_in_db': true},
+    ],
+  },
+  'dishes': <Object>[],
+});

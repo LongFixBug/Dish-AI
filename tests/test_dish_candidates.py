@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import CheckConstraint, UniqueConstraint
 
 from backend.db.models import DishCandidate, VnDish
@@ -177,6 +178,85 @@ async def test_approve_candidate_publishes_reviewed_catalog_dish(monkeypatch) ->
     assert candidate.reviewed_at is not None
     assert session.added == [dish]
     assert session.flushes == 1
+
+
+async def test_approve_candidate_enriches_an_existing_empty_catalog_row(
+    monkeypatch,
+) -> None:
+    candidate = SimpleNamespace(
+        id="candidate-id",
+        dish_name="Bánh mì thịt",
+        status="pending",
+        typical_grams=180.0,
+        total_calories=500.0,
+        total_protein_g=22.0,
+        total_fat_g=18.0,
+        total_carbs_g=62.0,
+        total_fiber_g=4.0,
+        approved_dish_id=None,
+        reviewed_at=None,
+    )
+    existing = SimpleNamespace(
+        id="dish-id",
+        dish_name="Bánh mì thịt",
+        typical_grams=None,
+        total_calories=0.0,
+        total_protein_g=0.0,
+        total_fat_g=0.0,
+        total_carbs_g=0.0,
+        total_fiber_g=0.0,
+        typical_grams_source=None,
+        typical_grams_confidence=None,
+        typical_grams_rule=None,
+        source="vnmeal",
+    )
+
+    async def fake_candidate(_session, _candidate_id):
+        return candidate
+
+    async def fake_catalog(_session, _dish_name):
+        return existing
+
+    monkeypatch.setattr(dish_candidates, "_lookup_candidate_by_id", fake_candidate)
+    monkeypatch.setattr(dish_candidates, "_lookup_catalog_by_name", fake_catalog)
+    session = FakeSession()
+
+    dish = await dish_candidates.approve_dish_candidate(session, "candidate-id")
+
+    assert dish is existing
+    assert dish.typical_grams == 180.0
+    assert dish.total_calories == 500.0
+    assert dish.total_protein_g == 22.0
+    assert dish.source == "vision_reviewed"
+    assert dish.typical_grams_source == "vision_review"
+    assert candidate.status == "approved"
+    assert candidate.approved_dish_id == "dish-id"
+
+
+async def test_approve_rejects_a_zero_filled_candidate(monkeypatch) -> None:
+    candidate = SimpleNamespace(
+        id="candidate-id",
+        dish_name="Món không có dữ liệu",
+        status="pending",
+        typical_grams=None,
+        total_calories=0.0,
+        total_protein_g=0.0,
+        total_fat_g=0.0,
+        total_carbs_g=0.0,
+        total_fiber_g=0.0,
+        approved_dish_id=None,
+        reviewed_at=None,
+    )
+
+    async def fake_candidate(_session, _candidate_id):
+        return candidate
+
+    monkeypatch.setattr(dish_candidates, "_lookup_candidate_by_id", fake_candidate)
+
+    with pytest.raises(dish_candidates.DishCandidateDataError):
+        await dish_candidates.approve_dish_candidate(FakeSession(), "candidate-id")
+
+    assert candidate.status == "pending"
 
 
 async def test_reject_candidate_keeps_it_out_of_catalog(monkeypatch) -> None:

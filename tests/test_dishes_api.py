@@ -56,4 +56,6 @@ async def test_lookup_without_weight_does_not_invent_per_100g_values(
 
     assert nutrition.total_calories == 250.0
     assert nutrition.total_grams == 0.0
+    assert nutrition.per_100g_available is False
     assert nutrition.per_100g_calories == 0.0
+    assert nutrition.catalog_coverage_score == nutrition.confidence_score == 1.0

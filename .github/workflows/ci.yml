@@ -43,6 +43,14 @@ jobs:
       - run: uv sync --all-groups
       - run: uv run ruff check backend ml schemas scripts tests
       - run: uv run alembic upgrade head
+      - run: uv run python scripts/seed_nutrition.py vn_foods.json
+      - run: uv run python scripts/recreate_vn_dishes.py
+      - run: uv run python scripts/rebuild_dish_servings.py --apply
+      - run: uv run python scripts/cleanup_vn_dishes.py --apply
+      - run: >-
+          uv run python scripts/audit_catalog.py
+          --fail-on error
+          --output catalog-audit.md
       - run: >-
           uv run pytest -q
           --cov=backend.services
@@ -54,4 +62,6 @@ jobs:
         if: always()
         with:
           name: coverage-report
-          path: coverage.xml
+          path: |
+            coverage.xml
+            catalog-audit.md

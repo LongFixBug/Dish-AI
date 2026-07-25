@@ -4,6 +4,8 @@ Database matches are scaled from per-serving values only when a serving weight
 is known. Vision estimates remain explicitly marked as non-database values.
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -47,6 +49,17 @@ class NutritionPerIngredient(BaseModel):
             "False = món mới chỉ dùng nutrition Vision ước lượng."
         ),
     )
+    nutrition_basis: Literal[
+        "per_gram_scaled",
+        "source_serving",
+        "vision_estimate",
+    ] = Field(
+        default="per_gram_scaled",
+        description=(
+            "Cơ sở của nutrition: scale từ per-gram, tổng serving nguồn chưa có "
+            "khối lượng, hoặc estimate Vision cho gram hiện tại."
+        ),
+    )
 
 
 class NutritionTotals(BaseModel):
@@ -74,8 +87,17 @@ class NutritionTotals(BaseModel):
     per_100g_fat_g: float = 0.0
     per_100g_carbs_g: float = 0.0
     per_100g_fiber_g: float = 0.0
+    per_100g_available: bool = Field(
+        default=False,
+        description="True khi mọi item có nutrition và gram cùng một cơ sở hợp lệ.",
+    )
     confidence_score: float = Field(
         ge=0.0, le=1.0, description="Tỉ lệ item tìm thấy trong DB"
+    )
+    catalog_coverage_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Tên rõ nghĩa của confidence_score; giữ field cũ để tương thích.",
     )
     missing_ingredients: list[str] = Field(
         default_factory=list,
@@ -113,6 +135,7 @@ def calculate_item_nutrition(
         carbs_g=round(g * per_gram.carbs_per_g, 1),
         fiber_g=round(g * per_gram.fiber_per_g, 1),
         found_in_db=True,
+        nutrition_basis="per_gram_scaled",
     )
 
 
@@ -136,6 +159,7 @@ def create_item_nutrition_from_vision(
         carbs_g=round(max(0.0, total_carbs_g), 1),
         fiber_g=round(max(0.0, total_fiber_g), 1),
         found_in_db=False,
+        nutrition_basis="vision_estimate",
     )
 
 
@@ -152,7 +176,10 @@ def calculate_totals(
     total_fiber = sum(it.fiber_g for it in items)
     total_grams = sum(it.grams for it in items)
 
-    if total_grams > 0:
+    per_100g_available = total_grams > 0 and all(
+        it.nutrition_basis != "source_serving" for it in items
+    )
+    if per_100g_available:
         scale = 100.0 / total_grams
         per_100g_cal = round(total_cal * scale, 1)
         per_100g_protein = round(total_protein * scale, 1)
@@ -181,7 +208,9 @@ def calculate_totals(
         per_100g_fat_g=per_100g_fat,
         per_100g_carbs_g=per_100g_carbs,
         per_100g_fiber_g=per_100g_fiber,
+        per_100g_available=per_100g_available,
         confidence_score=round(confidence, 2),
+        catalog_coverage_score=round(confidence, 2),
         missing_ingredients=missing,
     )
 
@@ -211,6 +240,13 @@ def calculate_adjusted_totals(
     for item, requested_grams in zip(items, adjusted_grams, strict=True):
         original_grams = max(0.0, float(item.get("grams", 0) or 0))
         new_grams = max(0.0, float(requested_grams or 0))
+        if (
+            item.get("nutrition_basis") == "source_serving"
+            and new_grams != original_grams
+        ):
+            raise ValueError(
+                "Không thể scale tổng dinh dưỡng serving khi thiếu khối lượng chuẩn"
+            )
         factor = new_grams / original_grams if original_grams > 0 else 0.0
         scaled = {**item, "grams": round(new_grams, 1)}
         for field in _ADJUSTABLE_NUTRIENT_FIELDS:

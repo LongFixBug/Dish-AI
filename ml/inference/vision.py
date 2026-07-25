@@ -18,6 +18,9 @@ class VisionError(Exception):
 MAX_MENU_ITEMS = 3
 MIN_MAIN_CONFIDENCE = 0.55
 MIN_SIDE_CONFIDENCE = 0.80
+MAX_REASONABLE_ITEM_GRAMS = 3000.0
+MAX_REASONABLE_KCAL_PER_GRAM = 10.0
+MAX_REASONABLE_MACRO_MASS_RATIO = 1.25
 
 INCLUDED_ACCOMPANIMENTS = (
     "do chua",
@@ -259,6 +262,25 @@ def _is_included_accompaniment(dish_name: str) -> bool:
     return any(name in label for name in INCLUDED_ACCOMPANIMENTS)
 
 
+def _has_plausible_food_values(
+    gram: float,
+    calories: float,
+    protein: float,
+    fat: float,
+    carbs: float,
+    fiber: float,
+) -> bool:
+    """Reject impossible Vision totals without pretending to medically validate food."""
+    if gram <= 0:
+        return True
+    if gram > MAX_REASONABLE_ITEM_GRAMS:
+        return False
+    if calories > gram * MAX_REASONABLE_KCAL_PER_GRAM:
+        return False
+    macro_mass = protein + fat + carbs + fiber
+    return macro_mass <= gram * MAX_REASONABLE_MACRO_MASS_RATIO
+
+
 def _normalize_dishes(
     raw_dishes: list[object], *, default_confidence: object = None
 ) -> list[dict]:
@@ -309,18 +331,36 @@ def _normalize_dishes(
         if is_side and normalized and _is_included_accompaniment(str(name)):
             continue
 
+        total_calories = _as_non_negative_float(
+            d.get("total_calories", d.get("total_calories_g", 0))
+        )
+        total_protein = _as_non_negative_float(d.get("total_protein_g"))
+        total_fat = _as_non_negative_float(d.get("total_fat_g"))
+        total_carbs = _as_non_negative_float(d.get("total_carbs_g"))
+        total_fiber = _as_non_negative_float(d.get("total_fiber_g"))
+        if not _has_plausible_food_values(
+            gram,
+            total_calories,
+            total_protein,
+            total_fat,
+            total_carbs,
+            total_fiber,
+        ):
+            if is_first_valid_item:
+                return []
+            continue
+
         normalized.append(
             {
                 "dish_name": str(name).strip(),
                 "gram": gram,
                 "is_side": is_side,
-                "total_calories": _as_non_negative_float(
-                    d.get("total_calories", d.get("total_calories_g", 0))
-                ),
-                "total_protein_g": _as_non_negative_float(d.get("total_protein_g")),
-                "total_fat_g": _as_non_negative_float(d.get("total_fat_g")),
-                "total_carbs_g": _as_non_negative_float(d.get("total_carbs_g")),
-                "total_fiber_g": _as_non_negative_float(d.get("total_fiber_g")),
+                "confidence": confidence,
+                "total_calories": total_calories,
+                "total_protein_g": total_protein,
+                "total_fat_g": total_fat,
+                "total_carbs_g": total_carbs,
+                "total_fiber_g": total_fiber,
             }
         )
     _canonicalize_com_tam_labels(normalized)

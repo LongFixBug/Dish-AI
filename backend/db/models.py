@@ -8,12 +8,15 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
+    func,
+    literal_column,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -33,6 +36,13 @@ class VnIngredient(Base):
     """
 
     __tablename__ = "vn_ingredients"
+    __table_args__ = (
+        CheckConstraint(
+            "calories_per_g >= 0 AND protein_per_g >= 0 AND fat_per_g >= 0 "
+            "AND carbs_per_g >= 0 AND fiber_per_g >= 0",
+            name="ck_vn_ingredients_nonnegative_nutrients",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(
         UUID(as_uuid=False),
@@ -79,6 +89,15 @@ class VnDish(Base):
     __tablename__ = "vn_dishes"
     __table_args__ = (
         UniqueConstraint("dish_name", name="uq_vn_dishes_dish_name"),
+        CheckConstraint(
+            "total_calories >= 0 AND total_protein_g >= 0 AND total_fat_g >= 0 "
+            "AND total_carbs_g >= 0 AND total_fiber_g >= 0",
+            name="ck_vn_dishes_nonnegative_nutrients",
+        ),
+        CheckConstraint(
+            "typical_grams IS NULL OR typical_grams > 0",
+            name="ck_vn_dishes_positive_typical_grams",
+        ),
     )
 
     id: Mapped[str] = mapped_column(
@@ -124,6 +143,19 @@ class DishCandidate(Base):
         CheckConstraint(
             "status IN ('pending', 'approved', 'rejected')",
             name="ck_dish_candidates_status",
+        ),
+        CheckConstraint(
+            "total_calories >= 0 AND total_protein_g >= 0 AND total_fat_g >= 0 "
+            "AND total_carbs_g >= 0 AND total_fiber_g >= 0",
+            name="ck_dish_candidates_nonnegative_nutrients",
+        ),
+        CheckConstraint(
+            "typical_grams IS NULL OR typical_grams > 0",
+            name="ck_dish_candidates_positive_typical_grams",
+        ),
+        CheckConstraint(
+            "observation_count > 0",
+            name="ck_dish_candidates_positive_observation_count",
         ),
     )
 
@@ -180,3 +212,49 @@ class DishCandidate(Base):
             f"<DishCandidate(id={self.id!r}, name={self.dish_name!r}, "
             f"status={self.status!r})>"
         )
+
+
+class CatalogCleanupLog(Base):
+    """Recoverable journal for every automatic catalog mutation."""
+
+    __tablename__ = "catalog_cleanup_log"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+        server_default=text("gen_random_uuid()"),
+    )
+    entity_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    record_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    reason: Mapped[str] = mapped_column(String(200), nullable=False)
+    survivor_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    snapshot: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    changes: Mapped[dict[str, object]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    qdrant_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+def _canonical_name_expression(column):
+    normalized = func.normalize(column, literal_column("NFC"))
+    return func.lower(func.regexp_replace(func.btrim(normalized), r"\s+", " ", "g"))
+
+
+Index(
+    "uq_vn_ingredients_name_source_ci",
+    _canonical_name_expression(VnIngredient.ingredient_name),
+    VnIngredient.source,
+    unique=True,
+)
+Index(
+    "uq_vn_dishes_name_ci",
+    _canonical_name_expression(VnDish.dish_name),
+    unique=True,
+)

@@ -15,8 +15,9 @@ def test_alembic_has_linear_baseline_and_schema_revision() -> None:
     revision = scripts.get_revision(head)
 
     assert revision is not None
-    assert head == "0007_qdrant_vector_store"
-    assert revision.down_revision == "0006_unify_dish_vectors"
+    assert head == "0009_recover_serving_weights"
+    assert len(head) <= 32
+    assert revision.down_revision == "0008_catalog_quality_guards"
     assert scripts.get_revision("0004_dish_nutrition_basis").down_revision == (
         "0003_schema_contract"
     )
