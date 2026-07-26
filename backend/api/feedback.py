@@ -161,13 +161,15 @@ async def save_training_data(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_training_data(
-    submission_id: str,
+    # UUID chứ không phải str: id sai định dạng phải là 422 chứ không phải
+    # 500 do asyncpg ném 'invalid input syntax for type uuid'.
+    submission_id: uuid.UUID,
     current_user: CurrentUser = Depends(require_user),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     submission = await session.scalar(
         select(FeedbackSubmission).where(
-            FeedbackSubmission.id == submission_id,
+            FeedbackSubmission.id == str(submission_id),
             FeedbackSubmission.submitted_by == current_user.id,
         )
     )

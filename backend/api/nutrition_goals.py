@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies import CurrentUser, require_user
@@ -52,12 +53,28 @@ async def save_nutrition_goal(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    now = datetime.now(UTC)
+    try:
+        record = await _upsert_goal(session, current_user.id, payload, result)
+    except IntegrityError:
+        # Hai request cùng lúc (VD người dùng bấm hai lần): cả hai đọc ra None
+        # rồi cùng INSERT, một cái đụng uq_user_nutrition_goals_user_id.
+        # Đọc lại rồi ghi đè — lần này bản ghi chắc chắn đã tồn tại.
+        await session.rollback()
+        record = await _upsert_goal(session, current_user.id, payload, result)
+    return _to_persisted_response(record)
+
+
+async def _upsert_goal(
+    session: AsyncSession,
+    user_id: str,
+    payload: NutritionGoalRequest,
+    result: NutritionGoalResponse,
+) -> UserNutritionGoal:
     record = await session.scalar(
-        select(UserNutritionGoal).where(UserNutritionGoal.user_id == current_user.id)
+        select(UserNutritionGoal).where(UserNutritionGoal.user_id == user_id)
     )
     if record is None:
-        record = UserNutritionGoal(user_id=current_user.id)
+        record = UserNutritionGoal(user_id=user_id)
         session.add(record)
 
     record.goal = payload.goal
@@ -67,10 +84,10 @@ async def save_nutrition_goal(
     record.algorithm_version = result.reference.algorithm_version
     record.input_payload = payload.model_dump(mode="json")
     record.result_payload = result.model_dump(mode="json")
-    record.updated_at = now
+    record.updated_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(record)
-    return _to_persisted_response(record)
+    return record
 
 
 @router.get(

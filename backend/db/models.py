@@ -99,6 +99,10 @@ class VnDish(Base):
             "typical_grams IS NULL OR typical_grams > 0",
             name="ck_vn_dishes_positive_typical_grams",
         ),
+        CheckConstraint(
+            "typical_grams_confidence >= 0 AND typical_grams_confidence <= 1",
+            name="ck_vn_dishes_typical_grams_confidence",
+        ),
     )
 
     id: Mapped[str] = mapped_column(
@@ -506,4 +510,29 @@ Index(
     "uq_vn_dishes_name_ci",
     _canonical_name_expression(VnDish.dish_name),
     unique=True,
+)
+
+# Các index dưới đây do migration tạo ra. Phải khai báo lại ở đây, nếu không
+# `alembic revision --autogenerate` sẽ coi chúng là thừa và sinh lệnh drop.
+Index(
+    "ix_catalog_cleanup_log_unsynced",
+    CatalogCleanupLog.action,
+    CatalogCleanupLog.qdrant_synced_at,
+)
+Index(
+    "ix_feedback_submissions_retention_status",
+    FeedbackSubmission.retention_until,
+    FeedbackSubmission.status,
+)
+Index(
+    "ix_user_nutrition_goals_user_id",
+    UserNutritionGoal.user_id,
+)
+Index(
+    "ix_nutrition_reference_targets_lookup",
+    NutritionReferenceTarget.standard,
+    NutritionReferenceTarget.age_group_id,
+    NutritionReferenceTarget.sex,
+    NutritionReferenceTarget.labor_level,
+    NutritionReferenceTarget.physiological_condition_id,
 )

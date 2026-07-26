@@ -271,6 +271,70 @@ def _repair_conservative_quality_errors() -> None:
         WHERE status = 'pending'
           AND (typical_grams IS NULL OR typical_grams <= 0 OR total_calories <= 0)
     """)
+    _quarantine_remaining_violations()
+
+
+def _quarantine_remaining_violations() -> None:
+    """Dọn nốt mọi hàng còn vi phạm CHECK sắp tạo ở ``_add_guards``.
+
+    Các bước sửa ở trên cố ý bảo thủ (chỉ clamp số âm cực nhỏ của
+    ``vn_ingredients``, chỉ NULL ``typical_grams`` khi nó dương). Phần còn lại —
+    số âm ở ``vn_dishes``/``dish_candidates``, ``typical_grams <= 0``,
+    ``observation_count <= 0`` — vẫn đủ để ``CREATE ... CHECK`` fail và rollback
+    cả migration. Đưa chúng về giá trị hợp lệ và ghi lại vào catalog_cleanup_log
+    để không mất dấu vết.
+    """
+    negative_columns = {
+        "vn_ingredients": (
+            "calories_per_g", "protein_per_g", "fat_per_g", "carbs_per_g", "fiber_per_g",
+        ),
+        "vn_dishes": (
+            "total_calories", "total_protein_g", "total_fat_g",
+            "total_carbs_g", "total_fiber_g",
+        ),
+        "dish_candidates": (
+            "total_calories", "total_protein_g", "total_fat_g",
+            "total_carbs_g", "total_fiber_g",
+        ),
+    }
+    entity_types = {
+        "vn_ingredients": "ingredient",
+        "vn_dishes": "dish",
+        "dish_candidates": "candidate",
+    }
+    for table, columns in negative_columns.items():
+        condition = " OR ".join(f"{column} < 0" for column in columns)
+        assignments = ", ".join(f"{column} = GREATEST({column}, 0)" for column in columns)
+        op.execute(f"""
+            INSERT INTO catalog_cleanup_log (
+                entity_type, record_id, action, reason, snapshot, changes
+            )
+            SELECT '{entity_types[table]}', id, 'clamp_negative_nutrient',
+                   'pre_constraint_cleanup', to_jsonb(entry), '{{}}'::jsonb
+            FROM {table} AS entry
+            WHERE {condition}
+        """)
+        op.execute(f"UPDATE {table} SET {assignments} WHERE {condition}")
+
+    for table in ("vn_dishes", "dish_candidates"):
+        op.execute(f"""
+            INSERT INTO catalog_cleanup_log (
+                entity_type, record_id, action, reason, snapshot, changes
+            )
+            SELECT '{entity_types[table]}', id, 'null_invalid_typical_grams',
+                   'pre_constraint_cleanup', to_jsonb(entry), '{{}}'::jsonb
+            FROM {table} AS entry
+            WHERE typical_grams IS NOT NULL AND typical_grams <= 0
+        """)
+        op.execute(f"""
+            UPDATE {table} SET typical_grams = NULL
+            WHERE typical_grams IS NOT NULL AND typical_grams <= 0
+        """)
+
+    op.execute("""
+        UPDATE dish_candidates SET observation_count = 1
+        WHERE observation_count <= 0
+    """)
 
 
 def _add_guards() -> None:

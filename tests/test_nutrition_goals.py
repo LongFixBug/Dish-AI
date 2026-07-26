@@ -88,3 +88,17 @@ def test_macro_ranges_remain_ordered_for_a_large_body_weight() -> None:
     )
 
     assert result.protein_g.min <= result.protein_g.target <= result.protein_g.max
+
+
+def test_capping_the_daily_rate_also_requires_review() -> None:
+    """Giảm 30 kg trong 7 ngày không thể trả về safety_status='normal'.
+
+    Mức điều chỉnh bị cắt về -500 kcal/ngày làm target rơi vào khoảng hợp lệ,
+    nhưng client gate giao diện theo safety_status chứ không đọc warnings.
+    """
+    result = calculate_nutrition_goal(
+        _request(goal="lose", target_weight_kg=40.0, target_days=7)
+    )
+
+    assert result.safety_status == "review_required"
+    assert result.warnings

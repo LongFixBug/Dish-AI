@@ -24,7 +24,7 @@ STANDARD_SOURCE_URL = (
     "https://viendinhduong.vn/vi/cong-cu-va-tien-ich/nhu-cau-dinh-duong"
 )
 MACRO_SOURCE_URL = "https://www.who.int/news-room/fact-sheets/detail/healthy-diet"
-GOAL_MODEL_SOURCE_URL = "https://www.niddk.nih.gov/bwp."
+GOAL_MODEL_SOURCE_URL = "https://www.niddk.nih.gov/bwp"
 GOAL_MODEL_METHOD = (
     "Ước tính theo chênh lệch cân nặng và thời hạn; điều chỉnh tối đa "
     "500 kcal/ngày theo chính sách an toàn của sản phẩm, không phải công thức "
@@ -61,6 +61,7 @@ def calculate_nutrition_goal(
     maintenance = round(bmr * _ACTIVITY_FACTORS[request.activity_level])
     raw_delta = _raw_goal_delta(request)
     goal_delta = _bounded_delta(raw_delta, warnings)
+    delta_was_capped = goal_delta != round(raw_delta)
     requested_target = maintenance + goal_delta
     target_calories = _bounded_calories(requested_target, warnings)
 
@@ -76,7 +77,9 @@ def calculate_nutrition_goal(
             "Hồ sơ có tình trạng sinh lý hoặc bệnh nền; cần chuyên gia dinh dưỡng "
             "kiểm tra trước khi áp dụng."
         )
-    if target_calories != requested_target:
+    # Cả hai lần cắt đều nghĩa là mục tiêu người dùng yêu cầu vượt ngưỡng an toàn.
+    # Chỉ thêm warning là chưa đủ: client gate giao diện theo safety_status.
+    if target_calories != requested_target or delta_was_capped:
         safety_status = "review_required"
 
     macros = _calculate_macros(target_calories, request.weight_kg)
