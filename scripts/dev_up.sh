@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Khởi động toàn bộ FoodAI cho môi trường dev, bỏ qua thứ đã chạy sẵn.
+#
+#   bash scripts/dev_up.sh            # bật hết
+#   bash scripts/dev_up.sh --no-llm   # bỏ llama.cpp (đủ để test API + catalog)
+#
+# Dừng lại: bash scripts/dev_down.sh
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+LOG_DIR="$ROOT/logs"
+RUN_DIR="$ROOT/logs/run"
+mkdir -p "$LOG_DIR" "$RUN_DIR"
+
+WITH_LLM=1
+[ "${1:-}" = "--no-llm" ] && WITH_LLM=0
+
+port_open() { nc -z 127.0.0.1 "$1" >/dev/null 2>&1; }
+
+wait_for_port() {
+  local port=$1 name=$2 tries=${3:-60}
+  for _ in $(seq "$tries"); do
+    if port_open "$port"; then
+      echo "   ✅ $name (:$port)"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "   ❌ $name (:$port) chưa lên sau ${tries}s"
+  return 1
+}
+
+echo "▶ 1/4  Data stores (postgres :5432, qdrant :6333)"
+if port_open 5432 && port_open 6333; then
+  echo "   ⏭  đã chạy sẵn"
+else
+  docker compose up -d postgres qdrant
+  wait_for_port 5432 postgres
+  wait_for_port 6333 qdrant
+fi
+
+echo "▶ 2/4  Migrations"
+DEBUG=false uv run alembic upgrade head
+
+echo "▶ 3/4  llama.cpp (LLM :8080, embedding :8081)"
+if [ "$WITH_LLM" = "0" ]; then
+  echo "   ⏭  bỏ qua theo --no-llm"
+elif port_open 8080 && port_open 8081; then
+  echo "   ⏭  đã chạy sẵn"
+elif ! command -v llama-server >/dev/null 2>&1; then
+  echo "   ⚠️  không thấy llama-server trong PATH — bỏ qua."
+  echo "      Semantic search sẽ hụt, tra cứu chính xác vẫn chạy."
+else
+  bash scripts/start_llama.sh
+fi
+
+echo "▶ 4/4  API (:8000)"
+if port_open 8000; then
+  echo "   ⏭  đã chạy sẵn"
+else
+  DEBUG=false uv run uvicorn backend.main:app --reload --port 8000 \
+    > "$LOG_DIR/api.log" 2>&1 &
+  echo $! > "$RUN_DIR/api.pid"
+  wait_for_port 8000 api
+fi
+
+echo
+echo "▶ Readiness"
+curl -s http://127.0.0.1:8000/ready | python3 -m json.tool 2>/dev/null \
+  || echo "   ❌ /ready không trả JSON — xem $LOG_DIR/api.log"
+
+cat <<EOF
+
+──────────────────────────────────────────────
+  API      http://127.0.0.1:8000
+  Docs     http://127.0.0.1:8000/docs
+  Log      $LOG_DIR/api.log
+  Smoke    bash scripts/smoke_test.sh
+  Dừng     bash scripts/dev_down.sh
+──────────────────────────────────────────────
+EOF
