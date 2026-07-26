@@ -23,6 +23,8 @@ MANAGED_TABLES = {
     "dish_candidates",
     "catalog_cleanup_log",
     "users",
+    "user_nutrition_goals",
+    "nutrition_reference_targets",
     "refresh_tokens",
     "feedback_submissions",
 }

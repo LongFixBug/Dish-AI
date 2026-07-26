@@ -278,6 +278,102 @@ class User(Base):
     )
 
 
+class UserNutritionGoal(Base):
+    """Current source-labelled nutrition goal owned by one user."""
+
+    __tablename__ = "user_nutrition_goals"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_user_nutrition_goals_user_id"),
+        CheckConstraint(
+            "goal IN ('lose', 'maintain', 'gain')",
+            name="ck_user_nutrition_goals_goal",
+        ),
+        CheckConstraint(
+            "current_weight_kg > 0 AND target_weight_kg > 0 AND target_days > 0",
+            name="ck_user_nutrition_goals_positive_inputs",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    goal: Mapped[str] = mapped_column(String(20), nullable=False)
+    current_weight_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    target_weight_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    target_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    algorithm_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    input_payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    result_payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        onupdate=func.now(),
+    )
+
+
+class NutritionReferenceTarget(Base):
+    """Versioned row from the Vietnamese nutrition reference snapshot."""
+
+    __tablename__ = "nutrition_reference_targets"
+    __table_args__ = (
+        UniqueConstraint(
+            "standard",
+            "age_group_id",
+            "sex",
+            "labor_level",
+            "physiological_condition_id",
+            "nutrient_code",
+            "value_text",
+            name="uq_nutrition_reference_target_variant",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+        server_default=text("gen_random_uuid()"),
+    )
+    standard: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    source_endpoint: Mapped[str] = mapped_column(String(500), nullable=False)
+    source_fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    age_group_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    age_group_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    sex: Mapped[str] = mapped_column(String(20), nullable=False)
+    labor_level: Mapped[str] = mapped_column(String(30), nullable=False)
+    physiological_condition_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+    physiological_condition_name: Mapped[str | None] = mapped_column(
+        String(150), nullable=True
+    )
+    section: Mapped[str] = mapped_column(String(150), nullable=False)
+    nutrient_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    nutrient_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    unit: Mapped[str] = mapped_column(String(100), nullable=False)
+    value_text: Mapped[str] = mapped_column(String(300), nullable=False)
+    value_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    value_max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
 class RefreshToken(Base):
     """Rotating refresh token; only its SHA-256 digest is persisted."""
 

@@ -14,6 +14,7 @@ from backend.api.auth import router as auth_router
 from backend.api.analyze import router as analyze_router
 from backend.api.dishes import router as dishes_router
 from backend.api.feedback import router as feedback_router
+from backend.api.nutrition_goals import router as nutrition_goals_router
 from backend.config import settings
 from backend.db.postgres import engine
 from backend.middleware.rate_limit import RateLimitMiddleware
@@ -146,3 +147,4 @@ app.include_router(auth_router)
 app.include_router(analyze_router)
 app.include_router(dishes_router)
 app.include_router(feedback_router)
+app.include_router(nutrition_goals_router)

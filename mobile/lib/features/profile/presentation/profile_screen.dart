@@ -74,6 +74,7 @@ class ProfileScreen extends StatelessWidget {
                       _ProfileRow('Chiều cao', '${profile.heightCm} cm'),
                       _ProfileRow('Cân nặng', '${profile.weightKg} kg'),
                       _ProfileRow('Mục tiêu', profile.goal),
+                      _ProfileRow('Thời hạn', '${profile.targetDays} ngày'),
                       if (profile.allergies.isNotEmpty)
                         _ProfileRow('Dị ứng', profile.allergies.join(', ')),
                       if (profile.medicalConditions.isNotEmpty)
@@ -84,6 +85,12 @@ class ProfileScreen extends StatelessWidget {
                       _ProfileRow(
                         'Mục tiêu ước tính',
                         '${profile.dailyCalorieTarget} kcal',
+                      ),
+                      _ProfileRow(
+                        'Macro mục tiêu',
+                        'Đạm ${profile.nutritionTarget.proteinTargetG.round()} g · '
+                            'Carb ${profile.nutritionTarget.carbohydrateTargetG.round()} g · '
+                            'Fat ${profile.nutritionTarget.fatTargetG.round()} g',
                         showDivider: false,
                       ),
                       const SizedBox(height: 10),

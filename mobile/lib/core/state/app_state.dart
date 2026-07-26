@@ -1,6 +1,7 @@
 import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/features/auth/data/auth_api.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
+import 'package:balance/features/nutrition/data/nutrition_goal_api.dart';
 import 'package:balance/features/profile/domain/user_profile.dart';
 import 'package:flutter/foundation.dart';
 
@@ -8,6 +9,7 @@ class AppState extends ChangeNotifier {
   AppState._({
     required AppStorage storage,
     required AuthGateway authGateway,
+    required NutritionGoalGateway? nutritionGoalGateway,
     required bool isSignedIn,
     required String accountEmail,
     required String displayName,
@@ -20,6 +22,7 @@ class AppState extends ChangeNotifier {
   }) : this._values(
          storage,
          authGateway,
+         nutritionGoalGateway,
          isSignedIn,
          accountEmail,
          displayName,
@@ -34,6 +37,7 @@ class AppState extends ChangeNotifier {
   AppState._values(
     this._storage,
     this._authGateway,
+    this._nutritionGoalGateway,
     this._isSignedIn,
     this._accountEmail,
     this._displayName,
@@ -48,6 +52,7 @@ class AppState extends ChangeNotifier {
   factory AppState.memory() => AppState._(
     storage: MemoryAppStorage(),
     authGateway: const UnavailableAuthGateway(),
+    nutritionGoalGateway: null,
     isSignedIn: false,
     accountEmail: '',
     displayName: '',
@@ -64,10 +69,13 @@ class AppState extends ChangeNotifier {
   static Future<AppState> restore(
     AppStorage storage, {
     AuthGateway authGateway = const UnavailableAuthGateway(),
+    NutritionGoalGateway? nutritionGoalGateway,
   }) async {
     try {
       final json = await storage.read();
-      if (json == null) return _empty(storage, authGateway);
+      if (json == null) {
+        return _empty(storage, authGateway, nutritionGoalGateway);
+      }
       final profileJson = json['profile'];
       final entriesJson = json['journal_entries'];
       final preferencesJson = json['preferences'];
@@ -78,6 +86,7 @@ class AppState extends ChangeNotifier {
       return AppState._(
         storage: storage,
         authGateway: authGateway,
+        nutritionGoalGateway: nutritionGoalGateway,
         isSignedIn: hasSession,
         accountEmail: json['account_email'] as String? ?? '',
         displayName: json['display_name'] as String? ?? '',
@@ -103,27 +112,32 @@ class AppState extends ChangeNotifier {
             : DateTime.tryParse(expiresRaw)?.toUtc(),
       );
     } on Object {
-      return _empty(storage, authGateway);
+      return _empty(storage, authGateway, nutritionGoalGateway);
     }
   }
 
-  static AppState _empty(AppStorage storage, AuthGateway authGateway) =>
-      AppState._(
-        storage: storage,
-        authGateway: authGateway,
-        isSignedIn: false,
-        accountEmail: '',
-        displayName: '',
-        profile: null,
-        journalEntries: [],
-        preferences: {...defaultPreferences},
-        accessToken: null,
-        refreshToken: null,
-        accessTokenExpiresAt: null,
-      );
+  static AppState _empty(
+    AppStorage storage,
+    AuthGateway authGateway,
+    NutritionGoalGateway? nutritionGoalGateway,
+  ) => AppState._(
+    storage: storage,
+    authGateway: authGateway,
+    nutritionGoalGateway: nutritionGoalGateway,
+    isSignedIn: false,
+    accountEmail: '',
+    displayName: '',
+    profile: null,
+    journalEntries: [],
+    preferences: {...defaultPreferences},
+    accessToken: null,
+    refreshToken: null,
+    accessTokenExpiresAt: null,
+  );
 
   final AppStorage _storage;
   final AuthGateway _authGateway;
+  final NutritionGoalGateway? _nutritionGoalGateway;
   bool _isSignedIn;
   String _accountEmail;
   String _displayName;
@@ -189,6 +203,18 @@ class AppState extends ChangeNotifier {
     _accountEmail = profile.email.trim().toLowerCase();
     _displayName = profile.name;
     await _saveAndNotify();
+    await _syncNutritionGoal(profile);
+  }
+
+  Future<void> _syncNutritionGoal(UserProfile profile) async {
+    final gateway = _nutritionGoalGateway;
+    if (gateway == null || !_isSignedIn) return;
+    try {
+      final token = await validAccessToken();
+      await gateway.save(profile, accessToken: token);
+    } on Object {
+      // The local profile remains usable when the backend is offline.
+    }
   }
 
   Future<void> addJournalEntry(JournalEntry entry) async {

@@ -5,6 +5,7 @@ import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/features/analyze/domain/analyze_result.dart';
 import 'package:balance/features/auth/data/auth_api.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
+import 'package:balance/features/nutrition/data/nutrition_goal_api.dart';
 import 'package:balance/features/profile/domain/user_profile.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -133,6 +134,37 @@ void main() {
     expect(decoded.hasNutritionSafetyFlags, isTrue);
   });
 
+  test(
+    'syncs a signed-in profile goal without blocking local persistence',
+    () async {
+      final gateway = _FakeNutritionGoalGateway();
+      final auth = FakeAuthGateway();
+      final state = await AppState.restore(
+        MemoryAppStorage(),
+        authGateway: auth,
+        nutritionGoalGateway: gateway,
+      );
+      const profile = UserProfile(
+        name: 'An',
+        email: 'an@example.com',
+        age: 25,
+        heightCm: 170,
+        weightKg: 65,
+        targetWeightKg: 60,
+        gender: 'Nam',
+        activity: 'Vừa phải',
+        goal: 'Giảm cân',
+      );
+
+      await state.signIn(email: profile.email, password: 'matkhau123');
+      await state.completeProfile(profile);
+
+      expect(gateway.profile, profile);
+      expect(gateway.accessToken, 'access-token');
+      expect(state.profile, profile);
+    },
+  );
+
   test('concurrent API calls share one refresh request', () async {
     final auth = _DelayedRefreshGateway();
     final state = await AppState.restore(MemoryAppStorage(), authGateway: auth);
@@ -206,4 +238,15 @@ class _DelayedRefreshGateway implements AuthGateway {
     required String accessToken,
     required String refreshToken,
   }) async {}
+}
+
+class _FakeNutritionGoalGateway implements NutritionGoalGateway {
+  UserProfile? profile;
+  String? accessToken;
+
+  @override
+  Future<void> save(UserProfile profile, {required String accessToken}) async {
+    this.profile = profile;
+    this.accessToken = accessToken;
+  }
 }

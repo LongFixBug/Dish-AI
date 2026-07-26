@@ -19,6 +19,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   int _height = 170;
   int _weight = 65;
   int _targetWeight = 60;
+  int _targetDays = 90;
   String _gender = 'Nam';
   String _activity = 'Vừa phải';
   String _goal = 'Giảm cân';
@@ -38,6 +39,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     _height = profile.heightCm;
     _weight = profile.weightKg;
     _targetWeight = profile.targetWeightKg;
+    _targetDays = profile.targetDays;
     _gender = profile.gender;
     _activity = profile.activity;
     _goal = profile.goal;
@@ -79,6 +81,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
             heightCm: _height,
             weightKg: _weight,
             targetWeightKg: _targetWeight,
+            targetDays: _targetDays,
             gender: _gender,
             activity: _activity,
             goal: _goal,
@@ -169,9 +172,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       _ => _GoalStep(
         selected: _goal,
         targetWeight: _targetWeight,
+        targetDays: _targetDays,
         onSelected: (value) => setState(() => _goal = value),
         onWeightChanged: (value) =>
             _changeInt((next) => _targetWeight = next, value, 35, 180),
+        onTargetDaysChanged: (value) => setState(() => _targetDays = value),
         allergies: _allergies,
         medicalConditions: _medicalConditions,
         onAllergiesChanged: (value) => _allergies = value,
@@ -349,8 +354,10 @@ class _GoalStep extends StatelessWidget {
   const _GoalStep({
     required this.selected,
     required this.targetWeight,
+    required this.targetDays,
     required this.onSelected,
     required this.onWeightChanged,
+    required this.onTargetDaysChanged,
     required this.allergies,
     required this.medicalConditions,
     required this.onAllergiesChanged,
@@ -359,8 +366,10 @@ class _GoalStep extends StatelessWidget {
 
   final String selected;
   final int targetWeight;
+  final int targetDays;
   final ValueChanged<String> onSelected;
   final ValueChanged<int> onWeightChanged;
+  final ValueChanged<int> onTargetDaysChanged;
   final String allergies;
   final String medicalConditions;
   final ValueChanged<String> onAllergiesChanged;
@@ -403,6 +412,24 @@ class _GoalStep extends StatelessWidget {
           unit: 'kg',
           onDecrement: () => onWeightChanged(targetWeight - 1),
           onIncrement: () => onWeightChanged(targetWeight + 1),
+        ),
+        const SizedBox(height: 24),
+        DropdownButtonFormField<int>(
+          key: const ValueKey('profile-target-days'),
+          initialValue: targetDays,
+          decoration: const InputDecoration(
+            labelText: 'Thời hạn mục tiêu',
+            helperText: 'Dùng để tính mức điều chỉnh calo theo từng ngày.',
+          ),
+          items: const [
+            DropdownMenuItem(value: 30, child: Text('30 ngày')),
+            DropdownMenuItem(value: 60, child: Text('60 ngày')),
+            DropdownMenuItem(value: 90, child: Text('90 ngày')),
+            DropdownMenuItem(value: 180, child: Text('180 ngày')),
+          ],
+          onChanged: (value) {
+            if (value != null) onTargetDaysChanged(value);
+          },
         ),
         const SizedBox(height: 24),
         TextFormField(
