@@ -1,8 +1,11 @@
 """Read-only dish lookup endpoint backed by ``vn_dishes``."""
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.dependencies import CurrentUser, require_user
 from backend.db.postgres import get_session
 from backend.services.dishes import _has_weight, _vn_dish_to_per_gram, lookup_dish
 from schemas.nutrition import (
@@ -16,10 +19,15 @@ router = APIRouter(prefix="/api/v1", tags=["dishes"])
 
 @router.get("/dishes/lookup")
 async def get_dish_lookup(
+    current_user: Annotated[CurrentUser, Depends(require_user)],
     name: str = Query(..., min_length=1, description="Tên món, VD 'phở bò'"),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Return dish-level nutrition from the local catalog and semantic fallback."""
+    """Return dish-level nutrition from the local catalog and semantic fallback.
+
+    Cần đăng nhập: mỗi lần tra hụt sẽ gọi embedding server + Qdrant, không nên
+    để người lạ bơm tải vào stack inference nội bộ.
+    """
     vn = await lookup_dish(session, name)
     if vn is None:
         return {

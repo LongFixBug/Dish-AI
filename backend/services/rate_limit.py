@@ -35,9 +35,13 @@ class RateLimitStore(Protocol):
 class MemoryRateLimitStore:
     """Process-local limiter for development and deterministic tests."""
 
+    #: Chỉ quét dọn khi dict đã đủ lớn, tránh tốn O(n) ở mỗi request.
+    _SWEEP_THRESHOLD = 1024
+
     def __init__(self, *, clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
-        self._windows: dict[str, tuple[float, int]] = {}
+        # key -> (window_start, count, expires_at)
+        self._windows: dict[str, tuple[float, int, float]] = {}
         self._lock = asyncio.Lock()
 
     async def hit(
@@ -49,11 +53,12 @@ class MemoryRateLimitStore:
     ) -> RateLimitDecision:
         now = self._clock()
         async with self._lock:
-            window_start, count = self._windows.get(key, (now, 0))
+            self._drop_expired(now)
+            window_start, count, _ = self._windows.get(key, (now, 0, 0.0))
             if now - window_start >= window_seconds:
                 window_start, count = now, 0
             count += 1
-            self._windows[key] = (window_start, count)
+            self._windows[key] = (window_start, count, window_start + window_seconds)
 
         retry_after = max(1, math.ceil(window_seconds - (now - window_start)))
         return RateLimitDecision(
@@ -62,6 +67,16 @@ class MemoryRateLimitStore:
             remaining=max(0, limit - count),
             retry_after=retry_after,
         )
+
+    def _drop_expired(self, now: float) -> None:
+        """Xoá cửa sổ đã hết hạn để dict không phình vô hạn theo số key lạ."""
+        if len(self._windows) < self._SWEEP_THRESHOLD:
+            return
+        self._windows = {
+            key: window
+            for key, window in self._windows.items()
+            if window[2] > now
+        }
 
     async def close(self) -> None:
         return None

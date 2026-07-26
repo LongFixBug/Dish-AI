@@ -74,9 +74,9 @@ app = FastAPI(
     version=settings.app_version,
     description="AI nhận diện món ăn + phân tích dinh dưỡng từ ảnh",
     lifespan=lifespan,
-    docs_url=None if settings.environment == "production" else "/docs",
-    redoc_url=None if settings.environment == "production" else "/redoc",
-    openapi_url=None if settings.environment == "production" else "/openapi.json",
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
 app.add_middleware(
     RateLimitMiddleware,
@@ -114,12 +114,16 @@ async def metrics(
         raise HTTPException(status_code=404, detail="Not found")
     if settings.metrics_token:
         expected = f"Bearer {settings.metrics_token}"
-        if authorization is None or not secrets.compare_digest(authorization, expected):
+        # So sánh trên bytes: compare_digest ném TypeError với chuỗi có ký tự non-ASCII.
+        if authorization is None or not secrets.compare_digest(
+            authorization.encode("utf-8", "ignore"),
+            expected.encode("utf-8"),
+        ):
             raise HTTPException(status_code=401, detail="Unauthorized")
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-if settings.environment != "production" and settings.enable_dev_routes:
+if not settings.is_production and settings.enable_dev_routes:
     @app.get("/info")
     async def info() -> dict[str, str]:
         """Development-only application information."""
@@ -141,7 +145,7 @@ if settings.environment != "production" and settings.enable_dev_routes:
         return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-if settings.environment != "production" and settings.enable_dev_routes:
+if not settings.is_production and settings.enable_dev_routes:
     app.include_router(chat_router)
 app.include_router(auth_router)
 app.include_router(analyze_router)

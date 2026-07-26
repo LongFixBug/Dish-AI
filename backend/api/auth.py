@@ -1,10 +1,11 @@
 """Account registration, login and rotating-token endpoints."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,10 +45,12 @@ async def register(
     if existing is not None:
         raise HTTPException(status_code=409, detail="Email này đã được sử dụng.")
 
+    # Argon2 tốn CPU (64 MiB, ~100ms): chạy ở thread khác để không chặn event loop.
+    password_hash = await asyncio.to_thread(password_manager.hash, payload.password)
     user = User(
         email=payload.email,
         display_name=payload.display_name,
-        password_hash=password_manager.hash(payload.password),
+        password_hash=password_hash,
     )
     session.add(user)
     try:
@@ -67,7 +70,8 @@ async def login(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> TokenResponse:
     user = await session.scalar(select(User).where(User.email == payload.email))
-    password_valid = password_manager.verify_or_dummy(
+    password_valid = await asyncio.to_thread(
+        password_manager.verify_or_dummy,
         payload.password,
         user.password_hash if user is not None else None,
     )
@@ -90,7 +94,9 @@ async def google_login(
 ) -> TokenResponse:
     """Verify a Google ID token and issue a first-party FoodAI session."""
     try:
-        identity = verify_google_id_token(
+        # Hàm này gọi HTTPS đồng bộ tới JWKS của Google → đẩy sang thread khác.
+        identity = await asyncio.to_thread(
+            verify_google_id_token,
             payload.id_token,
             settings.google_web_client_id,
         )
@@ -170,7 +176,17 @@ async def refresh_session(
     expires_at = token.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
-    if token.revoked_at is not None or expires_at <= now or not user.is_active:
+    if token.revoked_at is not None:
+        # Token đã xoay vòng rồi mà quay lại → nghi bị đánh cắp.
+        # Thu hồi mọi token còn sống của user để kẻ trộm không giữ được phiên.
+        await session.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
+        await session.commit()
+        raise _invalid_refresh_token()
+    if expires_at <= now or not user.is_active:
         raise _invalid_refresh_token()
 
     token.revoked_at = now

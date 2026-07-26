@@ -3,6 +3,9 @@
 from types import SimpleNamespace
 
 from backend.api import dishes
+from backend.api.dependencies import CurrentUser
+
+CALLER = CurrentUser(id="00000000-0000-0000-0000-000000000001", role="user")
 
 
 async def test_lookup_preserves_vision_source_and_estimated_status(monkeypatch) -> None:
@@ -24,7 +27,7 @@ async def test_lookup_preserves_vision_source_and_estimated_status(monkeypatch) 
 
     monkeypatch.setattr(dishes, "lookup_dish", fake_lookup)
 
-    response = await dishes.get_dish_lookup("Món Vision", object())
+    response = await dishes.get_dish_lookup(CALLER, "Món Vision", object())
 
     assert response["source"] == "vision_auto"
     assert response["status"] == "estimated"
@@ -51,7 +54,7 @@ async def test_lookup_without_weight_does_not_invent_per_100g_values(
 
     monkeypatch.setattr(dishes, "lookup_dish", fake_lookup)
 
-    response = await dishes.get_dish_lookup(record.dish_name, object())
+    response = await dishes.get_dish_lookup(CALLER, record.dish_name, object())
     nutrition = response["nutrition"]
 
     assert nutrition.total_calories == 250.0

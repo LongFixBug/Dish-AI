@@ -84,10 +84,15 @@ class Settings(BaseSettings):
     llm_model: str = "qwen2.5-7b-instruct-q4_k_m.gguf"
     embedding_model: str = "qwen3-embedding-0.6b-q8_0.gguf"
 
+    @property
+    def is_production(self) -> bool:
+        """Cờ production duy nhất, để mọi nơi khỏi tự so sánh chuỗi mỗi kiểu."""
+        return self.environment.strip().lower() == "production"
+
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
         """Refuse to boot production with the checked-in development secret."""
-        if self.environment.lower() == "production":
+        if self.is_production:
             if (
                 self.auth_secret_key == DEVELOPMENT_AUTH_SECRET
                 or len(self.auth_secret_key) < 32

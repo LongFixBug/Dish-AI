@@ -26,12 +26,31 @@ class RateLimitPolicy:
 POLICIES = {
     ("POST", "/api/v1/auth/register"): RateLimitPolicy(10, 60),
     ("POST", "/api/v1/auth/login"): RateLimitPolicy(10, 60),
+    ("POST", "/api/v1/auth/google"): RateLimitPolicy(10, 60),
     ("POST", "/api/v1/auth/refresh"): RateLimitPolicy(30, 60),
     ("POST", "/api/v1/analyze/vision-only"): RateLimitPolicy(3, 60),
     ("POST", "/api/v1/analyze"): RateLimitPolicy(10, 60),
     ("POST", "/api/v1/feedback/training-data"): RateLimitPolicy(20, 3600),
+    ("GET", "/ready"): RateLimitPolicy(30, 60),
 }
 DEFAULT_POLICY = RateLimitPolicy(120, 60)
+
+# Endpoint không yêu cầu đăng nhập: luôn đếm theo IP.
+# Nếu đếm theo token, kẻ tấn công chỉ cần đính kèm một token rác bất kỳ
+# là có ngay một hạn mức mới cho mỗi lần thử mật khẩu.
+PUBLIC_PATHS = frozenset({
+    "/api/v1/auth/register",
+    "/api/v1/auth/login",
+    "/api/v1/auth/google",
+    "/api/v1/auth/refresh",
+})
+
+# Đường dẫn ngoài /api/ vẫn cần đếm vì chúng chạm tới Postgres/Redis/S3/Qdrant.
+METERED_PATHS = frozenset({"/ready"})
+
+
+def _is_metered(path: str) -> bool:
+    return path.startswith("/api/") or path in METERED_PATHS
 
 
 class RateLimitMiddleware:
@@ -48,13 +67,17 @@ class RateLimitMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         path = scope.get("path", "")
-        if scope["type"] != "http" or not path.startswith("/api/"):
+        if scope["type"] != "http" or not _is_metered(path):
             await self.app(scope, receive, send)
             return
 
         method = scope.get("method", "GET")
         policy = POLICIES.get((method, path), DEFAULT_POLICY)
-        identity = _request_identity(scope, self.settings)
+        identity = _request_identity(
+            scope,
+            self.settings,
+            allow_token_identity=path not in PUBLIC_PATHS,
+        )
         key = f"{method}:{path}:{identity}"
         try:
             decision = await self.store.hit(
@@ -64,7 +87,7 @@ class RateLimitMiddleware:
             )
         except Exception:
             logger.exception("Rate-limit backend failed")
-            if self.settings.environment.lower() == "production":
+            if self.settings.is_production:
                 response = JSONResponse(
                     {"detail": "Dịch vụ đang bận, vui lòng thử lại sau."},
                     status_code=503,
@@ -93,10 +116,15 @@ class RateLimitMiddleware:
         await self.app(scope, receive, send_with_rate_headers)
 
 
-def _request_identity(scope: Scope, settings: Settings) -> str:
+def _request_identity(
+    scope: Scope,
+    settings: Settings,
+    *,
+    allow_token_identity: bool = True,
+) -> str:
     headers = Headers(scope=scope)
     authorization = headers.get("authorization", "")
-    if authorization.lower().startswith("bearer "):
+    if allow_token_identity and authorization.lower().startswith("bearer "):
         try:
             claims = token_manager.decode_access_token(authorization[7:])
             return f"user:{claims.user_id}"
@@ -107,7 +135,9 @@ def _request_identity(scope: Scope, settings: Settings) -> str:
     if settings.trust_proxy_headers:
         forwarded = headers.get("x-forwarded-for")
         if forwarded:
-            client_host = forwarded.split(",", 1)[0].strip()
+            # Lấy hop PHẢI NHẤT: proxy chỉ nối thêm IP nó thấy vào cuối,
+            # nên các hop bên trái là do client tự bịa ra được.
+            client_host = forwarded.rsplit(",", 1)[-1].strip()
     return f"ip:{client_host}"
 
 
