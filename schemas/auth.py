@@ -41,6 +41,10 @@ class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=32, max_length=512)
 
 
+class GoogleLoginRequest(BaseModel):
+    id_token: str = Field(min_length=100, max_length=5000)
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

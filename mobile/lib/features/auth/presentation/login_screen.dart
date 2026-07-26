@@ -18,6 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _submitting = false;
+  bool _googleSubmitting = false;
 
   @override
   void dispose() {
@@ -50,6 +51,30 @@ class _LoginScreenState extends State<LoginScreen> {
       ).showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _submitGoogle() async {
+    if (_submitting || _googleSubmitting) return;
+    setState(() => _googleSubmitting = true);
+    try {
+      final state = AppScope.of(context);
+      await state.signInWithGoogle();
+      if (!mounted) return;
+      final nextPage = state.profile == null
+          ? const ProfileSetupScreen()
+          : const DashboardScreen();
+      await Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(builder: (_) => nextPage),
+        (_) => false,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) setState(() => _googleSubmitting = false);
     }
   }
 
@@ -97,7 +122,34 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 20),
             PressableButton(
               label: _submitting ? 'Đang đăng nhập...' : 'Đăng nhập',
-              onPressed: _submitting ? null : _submit,
+              onPressed: _submitting || _googleSubmitting ? null : _submit,
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'hoặc',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+                const Expanded(child: Divider()),
+              ],
+            ),
+            const SizedBox(height: 18),
+            OutlinedButton.icon(
+              key: const ValueKey('login-google'),
+              onPressed: _submitting || _googleSubmitting
+                  ? null
+                  : _submitGoogle,
+              icon: const Icon(Icons.account_circle_outlined),
+              label: Text(
+                _googleSubmitting
+                    ? 'Đang kết nối Google...'
+                    : 'Tiếp tục với Google',
+              ),
             ),
             const SizedBox(height: 24),
             Row(

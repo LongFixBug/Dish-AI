@@ -8,6 +8,21 @@
 	<string>Balance cần chọn ảnh món ăn từ thư viện để phân tích dinh dưỡng.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Balance kết nối tới máy chủ FoodAI trong mạng nội bộ khi phát triển.</string>
+	<key>GIDClientID</key>
+	<string>989820141671-se2dbkiplebcucmkq63fr4imaklcud90.apps.googleusercontent.com</string>
+	<key>GIDServerClientID</key>
+	<string>989820141671-p1f2t5s24t205nqkaref5jqp3c3irhhj.apps.googleusercontent.com</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.989820141671-se2dbkiplebcucmkq63fr4imaklcud90</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

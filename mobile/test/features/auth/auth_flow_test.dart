@@ -28,7 +28,7 @@ void main() {
     expect(find.text('Đăng nhập'), findsWidgets);
     expect(find.text('Email'), findsOneWidget);
     expect(find.text('Mật khẩu'), findsOneWidget);
-    expect(find.text('Đăng nhập với Google'), findsNothing);
+    expect(find.text('Tiếp tục với Google'), findsOneWidget);
     expect(find.text('Quên mật khẩu?'), findsNothing);
   });
 

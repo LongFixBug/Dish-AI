@@ -4,6 +4,7 @@ import 'package:balance/core/state/app_state.dart';
 import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/features/analyze/domain/analyze_result.dart';
 import 'package:balance/features/auth/data/auth_api.dart';
+import 'package:balance/features/auth/data/google_sign_in_api.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
 import 'package:balance/features/nutrition/data/nutrition_goal_api.dart';
 import 'package:balance/features/profile/domain/user_profile.dart';
@@ -165,6 +166,23 @@ void main() {
     },
   );
 
+  test('signs in with a Google ID token through the auth gateway', () async {
+    final auth = FakeAuthGateway();
+    final google = _FakeGoogleIdentityGateway();
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: auth,
+      googleIdentityGateway: google,
+    );
+
+    await state.signInWithGoogle();
+
+    expect(auth.googleIdToken, 'google-id-token');
+    expect(google.signInCalls, 1);
+    expect(state.isSignedIn, isTrue);
+    expect(state.accessToken, 'access-token');
+  });
+
   test('concurrent API calls share one refresh request', () async {
     final auth = _DelayedRefreshGateway();
     final state = await AppState.restore(MemoryAppStorage(), authGateway: auth);
@@ -203,6 +221,10 @@ class _DelayedRefreshGateway implements AuthGateway {
       role: 'user',
     ),
   );
+
+  @override
+  Future<AuthSession> loginWithGoogle({required String idToken}) =>
+      throw UnimplementedError();
 
   @override
   Future<AuthSession> refresh(String refreshToken) {
@@ -249,4 +271,17 @@ class _FakeNutritionGoalGateway implements NutritionGoalGateway {
     this.profile = profile;
     this.accessToken = accessToken;
   }
+}
+
+class _FakeGoogleIdentityGateway implements GoogleIdentityGateway {
+  int signInCalls = 0;
+
+  @override
+  Future<String> authenticate() async {
+    signInCalls += 1;
+    return 'google-id-token';
+  }
+
+  @override
+  Future<void> signOut() async {}
 }

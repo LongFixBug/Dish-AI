@@ -69,4 +69,33 @@ void main() {
     );
     api.close();
   });
+
+  test('google login sends only the ID token to the backend', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/v1/auth/google');
+      expect(jsonDecode(request.body), {'id_token': 'google-id-token'});
+      return http.Response(
+        jsonEncode({
+          'access_token': 'access-token',
+          'refresh_token': 'refresh-token',
+          'expires_in': 900,
+          'user': {
+            'id': 'user-id',
+            'email': 'an@example.com',
+            'display_name': 'Nguyen Van An',
+            'role': 'user',
+            'created_at': '2026-07-25T00:00:00Z',
+          },
+        }),
+        200,
+      );
+    });
+    final api = AuthApi(client: client, baseUrl: Uri.parse('http://api.test'));
+
+    final session = await api.loginWithGoogle(idToken: 'google-id-token');
+
+    expect(session.user.email, 'an@example.com');
+    api.close();
+  });
 }

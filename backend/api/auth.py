@@ -10,14 +10,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.dependencies import CurrentUser, require_user, token_manager
 from backend.config import settings
-from backend.db.models import RefreshToken, User
+from backend.db.models import RefreshToken, User, UserIdentity
 from backend.db.postgres import get_session
 from backend.services.auth import (
     PasswordManager,
     create_refresh_token,
     hash_refresh_token,
 )
+from backend.services.google_auth import (
+    GoogleAuthConfigurationError,
+    GoogleAuthError,
+    verify_google_id_token,
+)
 from schemas.auth import (
+    GoogleLoginRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
@@ -74,6 +80,73 @@ async def login(
 
     response = _issue_session(session, user)
     await session.commit()
+    return response
+
+
+@router.post("/google", response_model=TokenResponse)
+async def google_login(
+    payload: GoogleLoginRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TokenResponse:
+    """Verify a Google ID token and issue a first-party FoodAI session."""
+    try:
+        identity = verify_google_id_token(
+            payload.id_token,
+            settings.google_web_client_id,
+        )
+    except GoogleAuthConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except GoogleAuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    linked_identity = await session.scalar(
+        select(UserIdentity).where(
+            UserIdentity.provider == "google",
+            UserIdentity.provider_subject == identity.subject,
+        )
+    )
+    user: User | None
+    if linked_identity is not None:
+        user = await session.get(User, linked_identity.user_id)
+        if user is None or not user.is_active:
+            raise HTTPException(status_code=401, detail="Tài khoản Google không còn hoạt động.")
+        linked_identity.provider_email = identity.email
+        linked_identity.updated_at = datetime.now(UTC)
+    else:
+        user = await session.scalar(select(User).where(User.email == identity.email))
+        if user is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Email này đã có tài khoản mật khẩu. "
+                    "Hãy đăng nhập bằng mật khẩu trước để liên kết Google."
+                ),
+            )
+        user = User(
+            email=identity.email,
+            display_name=identity.display_name,
+            password_hash=None,
+        )
+        session.add(user)
+        await session.flush()
+        session.add(
+            UserIdentity(
+                user_id=user.id,
+                provider="google",
+                provider_subject=identity.subject,
+                provider_email=identity.email,
+            )
+        )
+
+    response = _issue_session(session, user)
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Tài khoản Google vừa được liên kết ở một phiên khác. Hãy thử lại.",
+        ) from exc
     return response
 
 

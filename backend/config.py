@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     auth_secret_key: str = DEVELOPMENT_AUTH_SECRET
     auth_issuer: str = "foodai-api"
     auth_audience: str = "foodai-mobile"
+    google_web_client_id: str = ""
     access_token_minutes: int = Field(default=15, ge=1, le=1_440)
     refresh_token_days: int = Field(default=30, ge=1, le=365)
 

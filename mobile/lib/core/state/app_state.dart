@@ -1,5 +1,6 @@
 import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/features/auth/data/auth_api.dart';
+import 'package:balance/features/auth/data/google_sign_in_api.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
 import 'package:balance/features/nutrition/data/nutrition_goal_api.dart';
 import 'package:balance/features/profile/domain/user_profile.dart';
@@ -9,6 +10,7 @@ class AppState extends ChangeNotifier {
   AppState._({
     required AppStorage storage,
     required AuthGateway authGateway,
+    required GoogleIdentityGateway? googleIdentityGateway,
     required NutritionGoalGateway? nutritionGoalGateway,
     required bool isSignedIn,
     required String accountEmail,
@@ -22,6 +24,7 @@ class AppState extends ChangeNotifier {
   }) : this._values(
          storage,
          authGateway,
+         googleIdentityGateway,
          nutritionGoalGateway,
          isSignedIn,
          accountEmail,
@@ -37,6 +40,7 @@ class AppState extends ChangeNotifier {
   AppState._values(
     this._storage,
     this._authGateway,
+    this._googleIdentityGateway,
     this._nutritionGoalGateway,
     this._isSignedIn,
     this._accountEmail,
@@ -52,6 +56,7 @@ class AppState extends ChangeNotifier {
   factory AppState.memory() => AppState._(
     storage: MemoryAppStorage(),
     authGateway: const UnavailableAuthGateway(),
+    googleIdentityGateway: null,
     nutritionGoalGateway: null,
     isSignedIn: false,
     accountEmail: '',
@@ -69,12 +74,18 @@ class AppState extends ChangeNotifier {
   static Future<AppState> restore(
     AppStorage storage, {
     AuthGateway authGateway = const UnavailableAuthGateway(),
+    GoogleIdentityGateway? googleIdentityGateway,
     NutritionGoalGateway? nutritionGoalGateway,
   }) async {
     try {
       final json = await storage.read();
       if (json == null) {
-        return _empty(storage, authGateway, nutritionGoalGateway);
+        return _empty(
+          storage,
+          authGateway,
+          googleIdentityGateway,
+          nutritionGoalGateway,
+        );
       }
       final profileJson = json['profile'];
       final entriesJson = json['journal_entries'];
@@ -86,6 +97,7 @@ class AppState extends ChangeNotifier {
       return AppState._(
         storage: storage,
         authGateway: authGateway,
+        googleIdentityGateway: googleIdentityGateway,
         nutritionGoalGateway: nutritionGoalGateway,
         isSignedIn: hasSession,
         accountEmail: json['account_email'] as String? ?? '',
@@ -112,17 +124,24 @@ class AppState extends ChangeNotifier {
             : DateTime.tryParse(expiresRaw)?.toUtc(),
       );
     } on Object {
-      return _empty(storage, authGateway, nutritionGoalGateway);
+      return _empty(
+        storage,
+        authGateway,
+        googleIdentityGateway,
+        nutritionGoalGateway,
+      );
     }
   }
 
   static AppState _empty(
     AppStorage storage,
     AuthGateway authGateway,
+    GoogleIdentityGateway? googleIdentityGateway,
     NutritionGoalGateway? nutritionGoalGateway,
   ) => AppState._(
     storage: storage,
     authGateway: authGateway,
+    googleIdentityGateway: googleIdentityGateway,
     nutritionGoalGateway: nutritionGoalGateway,
     isSignedIn: false,
     accountEmail: '',
@@ -137,6 +156,7 @@ class AppState extends ChangeNotifier {
 
   final AppStorage _storage;
   final AuthGateway _authGateway;
+  final GoogleIdentityGateway? _googleIdentityGateway;
   final NutritionGoalGateway? _nutritionGoalGateway;
   bool _isSignedIn;
   String _accountEmail;
@@ -163,6 +183,16 @@ class AppState extends ChangeNotifier {
       email: normalizedEmail,
       password: password,
     );
+    await _applySession(session);
+  }
+
+  Future<void> signInWithGoogle() async {
+    final identityGateway = _googleIdentityGateway;
+    if (identityGateway == null) {
+      throw const AuthApiException('Đăng nhập Google chưa được cấu hình.');
+    }
+    final idToken = await identityGateway.authenticate();
+    final session = await _authGateway.loginWithGoogle(idToken: idToken);
     await _applySession(session);
   }
 
@@ -234,6 +264,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    final googleIdentityGateway = _googleIdentityGateway;
     final accessToken = _accessToken;
     final refreshToken = _refreshToken;
     _isSignedIn = false;
@@ -247,6 +278,9 @@ class AppState extends ChangeNotifier {
     _preferences = {...defaultPreferences};
     await _saveAndNotify();
     try {
+      if (googleIdentityGateway != null) {
+        await googleIdentityGateway.signOut();
+      }
       if (accessToken != null && refreshToken != null) {
         await _authGateway.logout(
           accessToken: accessToken,

@@ -19,6 +19,7 @@ class FakeAuthGateway implements AuthGateway {
   final AuthSession session;
   String? loginEmail;
   String? loginPassword;
+  String? googleIdToken;
   String? registerName;
   bool loggedOut = false;
 
@@ -46,6 +47,12 @@ class FakeAuthGateway implements AuthGateway {
 
   @override
   Future<AuthSession> refresh(String refreshToken) async => session;
+
+  @override
+  Future<AuthSession> loginWithGoogle({required String idToken}) async {
+    googleIdToken = idToken;
+    return session;
+  }
 
   @override
   Future<void> logout({

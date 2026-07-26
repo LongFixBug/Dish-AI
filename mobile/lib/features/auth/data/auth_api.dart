@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 abstract interface class AuthGateway {
   Future<AuthSession> login({required String email, required String password});
 
+  Future<AuthSession> loginWithGoogle({required String idToken});
+
   Future<AuthSession> register({
     required String email,
     required String password,
@@ -33,6 +35,10 @@ class UnavailableAuthGateway implements AuthGateway {
     required String email,
     required String password,
   }) => Future.error(_unavailable());
+
+  @override
+  Future<AuthSession> loginWithGoogle({required String idToken}) =>
+      Future.error(_unavailable());
 
   @override
   Future<AuthSession> register({
@@ -72,6 +78,10 @@ class AuthApi implements AuthGateway {
     'email': email.trim().toLowerCase(),
     'password': password,
   });
+
+  @override
+  Future<AuthSession> loginWithGoogle({required String idToken}) =>
+      _sessionRequest('/api/v1/auth/google', {'id_token': idToken});
 
   @override
   Future<AuthSession> register({
