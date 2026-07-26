@@ -47,8 +47,13 @@ class AnalyzeResult {
   final List<String> missingItems;
   final String? error;
 
+  /// Nhân toàn bộ kết quả với [factor].
+  ///
+  /// Không tự cắt hệ số: dialog nhập "Tổng khối lượng (g)" đã giới hạn khoảng
+  /// hợp lệ rồi. Cắt âm thầm ở đây khiến người dùng nhập 2000 g mà màn hình
+  /// hiện 1480 g, không có cách nào biết.
   AnalyzeResult scaled(double factor) {
-    final safeFactor = factor.clamp(0.25, 4.0);
+    final safeFactor = factor.isFinite && factor > 0 ? factor : 1.0;
     return AnalyzeResult(
       dishName: dishName,
       source: source,
@@ -80,10 +85,7 @@ class AnalyzeResult {
         index >= currentNutrition.items.length) {
       return this;
     }
-    final currentGrams = currentNutrition.items[index].grams;
-    if (currentGrams <= 0) return this;
     final safeGrams = grams.clamp(0.0, 10000.0).toDouble();
-    final factor = safeGrams / currentGrams;
     final itemName = currentNutrition.items[index].name;
     return AnalyzeResult(
       dishName: dishName,
@@ -95,8 +97,10 @@ class AnalyzeResult {
           .map(
             (dish) => dish.name == itemName
                 ? AnalyzedDish(
+                    // Gán thẳng khối lượng mới, không nhân hệ số: khi grams
+                    // hiện tại là 0 thì không có hệ số nào chia được.
                     name: dish.name,
-                    grams: dish.grams * factor,
+                    grams: safeGrams,
                     isSide: dish.isSide,
                     foundInDatabase: dish.foundInDatabase,
                     recognitionConfidence: dish.recognitionConfidence,
@@ -195,19 +199,7 @@ class NutritionSummary {
   NutritionSummary scaled(double factor) {
     return NutritionSummary(
       items: items
-          .map(
-            (item) => NutritionItem(
-              name: item.name,
-              grams: item.grams * factor,
-              calories: item.calories * factor,
-              proteinGrams: item.proteinGrams * factor,
-              fatGrams: item.fatGrams * factor,
-              carbsGrams: item.carbsGrams * factor,
-              fiberGrams: item.fiberGrams * factor,
-              foundInDatabase: item.foundInDatabase,
-              nutritionBasis: item.nutritionBasis,
-            ),
-          )
+          .map((item) => item.scaledTo(item.grams * factor))
           .toList(growable: false),
       totalCalories: totalCalories * factor,
       totalProteinGrams: totalProteinGrams * factor,
@@ -272,6 +264,7 @@ class NutritionItem {
     this.carbsGrams = 0,
     this.fiberGrams = 0,
     this.nutritionBasis = 'unknown',
+    this.baseline,
   });
 
   factory NutritionItem.fromJson(Map<String, dynamic> json) {
@@ -298,18 +291,26 @@ class NutritionItem {
   final bool foundInDatabase;
   final String nutritionBasis;
 
+  /// Giá trị gốc do API trả về, giữ lại làm mốc quy đổi.
+  ///
+  /// Nếu chỉ dựa vào [grams] hiện tại, một thành phần bị sửa về 0 g sẽ mất luôn
+  /// mật độ dinh dưỡng (0 chia 0) và mọi lần chỉnh sau đó đều ra 0 kcal.
+  final NutritionItem? baseline;
+
   NutritionItem scaledTo(double targetGrams) {
-    final factor = grams > 0 ? targetGrams / grams : 0.0;
+    final basis = baseline ?? this;
+    final factor = basis.grams > 0 ? targetGrams / basis.grams : 0.0;
     return NutritionItem(
       name: name,
       grams: targetGrams,
-      calories: calories * factor,
-      proteinGrams: proteinGrams * factor,
-      fatGrams: fatGrams * factor,
-      carbsGrams: carbsGrams * factor,
-      fiberGrams: fiberGrams * factor,
+      calories: basis.calories * factor,
+      proteinGrams: basis.proteinGrams * factor,
+      fatGrams: basis.fatGrams * factor,
+      carbsGrams: basis.carbsGrams * factor,
+      fiberGrams: basis.fiberGrams * factor,
       foundInDatabase: foundInDatabase,
       nutritionBasis: nutritionBasis,
+      baseline: basis,
     );
   }
 }

@@ -206,4 +206,76 @@ void main() {
     );
     expect(find.text('22.5 g'), findsOneWidget);
   });
+
+  testWidgets('a component edited down to zero can be brought back', (
+    tester,
+  ) async {
+    final result = AnalyzeResult.fromJson({
+      'dish_name': 'Bánh mì thập cẩm',
+      'source': 'vision',
+      'nutrition': {
+        'total_calories': 680,
+        'total_grams': 200,
+        'items': [
+          {
+            'item_name': 'Bánh mì thập cẩm',
+            'grams': 200,
+            'calories': 680,
+            'protein_g': 30,
+            'found_in_db': true,
+          },
+        ],
+      },
+      'dishes': <Object>[],
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalysisResultScreen(result: result),
+      ),
+    );
+
+    await tester.enterText(find.byKey(const ValueKey('component-grams-0')), '0');
+    await tester.pump();
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('component-calories-0'))).data,
+      '0 kcal',
+    );
+
+    // Về 0 rồi vẫn phải quy đổi lại được: mật độ dinh dưỡng lấy từ giá trị gốc.
+    await tester.enterText(
+      find.byKey(const ValueKey('component-grams-0')),
+      '150',
+    );
+    await tester.pump();
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('component-calories-0'))).data,
+      '510 kcal',
+    );
+  });
+
+  testWidgets('dishes without catalog data show a dash instead of 0 kcal', (
+    tester,
+  ) async {
+    final result = AnalyzeResult.fromJson({
+      'dish_name': 'Phở bò',
+      'source': 'vision',
+      'dishes': [
+        {'dish_name': 'Phở bò', 'grams': 500, 'found_in_db': false},
+        {'dish_name': 'Quẩy', 'grams': 40, 'found_in_db': false},
+      ],
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalysisResultScreen(result: result),
+      ),
+    );
+
+    // 2 dòng thành phần + 1 tổng ở phần tóm tắt.
+    expect(find.text('— kcal'), findsNWidgets(3));
+    expect(find.text('0 kcal'), findsNothing);
+  });
 }

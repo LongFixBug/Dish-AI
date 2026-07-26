@@ -10,11 +10,26 @@ import 'package:flutter/widgets.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   const secureStorage = FlutterSecureStorage();
-  final state = await AppState.restore(
-    SecureAppStorage(secureStorage),
-    authGateway: AuthApi(),
-    googleIdentityGateway: GoogleSignInGateway(),
-    nutritionGoalGateway: NutritionGoalApi(),
-  );
-  runApp(BalanceApp(appState: state));
+  runApp(BalanceApp(appState: await _restoreState(SecureAppStorage(secureStorage))));
+}
+
+Future<AppState> _restoreState(AppStorage storage) async {
+  try {
+    return await AppState.restore(
+      storage,
+      authGateway: AuthApi(),
+      googleIdentityGateway: GoogleSignInGateway(),
+      nutritionGoalGateway: NutritionGoalApi(),
+    );
+  } on Object {
+    // Không đọc được kho bảo mật (keystore bị vô hiệu sau khi đổi khoá màn
+    // hình, khôi phục sang máy mới…). Chạy tạm trên bộ nhớ để KHÔNG ghi đè lên
+    // dữ liệu cũ: nó vẫn còn nguyên và mở lại được ở lần khởi động sau.
+    return AppState.restore(
+      MemoryAppStorage(),
+      authGateway: AuthApi(),
+      googleIdentityGateway: GoogleSignInGateway(),
+      nutritionGoalGateway: NutritionGoalApi(),
+    );
+  }
 }

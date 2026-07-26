@@ -77,16 +77,20 @@ class AppState extends ChangeNotifier {
     GoogleIdentityGateway? googleIdentityGateway,
     NutritionGoalGateway? nutritionGoalGateway,
   }) async {
+    // Lỗi ĐỌC (keystore bị vô hiệu khi đổi khoá màn hình, khôi phục máy mới…)
+    // khác hẳn dữ liệu hỏng: coi nó là "chưa có gì" thì lần ghi kế tiếp sẽ đè
+    // trắng lên payload vẫn còn giải mã được, biến sự cố tạm thời thành mất
+    // dữ liệu vĩnh viễn. Để lỗi đó nổi lên cho tầng gọi xử lý.
+    final json = await storage.read();
+    if (json == null) {
+      return _empty(
+        storage,
+        authGateway,
+        googleIdentityGateway,
+        nutritionGoalGateway,
+      );
+    }
     try {
-      final json = await storage.read();
-      if (json == null) {
-        return _empty(
-          storage,
-          authGateway,
-          googleIdentityGateway,
-          nutritionGoalGateway,
-        );
-      }
       final profileJson = json['profile'];
       final entriesJson = json['journal_entries'];
       final preferencesJson = json['preferences'];
@@ -123,7 +127,15 @@ class AppState extends ChangeNotifier {
             ? null
             : DateTime.tryParse(expiresRaw)?.toUtc(),
       );
-    } on Object {
+    } on FormatException {
+      // JSON đọc được nhưng nội dung sai định dạng → khởi động lại từ đầu là hợp lý.
+      return _empty(
+        storage,
+        authGateway,
+        googleIdentityGateway,
+        nutritionGoalGateway,
+      );
+    } on TypeError {
       return _empty(
         storage,
         authGateway,

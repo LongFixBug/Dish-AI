@@ -34,6 +34,10 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   bool _saving = false;
   bool _saved = false;
 
+  /// Id của entry đã lưu cho chính bữa ăn này, để lần lưu sau ghi đè thay vì
+  /// thêm mới — sửa khẩu phần rồi lưu lại không được đếm thành hai bữa.
+  String? _savedEntryId;
+
   Future<void> _saveToJournal() async {
     if (_saving || _saved) return;
     final state = AppScope.maybeOf(context);
@@ -46,14 +50,18 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     setState(() => _saving = true);
     final now = DateTime.now();
     try {
-      await state.addJournalEntry(
-        JournalEntry.fromAnalysis(
-          result: _result,
-          loggedAt: now,
-          mealType: _mealTypeFor(now),
-        ),
+      final entry = JournalEntry.fromAnalysis(
+        result: _result,
+        loggedAt: now,
+        mealType: _mealTypeFor(now),
       );
+      final previousId = _savedEntryId;
+      if (previousId != null) {
+        await state.removeJournalEntry(previousId);
+      }
+      await state.addJournalEntry(entry);
       if (!mounted) return;
+      _savedEntryId = entry.id;
       setState(() => _saved = true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Đã lưu bữa ăn vào nhật ký')),
@@ -326,6 +334,7 @@ class _ResultFacts extends StatelessWidget {
   Widget build(BuildContext context) {
     final recognitionPercent = _recognitionPercent(result);
     final catalogPercent = _catalogCoveragePercent(result);
+    final nutrition = result.nutrition;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -339,7 +348,11 @@ class _ResultFacts extends StatelessWidget {
         const _AiBadge(),
         const SizedBox(height: 14),
         Text(
-          '${_format(result.nutrition?.totalCalories ?? 0)} kcal',
+          // Chưa tra được món nào thì hiện "—", không hiện "0 kcal": con số 0
+          // đọc thành "bữa này không có calo" chứ không phải "chưa có dữ liệu".
+          nutrition == null
+              ? '— kcal'
+              : '${_format(nutrition.totalCalories)} kcal',
           style: Theme.of(
             context,
           ).textTheme.displaySmall?.copyWith(color: BalanceColors.blueDark),
@@ -512,7 +525,9 @@ class _ComponentRow extends StatefulWidget {
   final int index;
   final String name;
   final double grams;
-  final double calories;
+
+  /// ``null`` khi chưa tra được dinh dưỡng — hiện "—" chứ không hiện "0 kcal".
+  final double? calories;
   final ValueChanged<double>? onGramsChanged;
 
   @override
@@ -521,6 +536,11 @@ class _ComponentRow extends StatefulWidget {
 
 class _ComponentRowState extends State<_ComponentRow> {
   late final TextEditingController _controller;
+
+  String get _caloriesLabel {
+    final calories = widget.calories;
+    return calories == null ? '— kcal' : '${_format(calories)} kcal';
+  }
 
   @override
   void initState() {
@@ -584,7 +604,7 @@ class _ComponentRowState extends State<_ComponentRow> {
                   Text(
                     widget.onGramsChanged == null
                         ? '${_format(widget.grams)} g'
-                        : '${_format(widget.calories)} kcal',
+                        : _caloriesLabel,
                     key: widget.onGramsChanged == null
                         ? null
                         : ValueKey('component-calories-${widget.index}'),
@@ -593,7 +613,7 @@ class _ComponentRowState extends State<_ComponentRow> {
               ),
             ),
             if (widget.onGramsChanged == null)
-              Text('${_format(widget.calories)} kcal')
+              Text(_caloriesLabel)
             else
               _PortionStepper(
                 index: widget.index,
@@ -689,15 +709,17 @@ List<Widget> _componentRows(
         )
         .toList(growable: false);
   }
-  return result.dishes
+  // Không món nào tra được trong catalog: chỉ liệt kê tên, KHÔNG hiện "0 kcal"
+  // vì người dùng sẽ đọc thành "món này không có calo" thay vì "chưa có dữ liệu".
+  return result.dishes.asMap().entries
       .map(
-        (dish) =>
-            _ComponentRow(
-              index: 0,
-              name: dish.name,
-              grams: dish.grams,
-              calories: 0,
-            ),
+        (entry) => _ComponentRow(
+          key: ValueKey('component-row-${entry.key}'),
+          index: entry.key,
+          name: entry.value.name,
+          grams: entry.value.grams,
+          calories: null,
+        ),
       )
       .toList(growable: false);
 }

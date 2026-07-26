@@ -45,6 +45,10 @@ class _AnalyzeScreenState extends State<AnalyzeScreen> {
   String? _error;
   bool _loading = false;
 
+  /// Khoá chống bấm hai lần, bật ngay khi bắt đầu — kể cả trong lúc chờ picker,
+  /// giai đoạn mà [_loading] còn false nên nút vẫn bấm được.
+  bool _busy = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -61,7 +65,10 @@ class _AnalyzeScreenState extends State<AnalyzeScreen> {
   }
 
   Future<void> _pickAndAnalyze(ImageSource source) async {
-    if (_loading) return;
+    // Khoá NGAY, trước khi await picker. Nếu chỉ khoá sau đó, hai lần bấm nhanh
+    // sẽ chạy hai lượt phân tích song song = hai lần gọi Vision tính phí.
+    if (_busy) return;
+    _busy = true;
     try {
       final image = await widget.pickImage(source);
       if (image == null || !mounted) return;
@@ -86,6 +93,7 @@ class _AnalyzeScreenState extends State<AnalyzeScreen> {
       if (!mounted) return;
       setState(() => _error = error.toString());
     } finally {
+      _busy = false;
       if (mounted) setState(() => _loading = false);
     }
   }
