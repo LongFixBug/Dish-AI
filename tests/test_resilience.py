@@ -73,3 +73,66 @@ async def test_concurrent_first_requests_share_one_http_client() -> None:
     await client.close()
 
     assert created == 1
+
+
+async def test_recovery_lets_exactly_one_probe_through() -> None:
+    """Half-open: hết thời gian chờ chỉ MỘT request được đi thử.
+
+    Mở toang cho tất cả sẽ khiến mọi request đang dồn lại đập vào dịch vụ vừa
+    chết, và vì bộ đếm đã reset nên phải hỏng thêm đủ ngưỡng lần nữa mới ngắt.
+    """
+    now = 1_000.0
+    breaker = CircuitBreaker(
+        failure_threshold=2,
+        recovery_seconds=30,
+        clock=lambda: now,
+    )
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fail() -> None:
+        raise TimeoutError("provider unavailable")
+
+    async def slow_probe() -> str:
+        started.set()
+        await release.wait()
+        return "ok"
+
+    for _ in range(2):
+        with pytest.raises(TimeoutError):
+            await breaker.call(fail)
+
+    now += 31
+    probe = asyncio.create_task(breaker.call(slow_probe))
+    await started.wait()
+
+    # Trong lúc phép thử đang chạy, mọi request khác vẫn bị chặn.
+    with pytest.raises(CircuitOpenError):
+        await breaker.call(slow_probe)
+
+    release.set()
+    assert await probe == "ok"
+
+
+async def test_a_failed_probe_reopens_the_circuit_immediately() -> None:
+    now = 1_000.0
+    breaker = CircuitBreaker(
+        failure_threshold=2,
+        recovery_seconds=30,
+        clock=lambda: now,
+    )
+
+    async def fail() -> None:
+        raise TimeoutError("provider unavailable")
+
+    for _ in range(2):
+        with pytest.raises(TimeoutError):
+            await breaker.call(fail)
+
+    now += 31
+    with pytest.raises(TimeoutError):
+        await breaker.call(fail)
+
+    # Phép thử hỏng → ngắt lại ngay, không chờ đủ ngưỡng lần nữa.
+    with pytest.raises(CircuitOpenError):
+        await breaker.call(fail)

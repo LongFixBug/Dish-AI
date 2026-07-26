@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 
 from redis.asyncio import Redis
@@ -15,9 +16,30 @@ from backend.services.vector_catalog import check_qdrant_health
 
 object_storage = create_object_storage(settings)
 CHECK_TIMEOUT_SECONDS = 3.0
+CACHE_SECONDS = 5.0
+
+_cached: tuple[float, dict[str, object]] | None = None
+_cache_lock = asyncio.Lock()
 
 
 async def check_readiness() -> dict[str, object]:
+    """Kết quả readiness có cache vài giây.
+
+    ``/ready`` là endpoint công khai; nếu mỗi lần gọi đều mở session Postgres,
+    client Redis mới và gọi S3/Qdrant thì chỉ cần một vòng lặp curl là cạn
+    connection pool. Giữ lock trong lúc dò để nhiều request đồng thời chỉ tốn
+    một lượt kiểm tra.
+    """
+    global _cached
+    async with _cache_lock:
+        if _cached is not None and time.monotonic() - _cached[0] < CACHE_SECONDS:
+            return _cached[1]
+        report = await _probe_components()
+        _cached = (time.monotonic(), report)
+        return report
+
+
+async def _probe_components() -> dict[str, object]:
     checks: dict[str, Callable[[], Awaitable[None]]] = {
         "postgres": _check_postgres,
         "object_storage": object_storage.healthcheck,

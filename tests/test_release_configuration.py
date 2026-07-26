@@ -60,3 +60,17 @@ def test_dependency_and_toolchain_versions_are_reproducible() -> None:
     assert "uv sync --all-groups --frozen" in workflow
     assert "--hash=sha256:" in lockfile
     assert "python:3.12-slim@sha256:" in dockerfile
+    # Image CV cũng chạy production nên phải pin digest như image API.
+    assert "python:3.12-slim@sha256:" in (ROOT / "Dockerfile.cv").read_text()
+
+
+def test_container_healthchecks_probe_liveness_not_readiness() -> None:
+    """Healthcheck quyết định restart container, nên phải độc lập với dịch vụ ngoài."""
+    for name in ("Dockerfile", "Dockerfile.cv"):
+        healthcheck = [
+            line
+            for line in (ROOT / name).read_text().splitlines()
+            if "urlopen(" in line
+        ]
+        assert healthcheck, f"{name} thiếu HEALTHCHECK"
+        assert all("/live" in line for line in healthcheck), name

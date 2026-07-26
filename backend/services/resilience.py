@@ -39,6 +39,7 @@ class CircuitBreaker:
         self._clock = clock
         self._failure_count = 0
         self._opened_at: float | None = None
+        self._probing = False
         self._lock = asyncio.Lock()
 
     @property
@@ -46,23 +47,40 @@ class CircuitBreaker:
         return self._failure_count
 
     async def call(self, operation: Callable[[], Awaitable[T]]) -> T:
+        """Chạy ``operation`` qua cổng ngắt mạch.
+
+        Hết thời gian chờ thì sang trạng thái half-open: CHỈ MỘT request được đi
+        thử. Mở toang cho tất cả cùng lúc sẽ khiến mọi request đang dồn lại đập
+        vào dịch vụ vừa chết, và vì bộ đếm đã reset nên phải hỏng thêm đủ ngưỡng
+        lần nữa mới ngắt lại được.
+        """
+        probing = False
         async with self._lock:
             if self._opened_at is not None:
-                if self._clock() - self._opened_at < self._recovery_seconds:
+                if (
+                    self._probing
+                    or self._clock() - self._opened_at < self._recovery_seconds
+                ):
                     raise CircuitOpenError("Downstream circuit is open")
-                self._opened_at = None
-                self._failure_count = 0
+                self._probing = True
+                probing = True
         try:
             result = await operation()
         except Exception:
             async with self._lock:
-                self._failure_count += 1
-                if self._failure_count >= self._failure_threshold:
+                self._probing = False
+                if probing:
+                    # Phép thử hỏng → ngắt lại ngay, khỏi chờ đủ ngưỡng lần nữa.
                     self._opened_at = self._clock()
+                else:
+                    self._failure_count += 1
+                    if self._failure_count >= self._failure_threshold:
+                        self._opened_at = self._clock()
             raise
         async with self._lock:
             self._failure_count = 0
             self._opened_at = None
+            self._probing = False
         return result
 
 
