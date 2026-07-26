@@ -1,5 +1,6 @@
 """Training configuration must stay reproducible and keep class indices aligned."""
 
+import os
 from argparse import Namespace
 from pathlib import Path
 
@@ -100,3 +101,16 @@ def test_calibration_recommends_threshold_for_selective_accuracy() -> None:
     assert metrics["selective_accuracy"] == 100.0
     assert metrics["selective_coverage"] == 0.5
     assert 0 <= metrics["ece"] <= 1
+
+
+def test_latest_checkpoint_uses_mtime_not_filename_order(tmp_path, monkeypatch) -> None:
+    """epoch18 mới hơn epoch9, dù sort chuỗi xếp '9' sau '1'."""
+    monkeypatch.setattr(train, "CHECKPOINT_DIR", tmp_path)
+    older = tmp_path / "efficientnet_vietfood_20260726_120000_epoch9.pth"
+    newer = tmp_path / "efficientnet_vietfood_20260726_120000_epoch18.pth"
+    older.write_bytes(b"old")
+    newer.write_bytes(b"new")
+    os.utime(older, (1_000, 1_000))
+    os.utime(newer, (2_000, 2_000))
+
+    assert train.find_latest_checkpoint() == newer

@@ -11,7 +11,6 @@ from ml.model_registry import load_manifest, validate_manifest
 ARCH = "efficientnet_b0"  # timm model — phải khớp train script
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
-CONFIDENCE_THRESHOLD = 0.4
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
 CLASS_MAPPING = CHECKPOINT_DIR / "class_mapping.json"
@@ -221,19 +220,19 @@ class CVModel:
         ]
 
         best_prob = all_predictions[0]["probability"]
+        # Một ngưỡng duy nhất cho cả tên món lẫn source. Trước đây dish_name dùng
+        # số 0.3 cứng, nên một dự đoán bị coi là "fallback_required" vẫn kèm tên
+        # món và tên đó lọt ra response khi Vision lỗi.
+        confident = best_prob >= self.serving_threshold
 
         return {
-            "dish_name": all_predictions[0]["class_name"] if best_prob >= 0.3 else None,
+            "dish_name": all_predictions[0]["class_name"] if confident else None,
             "confidence": best_prob,
             "all_predictions": all_predictions,
-            "source": (
-                "local"
-                if best_prob >= self.serving_threshold
-                else "fallback_required"
-            ),
+            "source": "local" if confident else "fallback_required",
             "model_version": self.model_version,
         }
 
 
 # Singleton instance. Production refuses unmanifested local weights.
-cv_model = CVModel(require_manifest=settings.environment == "production")
+cv_model = CVModel(require_manifest=settings.is_production)

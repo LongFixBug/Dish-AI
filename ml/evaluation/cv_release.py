@@ -28,6 +28,14 @@ def evaluate_release(
     classes = checkpoint.get("classes")
     if not isinstance(classes, list) or not classes:
         raise ValueError("Checkpoint has no class mapping")
+    # create_model load weights với strict=False: kiến trúc lệch thì không key
+    # nào khớp và ta sẽ đi đánh giá một mạng khởi tạo ngẫu nhiên, rồi ghi
+    # manifest với metric của mạng đó. Chặn ngay từ đầu.
+    checkpoint_arch = checkpoint.get("arch", train.ARCH)
+    if checkpoint_arch != train.ARCH:
+        raise ValueError(
+            f"Checkpoint arch {checkpoint_arch!r} does not match {train.ARCH!r}"
+        )
     test_classes = train._class_folders(data_dir, "test")
     if test_classes != classes:
         raise ValueError(
@@ -69,7 +77,7 @@ def evaluate_release(
     manifest = build_manifest(
         release_path,
         model_version=version,
-        arch=str(checkpoint.get("arch", train.ARCH)),
+        arch=train.ARCH,
         classes=classes,
         metrics=quality_metrics,
         confidence_threshold=float(metrics["recommended_threshold"]),

@@ -30,12 +30,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from ml.training.dataset import VietFoodDataset  # noqa: E402
-from ml.model_registry import (  # noqa: E402
-    build_manifest,
-    evaluate_quality_gate,
-    fingerprint_dataset,
-    write_manifest,
-)
+from ml.model_registry import fingerprint_dataset  # noqa: E402
 
 
 # ─── Config ──────────────────────────────────────────────────────────
@@ -107,11 +102,12 @@ def load_training_datasets(
 def find_latest_checkpoint() -> Path | None:
     """Tìm checkpoint efficientnet mới nhất trong checkpoints/.
 
-    Sắp theo tên file (timestamp dẫn adelante), file cuối = mới nhất gần đúng.
+    Sắp theo thời điểm sửa file, KHÔNG theo tên: tên kết thúc bằng ``_epoch{N}``
+    nên sort chuỗi sẽ xếp ``epoch9`` sau ``epoch18`` và resume nhầm.
     Ưu tiên: dùng --ckpt <path> để resume chính xác, tránh đoán sai.
     """
-    files = sorted(CHECKPOINT_DIR.glob("efficientnet_vietfood_*.pth"))
-    return files[-1] if files else None
+    files = list(CHECKPOINT_DIR.glob("efficientnet_vietfood_*.pth"))
+    return max(files, key=lambda path: path.stat().st_mtime) if files else None
 
 
 def load_checkpoint(checkpoint_path: Path) -> dict:
@@ -139,6 +135,14 @@ def create_model(num_classes: int, checkpoint: dict | None = None) -> nn.Module:
             checkpoint["model_state_dict"], strict=False
         )
         _report_load_mismatch(result, stage="resume")
+        # Backbone không load được key nào = checkpoint của kiến trúc khác.
+        # Đi tiếp là huấn luyện/đánh giá một mạng ngẫu nhiên mà tưởng là đã load.
+        backbone_missing = [k for k in result.missing_keys if "classifier" not in k]
+        if backbone_missing:
+            raise ValueError(
+                f"Checkpoint không khớp {ARCH}: thiếu {len(backbone_missing)} key "
+                f"của backbone (VD {backbone_missing[0]})"
+            )
 
         if num_classes != saved_num_classes:
             print(
@@ -612,6 +616,7 @@ def main(
                 "model_version": model_version,
                 "cv_confidence_threshold": confidence_threshold,
                 "quality_metrics": quality_metrics,
+                "dataset_fingerprint": dataset_fingerprint,
             }
 
             # Giữ lại checkpoint theo epoch để debug hoặc so sánh sau này.
@@ -620,28 +625,14 @@ def main(
             )
             torch.save(checkpoint_data, epoch_checkpoint_path)
 
+            # Cập nhật NGAY, không phụ thuộc kết quả promote. Nếu để trong nhánh
+            # promote, best_val_acc kẹt ở 0.0 và mọi epoch đều tự nhận là "best".
+            best_val_acc = val_acc
             print(f"   💾 Best model saved: {epoch_checkpoint_path.name}")
-            gate = evaluate_quality_gate(
-                quality_metrics,
-                evaluation_split="validation",
+            print(
+                "   ℹ️  Promote bằng: python -m ml.evaluation.cv_release "
+                f"{epoch_checkpoint_path} --promote"
             )
-            if gate.passed:
-                best_val_acc = val_acc
-                torch.save(checkpoint_data, BEST_CHECKPOINT_PATH)
-                manifest = build_manifest(
-                    BEST_CHECKPOINT_PATH,
-                    model_version=model_version,
-                    arch=ARCH,
-                    classes=train_ds.classes,
-                    metrics=quality_metrics,
-                    confidence_threshold=confidence_threshold,
-                    dataset_fingerprint=dataset_fingerprint,
-                    evaluation_split="validation",
-                )
-                write_manifest(BEST_MANIFEST_PATH, manifest)
-                print(f"   ⭐ Serving model updated: {BEST_CHECKPOINT_PATH.name}")
-            else:
-                print(f"   ⛔ Not promoted: {gate.failures}")
 
     # Save class mapping
     mapping_path = CHECKPOINT_DIR / "class_mapping.json"

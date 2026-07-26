@@ -145,7 +145,14 @@ def promote_model(
     serving_checkpoint: Path,
     serving_manifest: Path,
 ) -> None:
-    """Atomically point serving files at any previously approved release."""
+    """Point the serving files at a previously approved release.
+
+    Checkpoint và manifest là hai file, không thể đổi trong một thao tác nguyên
+    tử. Bất kỳ khe hở nào để lẫn checkpoint mới với manifest cũ đều làm
+    ``validate_manifest`` báo lệch checksum. Vì vậy xoá manifest trước: trong
+    khe hở, ``CVModel.load()`` chỉ thấy "chưa có manifest" — trạng thái nó đã
+    biết cách xử lý — thay vì một checksum sai khó hiểu.
+    """
     validate_manifest(manifest, release_checkpoint, require_passed_gate=True)
     serving_checkpoint.parent.mkdir(parents=True, exist_ok=True)
     checkpoint_tmp = serving_checkpoint.with_suffix(
@@ -157,5 +164,8 @@ def promote_model(
         json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    # Xoá manifest trước: trong khe hở, CVModel.load() thấy "chưa có manifest"
+    # và bỏ qua bước validate thay vì raise vì checksum lệch.
+    serving_manifest.unlink(missing_ok=True)
     checkpoint_tmp.replace(serving_checkpoint)
     manifest_tmp.replace(serving_manifest)
