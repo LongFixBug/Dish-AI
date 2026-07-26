@@ -101,4 +101,109 @@ void main() {
     expect(find.text('200 kcal'), findsOneWidget);
     expect(find.text('10 g'), findsOneWidget);
   });
+
+  testWidgets('component gram controls update calories and macros in real time', (
+    tester,
+  ) async {
+    final result = AnalyzeResult.fromJson({
+      'dish_name': 'Bánh mì thập cẩm',
+      'source': 'vision',
+      'nutrition': {
+        'total_calories': 680,
+        'total_protein_g': 30,
+        'total_fat_g': 24,
+        'total_carbs_g': 80,
+        'total_fiber_g': 3,
+        'total_grams': 200,
+        'items': [
+          {
+            'item_name': 'Bánh mì thập cẩm',
+            'grams': 200,
+            'calories': 680,
+            'protein_g': 30,
+            'fat_g': 24,
+            'carbs_g': 80,
+            'fiber_g': 3,
+            'found_in_db': true,
+          },
+        ],
+      },
+      'dishes': <Object>[],
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalysisResultScreen(result: result),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('component-grams-0')), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('component-calories-0')),
+          )
+          .data,
+      '680 kcal',
+    );
+    expect(find.text('30 g'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('component-plus-0')));
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('component-grams-0')),
+          )
+          .controller
+          ?.text,
+      '210',
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('component-calories-0')),
+          )
+          .data,
+      '714 kcal',
+    );
+    expect(find.text('31.5 g'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('component-minus-0')));
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('component-grams-0')),
+          )
+          .controller
+          ?.text,
+      '200',
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('component-grams-0')),
+      '150',
+    );
+    await tester.pump();
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('component-grams-0')),
+          )
+          .controller
+          ?.text,
+      '150',
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('component-calories-0')),
+          )
+          .data,
+      '510 kcal',
+    );
+    expect(find.text('22.5 g'), findsOneWidget);
+  });
 }

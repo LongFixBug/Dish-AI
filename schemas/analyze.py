@@ -41,7 +41,8 @@ class AnalyzeDish(BaseModel):
 class AnalyzeResponse(BaseModel):
     """Response cho POST /api/v1/analyze.
 
-    - source='cv_local': CV local conf cao + DB có đủ nutrition và khẩu phần chuẩn.
+    - source='cv_local_not_found_vision': CV family prior + Qdrant shortlist +
+      Vision visual selection.
     - source='vision': Vision nhận diện + lookup vn_dishes/vn_ingredients.
     - nutrition: NutritionTotals (dish-level, không có per-ingredient list).
     - dishes: list món Vision trả (tên + gram).

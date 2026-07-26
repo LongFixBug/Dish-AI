@@ -1,8 +1,8 @@
 """Food-image analysis endpoints.
 
-High-confidence local CV results use verified database nutrition directly. Other
-requests fall back to Vision, then reconcile each detected menu item with the
-local dish and ingredient catalogs.
+Local CV supplies a broad dish-family prior. Qdrant builds a reviewed shortlist,
+Vision chooses the best visual match, and PostgreSQL remains the nutrition
+source of truth.
 """
 
 import asyncio
@@ -30,9 +30,12 @@ from backend.services.dishes import (
     _has_weight,
     _vn_dish_to_per_gram,
     _vn_ingredient_to_per_gram,
+    dish_family_query,
     lookup_dish,
+    lookup_dish_candidates,
     lookup_dish_exact,
     lookup_ingredient_text,
+    resolve_catalog_portion_grams,
 )
 from backend.services.dish_candidates import stage_dish_candidate
 from ml.inference.cv import cv_model
@@ -48,6 +51,8 @@ from schemas.nutrition import (
 # ─── Constants ─────────────────────────────────────────────────────────────
 
 MAX_UPLOAD_BYTES = MAX_IMAGE_UPLOAD_BYTES
+CV_FAMILY_MAX_PREDICTIONS = 3
+CV_FAMILY_MIN_PROBABILITY = 0.15
 
 
 def _safe_filename(filename: str) -> str:
@@ -90,6 +95,31 @@ def _is_cv_high_conf(cv_conf: float | None, cv_dish: str | None) -> bool:
     )
 
 
+def _cv_family_queries(
+    cv_dish: str | None,
+    predictions: list[dict] | None,
+) -> list[str]:
+    """Turn CV top-k labels into a small set of broad catalog queries."""
+    names: list[str] = []
+    if cv_dish:
+        names.append(cv_dish)
+    for prediction in (predictions or [])[:CV_FAMILY_MAX_PREDICTIONS]:
+        name = prediction.get("class_name")
+        try:
+            probability = float(prediction.get("probability", 0) or 0)
+        except (TypeError, ValueError):
+            probability = 0.0
+        if isinstance(name, str) and probability >= CV_FAMILY_MIN_PROBABILITY:
+            names.append(name)
+
+    queries: list[str] = []
+    for name in names:
+        family = dish_family_query(name)
+        if family and family not in queries:
+            queries.append(family)
+    return queries
+
+
 def _recognition_confidence(dish: dict) -> float | None:
     """Return one normalized item confidence when Vision supplied it."""
     value = dish.get("confidence")
@@ -101,13 +131,12 @@ def _recognition_confidence(dish: dict) -> float | None:
         return None
 
 
-def _portion_source(requested_grams: float, item_grams: float) -> str:
-    """Describe whether displayed grams came from Vision or catalog fallback."""
-    if requested_grams > 0:
-        return "vision"
-    if item_grams > 0:
-        return "catalog_default"
-    return "unknown"
+def _gram_confidence(dish: dict) -> float:
+    """Return Vision's separate confidence for the estimated portion weight."""
+    try:
+        return min(1.0, max(0.0, float(dish.get("gram_confidence", 0) or 0)))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _has_usable_vision_nutrition(item: NutritionPerIngredient) -> bool:
@@ -115,56 +144,19 @@ def _has_usable_vision_nutrition(item: NutritionPerIngredient) -> bool:
     return item.grams > 0 and item.calories > 0
 
 
-async def _analyze_cv_local(
-    session: AsyncSession,
-    dish_name: str,
-    confidence: float,
-) -> AnalyzeResponse | None:
-    """Build a local-CV response when serving-size nutrition is complete."""
-    vn = await lookup_dish(session, dish_name)
-    if vn is None or not _has_nutrition(vn) or not _has_weight(vn):
-        return None
-
-    grams = float(vn.typical_grams)
-    item = calculate_item_nutrition(
-        vn.dish_name,
-        grams,
-        _vn_dish_to_per_gram(vn),
-    )
-    totals = calculate_totals(vn.dish_name, [item])
-
-    return _analysis_response(
-        dish_name=vn.dish_name,
-        source="cv_local",
-        cv_confidence=confidence,
-        recognition_confidence=confidence,
-        nutrition=totals,
-        dishes=[
-            AnalyzeDish(
-                dish_name=vn.dish_name,
-                grams=grams,
-                is_side=False,
-                found_in_db=True,
-                recognition_confidence=confidence,
-                portion_source="catalog_default",
-            )
-        ],
-    )
-
-
 async def _resolve_dish_item(
     session: AsyncSession,
     dish_name: str,
     gram: float,
     is_side: bool,
-) -> tuple[NutritionPerIngredient | None, str]:
+    gram_confidence: float = 0.0,
+) -> tuple[NutritionPerIngredient | None, str, str]:
     """Resolve 1 dish vision → NutritionPerIngredient.
 
     Tra vn_dishes trước → nếu miss + is_side → tra vn_ingredients → nếu vẫn miss → None.
 
     Returns:
-        (nutrition_item | None, canonical_name). canonical_name là tên chuẩn DB
-        khi match, nếu miss thì giữ tên Vision.
+        (nutrition_item | None, canonical_name, portion_source).
     """
     gram = max(0.0, float(gram))
 
@@ -178,10 +170,16 @@ async def _resolve_dish_item(
     if vn is not None:
         if _has_nutrition(vn) and _has_weight(vn):
             per_gram = _vn_dish_to_per_gram(vn)
-            effective_grams = gram if gram > 0 else float(vn.typical_grams)
+            effective_grams, portion_source = resolve_catalog_portion_grams(
+                vn.dish_name,
+                float(vn.typical_grams),
+                gram,
+                gram_confidence,
+            )
             return (
                 calculate_item_nutrition(vn.dish_name, effective_grams, per_gram),
                 vn.dish_name,
+                portion_source,
             )
         if _has_nutrition(vn):
             return NutritionPerIngredient(
@@ -194,7 +192,7 @@ async def _resolve_dish_item(
                 fiber_g=round(vn.total_fiber_g, 1),
                 found_in_db=True,
                 nutrition_basis="source_serving",
-            ), vn.dish_name
+            ), vn.dish_name, "vision" if gram > 0 else "catalog_default"
         # Catalog rows without nutrition fall back to the Vision estimate.
 
     # ── Tier 2: vn_ingredients (chỉ khi is_side — đồ uống/món kèm) ───────
@@ -205,10 +203,11 @@ async def _resolve_dish_item(
             return (
                 calculate_item_nutrition(ing.ingredient_name, gram, per_gram),
                 ing.ingredient_name,
+                "vision" if gram > 0 else "catalog_default",
             )
 
     # Unknown labels are staged by the caller; they are not trusted catalog rows.
-    return None, resolved_name
+    return None, resolved_name, "unknown"
 
 
 async def _analyze_vision_dishes(
@@ -232,8 +231,12 @@ async def _analyze_vision_dishes(
             continue
         gram = float(d.get("gram", 0) or 0)
         is_side = bool(d.get("is_side", False))
-        item, resolved_name = await _resolve_dish_item(
-            session, dish_name, gram, is_side
+        item, resolved_name, portion_source = await _resolve_dish_item(
+            session,
+            dish_name,
+            gram,
+            is_side,
+            _gram_confidence(d),
         )
 
         if item is not None:
@@ -246,7 +249,7 @@ async def _analyze_vision_dishes(
                     is_side=is_side,
                     found_in_db=True,
                     recognition_confidence=_recognition_confidence(d),
-                    portion_source=_portion_source(gram, item.grams),
+                    portion_source=portion_source,
                 )
             )
             continue
@@ -328,23 +331,35 @@ async def analyze_food(
         # Use local inference first to avoid a cloud call for reliable classes.
         cv_conf: float | None = None
         cv_dish: str | None = None
+        cv_predictions: list[dict] = []
+        catalog_candidates: list[str] = []
         if cv_model.is_loaded:
             cv_result = await asyncio.to_thread(cv_model.predict, temp_path)
             cv_conf = cv_result["confidence"]
             cv_dish = cv_result["dish_name"]
+            cv_predictions = cv_result.get("all_predictions", [])
 
-        if _is_cv_high_conf(cv_conf, cv_dish):
-            cv_response = await _analyze_cv_local(
-                session,
-                cv_dish,
-                cv_conf,
+        family_queries = _cv_family_queries(cv_dish, cv_predictions)
+        for family in family_queries:
+            candidate_rows = await lookup_dish_candidates(session, family)
+            for row in candidate_rows:
+                if row.dish_name not in catalog_candidates:
+                    catalog_candidates.append(row.dish_name)
+            logger.info(
+                "CV family %r yielded catalog candidates: %s",
+                family,
+                catalog_candidates,
             )
-            if cv_response is not None:
-                return cv_response
 
-        # Vision handles low-confidence predictions and incomplete DB records.
+        # CV is a family prior, not the final visual decision. Vision sees the
+        # image and chooses among the reviewed candidates returned by Qdrant.
+        vision_kwargs = (
+            {"candidate_names": catalog_candidates}
+            if catalog_candidates
+            else {}
+        )
         try:
-            vision = await identify_dish(temp_path)
+            vision = await identify_dish(temp_path, **vision_kwargs)
         except VisionError as e:
             logger.warning("Vision analysis failed: %s", e)
             cv_high = _is_cv_high_conf(cv_conf, cv_dish)

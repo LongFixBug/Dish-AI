@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import unicodedata
+from collections.abc import Sequence
 from pathlib import Path
 
 import httpx
@@ -44,9 +45,11 @@ INCLUDED_ACCOMPANIMENTS = (
 )
 
 
-def _build_food_identification_prompt() -> str:
+def _build_food_identification_prompt(
+    candidate_names: Sequence[str] | None = None,
+) -> str:
     """Prompt nhận diện ở cấp món trên menu, không tách vụn mọi thành phần."""
-    return (
+    prompt = (
         "Bạn là chuyên gia ẩm thực và dinh dưỡng Việt Nam.\n"
         "Hãy nhận diện món ở MỨC KHÁI QUÁT NHƯ TÊN GỌI TRÊN MENU, "
         "không làm object detection từng thứ ăn được.\n\n"
@@ -85,7 +88,8 @@ def _build_food_identification_prompt() -> str:
         "BẮT BUỘC — OUTPUT CHÍNH XÁC:\n"
         "Trả về CHỈ JSON đúng cấu trúc:\n"
         '{"confidence": số từ 0 đến 1, "dishes": [{"dish_name": str, '
-        '"gram": số, "is_side": bool, "confidence": số từ 0 đến 1, '
+        '"gram": số, "gram_confidence": số từ 0 đến 1, "is_side": bool, '
+        '"confidence": số từ 0 đến 1, '
         '"total_calories": số, "total_protein_g": số, "total_fat_g": số, '
         '"total_carbs_g": số, "total_fiber_g": số}]}\n'
         "- confidence ngoài cùng là độ tin cậy tổng thể của lần nhận diện.\n"
@@ -93,14 +97,39 @@ def _build_food_identification_prompt() -> str:
         "- Mục đầu tiên luôn là món chính và is_side=false.\n"
         "- Các mục sau là món phụ và is_side=true.\n"
         "- gram là khối lượng của đúng nhóm món đó; không tính trùng gram giữa các mục.\n"
+        "- gram_confidence là độ chắc chắn riêng về khối lượng; nếu không chắc "
+        "khối lượng thì dùng confidence thấp, nhất là khi không có vật chuẩn "
+        "so sánh.\n"
         "- total_calories dùng kcal; 4 trường còn lại dùng gram.\n"
         "- Các total là cho đúng lượng gram vừa ước tính, không phải trên 100g.\n"
         "- Không có trường ingredients. Nếu không thấy món nào thì dishes=[].\n"
         "Trả về CHỈ JSON, không markdown, không giải thích ngoài JSON."
     )
+    if not candidate_names:
+        return prompt
+
+    unique_candidates = list(dict.fromkeys(
+        name.strip() for name in candidate_names if isinstance(name, str) and name.strip()
+    ))[:12]
+    if not unique_candidates:
+        return prompt
+    candidate_block = "\n".join(f"- {name}" for name in unique_candidates)
+    return (
+        f"{prompt}\n\n"
+        "DANH SÁCH ỨNG VIÊN TỪ CATALOG:\n"
+        f"{candidate_block}\n"
+        "Đây là các món cùng nhóm do CV local và Qdrant gợi ý. "
+        "CHỈ được chọn tên trong danh sách trên cho món chính nếu có món phù hợp "
+        "với ảnh. Không tự bịa một tên khác; nếu không món nào phù hợp thì trả "
+        "dishes=[] để hệ thống không gán nhầm dữ liệu catalog."
+    )
 
 
-async def identify_dish(image_path: str | Path) -> dict:
+async def identify_dish(
+    image_path: str | Path,
+    *,
+    candidate_names: Sequence[str] | None = None,
+) -> dict:
     """Nhận diện món ăn từ ảnh — trả về danh sách món + gram.
 
     Gửi ảnh lên Vision API, trả về:
@@ -134,7 +163,7 @@ async def identify_dish(image_path: str | Path) -> dict:
     }
     mime_type = mime_map.get(suffix, "image/jpeg")
 
-    system_prompt = _build_food_identification_prompt()
+    system_prompt = _build_food_identification_prompt(candidate_names)
 
     # OpenAI-compatible multimodal request. The output budget accommodates
     # providers that add reasoning metadata around the requested JSON.
@@ -155,6 +184,12 @@ async def identify_dish(image_path: str | Path) -> dict:
                             "Nhận diện ở cấp tên món trên menu. Chỉ trả tối đa 3 món, "
                             "không tách nguyên liệu, topping hoặc đồ ăn kèm nhỏ. "
                             "Bỏ mọi món phụ có confidence dưới 0.80."
+                            + (
+                                " Ưu tiên chọn món chính trong danh sách catalog "
+                                "được cung cấp ở system prompt."
+                                if candidate_names
+                                else ""
+                            )
                         ),
                     },
                 ],
@@ -366,19 +401,23 @@ def _normalize_dishes(
                 return []
             continue
 
-        normalized.append(
-            {
-                "dish_name": str(name).strip(),
-                "gram": gram,
-                "is_side": is_side,
-                "confidence": confidence,
-                "total_calories": total_calories,
-                "total_protein_g": total_protein,
-                "total_fat_g": total_fat,
-                "total_carbs_g": total_carbs,
-                "total_fiber_g": total_fiber,
-            }
-        )
+        normalized_item = {
+            "dish_name": str(name).strip(),
+            "gram": gram,
+            "is_side": is_side,
+            "confidence": confidence,
+            "total_calories": total_calories,
+            "total_protein_g": total_protein,
+            "total_fat_g": total_fat,
+            "total_carbs_g": total_carbs,
+            "total_fiber_g": total_fiber,
+        }
+        if "gram_confidence" in d:
+            normalized_item["gram_confidence"] = _as_confidence(
+                d.get("gram_confidence"),
+                default=0.0,
+            )
+        normalized.append(normalized_item)
     _canonicalize_com_tam_labels(normalized)
     return normalized[:MAX_MENU_ITEMS]
 

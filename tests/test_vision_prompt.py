@@ -41,6 +41,24 @@ def test_prompt_groups_com_tam_at_menu_item_level() -> None:
     assert "chỉ trả món phụ khi confidence >= 0.80" in prompt.casefold()
 
 
+def test_prompt_can_constrain_vision_to_catalog_candidates() -> None:
+    prompt = _build_food_identification_prompt(
+        candidate_names=["Bánh mì thập cẩm", "Bánh mì chảo"]
+    )
+
+    assert "DANH SÁCH ỨNG VIÊN TỪ CATALOG" in prompt
+    assert "Bánh mì thập cẩm" in prompt
+    assert "Bánh mì chảo" in prompt
+    assert "CHỈ được chọn tên trong danh sách" in prompt
+
+
+def test_prompt_requests_a_separate_portion_confidence() -> None:
+    prompt = _build_food_identification_prompt()
+
+    assert '"gram_confidence": số từ 0 đến 1' in prompt
+    assert "không chắc khối lượng thì dùng confidence thấp" in prompt.casefold()
+
+
 def test_normalizer_keeps_at_most_three_menu_items() -> None:
     raw_dishes = [
         {"dish_name": "Cơm sườn", "gram": 450},

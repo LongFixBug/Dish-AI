@@ -2,6 +2,7 @@
 
 import re
 import unicodedata
+import logging
 
 from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.models import VnDish, VnIngredient
 from backend.services.vector_catalog import CatalogType, search_catalog
 from schemas.nutrition import NutritionPerGram
+
+logger = logging.getLogger("foodai")
 
 # Nutrition mapping helpers
 
@@ -48,6 +51,44 @@ def _has_weight(vn: VnDish) -> bool:
     return bool(vn.typical_grams and vn.typical_grams > 0)
 
 
+CATALOG_PORTION_CONFIDENCE_THRESHOLD = 0.85
+BANH_MI_PORTION_RANGE = (150.0, 200.0)
+
+
+def resolve_catalog_portion_grams(
+    dish_name: str,
+    catalog_grams: float,
+    vision_grams: float,
+    vision_confidence: float,
+) -> tuple[float, str]:
+    """Choose a safe portion source for a known catalog dish.
+
+    Catalog serving is the default. Vision may adjust it only when it reports
+    a high-confidence portion inside a family bound. Bánh mì is intentionally
+    capped at 150–200 g; a guess such as 250 g is ignored.
+    """
+    default = max(0.0, float(catalog_grams))
+    candidate = max(0.0, float(vision_grams))
+    if (
+        candidate <= 0
+        or vision_confidence < CATALOG_PORTION_CONFIDENCE_THRESHOLD
+    ):
+        return default, "catalog_default"
+
+    normalized = unicodedata.normalize("NFKD", dish_name.casefold())
+    normalized = "".join(
+        char for char in normalized if not unicodedata.combining(char)
+    ).replace("đ", "d")
+    if "banh mi" in normalized:
+        minimum, maximum = BANH_MI_PORTION_RANGE
+    else:
+        minimum, maximum = default * 0.75, default * 1.25
+
+    if minimum <= candidate <= maximum:
+        return round(candidate, 1), "vision"
+    return default, "catalog_default"
+
+
 def _has_nutrition(vn: VnDish) -> bool:
     """Return whether the row contains at least one positive nutrient value."""
     return any(
@@ -69,6 +110,16 @@ _DISH_FAMILY_TOKENS = {
     "banh", "bun", "canh", "chao", "com", "goi", "hu", "lau", "mi",
     "pho", "tieu", "xoi",
 }
+_CANONICAL_FAMILY_NAMES = {
+    ("banh", "mi"): "Bánh mì",
+    ("banh", "cuon"): "Bánh cuốn",
+    ("banh", "xeo"): "Bánh xèo",
+    ("bun", "cha"): "Bún chả",
+    ("com", "tam"): "Cơm tấm",
+    ("pho", "bo"): "Phở bò",
+    ("pho", "ga"): "Phở gà",
+    ("xoi", "xeo"): "Xôi xéo",
+}
 _MENU_STOP_TOKENS = {"cac", "kem", "kep", "loai", "mon", "va", "voi"}
 QDRANT_CANDIDATE_LIMIT = 10
 
@@ -80,6 +131,34 @@ def _menu_tokens(name: str) -> set[str]:
         char for char in normalized if not unicodedata.combining(char)
     ).replace("đ", "d")
     return set(re.findall(r"[a-z0-9]+", ascii_name)) - _MENU_STOP_TOKENS
+
+
+def dish_family_query(name: str) -> str:
+    """Extract the broad menu family used to build a visual shortlist.
+
+    ``Bánh mì thịt nguội`` becomes ``Bánh mì`` and ``Bánh cuốn thịt`` becomes
+    ``Bánh cuốn``. The query is intentionally kept in Vietnamese so the
+    embedding model can retrieve all reviewed variants in that family.
+    """
+    words = re.findall(r"\S+", name.strip())
+    # Two leading menu words are a stable broad prior for Vietnamese dish
+    # names: “bánh mì”, “bánh cuốn”, “bún bò”, “cơm tấm”, “phở bò”, ...
+    # Keeping only this prefix prevents fillings such as “thịt nguội chà bông”
+    # from over-constraining the Qdrant shortlist.
+    if len(words) < 2:
+        return name.strip()
+    normalized_prefix = tuple(
+        "".join(
+            char
+            for char in unicodedata.normalize("NFKD", word.casefold())
+            if not unicodedata.combining(char)
+        ).replace("đ", "d")
+        for word in words[:2]
+    )
+    return _CANONICAL_FAMILY_NAMES.get(
+        normalized_prefix,
+        " ".join(words[:2]),
+    )
 
 
 def _is_semantic_candidate_compatible(query: str, candidate: str) -> bool:
@@ -121,32 +200,56 @@ async def _lookup_institute_by_vector(
     session: AsyncSession, name: str
 ) -> VnDish | None:
     """Resolve Qdrant candidates through authoritative PostgreSQL UUIDs."""
+    candidates = await _lookup_institute_candidates_by_vector(session, name)
+    return candidates[0] if candidates else None
+
+
+async def _lookup_institute_candidates_by_vector(
+    session: AsyncSession,
+    name: str,
+    *,
+    limit: int = QDRANT_CANDIDATE_LIMIT,
+) -> list[VnDish]:
+    """Return compatible reviewed dish candidates in Qdrant score order."""
     try:
         hits = await search_catalog(
             name,
             CatalogType.DISH,
-            limit=QDRANT_CANDIDATE_LIMIT,
+            limit=limit,
         )
-        compatible_ids = [
-            hit.record_id
-            for hit in hits
-            if _is_semantic_candidate_compatible(name, hit.name)
+        compatible_hits = [
+            hit for hit in hits if _is_semantic_candidate_compatible(name, hit.name)
         ]
-        if not compatible_ids:
-            return None
-        result = await session.execute(
-            select(VnDish)
-            .where(VnDish.id.in_(compatible_ids))
-        )
+        if not compatible_hits:
+            return []
+        result = await session.execute(select(VnDish).where(
+            VnDish.id.in_([hit.record_id for hit in compatible_hits])
+        ))
         by_id = {str(candidate.id): candidate for candidate in result.scalars().all()}
-        for hit in hits:
-            candidate = by_id.get(hit.record_id)
-            if candidate and _is_semantic_candidate_compatible(name, candidate.dish_name):
-                return candidate
+        return [by_id[hit.record_id] for hit in compatible_hits if hit.record_id in by_id]
     except Exception:
-        # Embedding service unavailable → preserve the exact-lookup result path.
-        pass
-    return None
+        logger.warning(
+            "Semantic dish lookup unavailable for %r; continuing without candidates",
+            name,
+            exc_info=True,
+        )
+        return []
+
+
+async def lookup_dish_candidates(
+    session: AsyncSession,
+    family_name: str,
+    *,
+    limit: int = QDRANT_CANDIDATE_LIMIT,
+) -> list[VnDish]:
+    """Return a short catalog shortlist for a broad dish family."""
+    if not family_name or not family_name.strip():
+        return []
+    return await _lookup_institute_candidates_by_vector(
+        session,
+        family_name.strip(),
+        limit=limit,
+    )
 
 
 async def lookup_dish(session: AsyncSession, name: str) -> VnDish | None:

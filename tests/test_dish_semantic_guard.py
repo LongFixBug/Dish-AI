@@ -3,7 +3,10 @@
 from types import SimpleNamespace
 
 from backend.services import dishes
-from backend.services.dishes import _is_semantic_candidate_compatible
+from backend.services.dishes import (
+    _is_semantic_candidate_compatible,
+    dish_family_query,
+)
 from backend.services.vector_catalog import CatalogHit, CatalogType
 
 
@@ -17,6 +20,12 @@ def test_accepts_close_variant_with_shared_menu_tokens() -> None:
     assert _is_semantic_candidate_compatible(
         "Bánh mì kẹp thịt", "Bánh mì thịt"
     )
+
+
+def test_family_query_keeps_the_menu_family_and_drops_specific_filling() -> None:
+    assert dish_family_query("Bánh mì chảo") == "Bánh mì"
+    assert dish_family_query("Bánh cuốn thịt") == "Bánh cuốn"
+    assert dish_family_query("Banh Mi Kep Thit") == "Bánh mì"
 
 
 def test_rejects_same_family_with_only_generic_token_shared() -> None:

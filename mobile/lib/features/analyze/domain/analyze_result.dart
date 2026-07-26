@@ -72,6 +72,44 @@ class AnalyzeResult {
       error: error,
     );
   }
+
+  AnalyzeResult scaledItem(int index, double grams) {
+    final currentNutrition = nutrition;
+    if (currentNutrition == null ||
+        index < 0 ||
+        index >= currentNutrition.items.length) {
+      return this;
+    }
+    final currentGrams = currentNutrition.items[index].grams;
+    if (currentGrams <= 0) return this;
+    final safeGrams = grams.clamp(0.0, 10000.0).toDouble();
+    final factor = safeGrams / currentGrams;
+    final itemName = currentNutrition.items[index].name;
+    return AnalyzeResult(
+      dishName: dishName,
+      source: source,
+      cvConfidence: cvConfidence,
+      recognitionConfidence: recognitionConfidence,
+      nutrition: currentNutrition.scaledItem(index, safeGrams),
+      dishes: dishes
+          .map(
+            (dish) => dish.name == itemName
+                ? AnalyzedDish(
+                    name: dish.name,
+                    grams: dish.grams * factor,
+                    isSide: dish.isSide,
+                    foundInDatabase: dish.foundInDatabase,
+                    recognitionConfidence: dish.recognitionConfidence,
+                    portionSource: dish.portionSource,
+                  )
+                : dish,
+          )
+          .toList(growable: false),
+      reasoning: reasoning,
+      missingItems: missingItems,
+      error: error,
+    );
+  }
 }
 
 class AnalyzedDish {
@@ -162,6 +200,10 @@ class NutritionSummary {
               name: item.name,
               grams: item.grams * factor,
               calories: item.calories * factor,
+              proteinGrams: item.proteinGrams * factor,
+              fatGrams: item.fatGrams * factor,
+              carbsGrams: item.carbsGrams * factor,
+              fiberGrams: item.fiberGrams * factor,
               foundInDatabase: item.foundInDatabase,
               nutritionBasis: item.nutritionBasis,
             ),
@@ -178,6 +220,45 @@ class NutritionSummary {
       per100gAvailable: per100gAvailable,
     );
   }
+
+  NutritionSummary scaledItem(int index, double grams) {
+    final updatedItems = items
+        .asMap()
+        .entries
+        .map(
+          (entry) => entry.key == index
+              ? entry.value.scaledTo(grams)
+              : entry.value,
+        )
+        .toList(growable: false);
+    return NutritionSummary(
+      items: updatedItems,
+      totalCalories: updatedItems.fold(
+        0.0,
+        (sum, item) => sum + item.calories,
+      ),
+      totalProteinGrams: updatedItems.fold(
+        0.0,
+        (sum, item) => sum + item.proteinGrams,
+      ),
+      totalFatGrams: updatedItems.fold(
+        0.0,
+        (sum, item) => sum + item.fatGrams,
+      ),
+      totalCarbsGrams: updatedItems.fold(
+        0.0,
+        (sum, item) => sum + item.carbsGrams,
+      ),
+      totalFiberGrams: updatedItems.fold(
+        0.0,
+        (sum, item) => sum + item.fiberGrams,
+      ),
+      totalGrams: updatedItems.fold(0.0, (sum, item) => sum + item.grams),
+      confidenceScore: confidenceScore,
+      catalogCoverageScore: catalogCoverageScore,
+      per100gAvailable: per100gAvailable,
+    );
+  }
 }
 
 class NutritionItem {
@@ -186,6 +267,10 @@ class NutritionItem {
     required this.grams,
     required this.calories,
     required this.foundInDatabase,
+    this.proteinGrams = 0,
+    this.fatGrams = 0,
+    this.carbsGrams = 0,
+    this.fiberGrams = 0,
     this.nutritionBasis = 'unknown',
   });
 
@@ -194,6 +279,10 @@ class NutritionItem {
       name: json['item_name'] as String? ?? 'Thành phần',
       grams: _toDouble(json['grams']),
       calories: _toDouble(json['calories']),
+      proteinGrams: _toDouble(json['protein_g']),
+      fatGrams: _toDouble(json['fat_g']),
+      carbsGrams: _toDouble(json['carbs_g']),
+      fiberGrams: _toDouble(json['fiber_g']),
       foundInDatabase: json['found_in_db'] as bool? ?? false,
       nutritionBasis: json['nutrition_basis'] as String? ?? 'unknown',
     );
@@ -202,8 +291,27 @@ class NutritionItem {
   final String name;
   final double grams;
   final double calories;
+  final double proteinGrams;
+  final double fatGrams;
+  final double carbsGrams;
+  final double fiberGrams;
   final bool foundInDatabase;
   final String nutritionBasis;
+
+  NutritionItem scaledTo(double targetGrams) {
+    final factor = grams > 0 ? targetGrams / grams : 0.0;
+    return NutritionItem(
+      name: name,
+      grams: targetGrams,
+      calories: calories * factor,
+      proteinGrams: proteinGrams * factor,
+      fatGrams: fatGrams * factor,
+      carbsGrams: carbsGrams * factor,
+      fiberGrams: fiberGrams * factor,
+      foundInDatabase: foundInDatabase,
+      nutritionBasis: nutritionBasis,
+    );
+  }
 }
 
 double _toDouble(Object? value) => switch (value) {

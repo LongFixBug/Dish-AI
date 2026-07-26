@@ -87,6 +87,13 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     });
   }
 
+  void _updateComponentGrams(int index, double grams) {
+    setState(() {
+      _result = _result.scaledItem(index, grams);
+      _saved = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -124,6 +131,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
               saved: _saved,
               onSave: _saveToJournal,
               onEdit: _editPortion,
+              onComponentGramsChanged: _updateComponentGrams,
             ),
           ),
         ),
@@ -181,6 +189,7 @@ class _ResultContent extends StatelessWidget {
     required this.saved,
     required this.onSave,
     required this.onEdit,
+    required this.onComponentGramsChanged,
   });
 
   final AnalyzeResult result;
@@ -189,6 +198,7 @@ class _ResultContent extends StatelessWidget {
   final bool saved;
   final VoidCallback onSave;
   final VoidCallback onEdit;
+  final void Function(int index, double grams) onComponentGramsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -213,7 +223,7 @@ class _ResultContent extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        ..._componentRows(result),
+        ..._componentRows(result, onComponentGramsChanged),
         const SizedBox(height: 18),
         _ResultActions(
           saving: saving,
@@ -489,16 +499,60 @@ class _MacroCard extends StatelessWidget {
   }
 }
 
-class _ComponentRow extends StatelessWidget {
+class _ComponentRow extends StatefulWidget {
   const _ComponentRow({
+    super.key,
+    required this.index,
     required this.name,
     required this.grams,
     required this.calories,
+    this.onGramsChanged,
   });
 
+  final int index;
   final String name;
   final double grams;
   final double calories;
+  final ValueChanged<double>? onGramsChanged;
+
+  @override
+  State<_ComponentRow> createState() => _ComponentRowState();
+}
+
+class _ComponentRowState extends State<_ComponentRow> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _format(widget.grams));
+  }
+
+  @override
+  void didUpdateWidget(covariant _ComponentRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.grams != widget.grams &&
+        _controller.text != _format(widget.grams)) {
+      _controller.value = TextEditingValue(
+        text: _format(widget.grams),
+        selection: TextSelection.collapsed(
+          offset: _format(widget.grams).length,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _commit(double grams) {
+    final safeGrams = grams.clamp(0.0, 10000.0).toDouble();
+    _controller.text = _format(safeGrams);
+    widget.onGramsChanged?.call(safeGrams);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -524,16 +578,33 @@ class _ComponentRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    name,
+                    widget.name,
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
-                  Text('${_format(grams)} g'),
+                  Text(
+                    widget.onGramsChanged == null
+                        ? '${_format(widget.grams)} g'
+                        : '${_format(widget.calories)} kcal',
+                    key: widget.onGramsChanged == null
+                        ? null
+                        : ValueKey('component-calories-${widget.index}'),
+                  ),
                 ],
               ),
             ),
-            Text('${_format(calories)} kcal'),
-            const SizedBox(width: 8),
-            const Icon(Icons.edit_outlined, size: 20),
+            if (widget.onGramsChanged == null)
+              Text('${_format(widget.calories)} kcal')
+            else
+              _PortionStepper(
+                index: widget.index,
+                controller: _controller,
+                onChanged: (value) {
+                  final grams = double.tryParse(value.trim());
+                  if (grams != null) widget.onGramsChanged?.call(grams);
+                },
+                onDecrement: () => _commit(widget.grams - 10),
+                onIncrement: () => _commit(widget.grams + 10),
+              ),
           ],
         ),
       ),
@@ -541,15 +612,79 @@ class _ComponentRow extends StatelessWidget {
   }
 }
 
-List<Widget> _componentRows(AnalyzeResult result) {
+class _PortionStepper extends StatelessWidget {
+  const _PortionStepper({
+    required this.index,
+    required this.controller,
+    required this.onChanged,
+    required this.onDecrement,
+    required this.onIncrement,
+  });
+
+  final int index;
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onDecrement;
+  final VoidCallback onIncrement;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          key: ValueKey('component-minus-$index'),
+          onPressed: onDecrement,
+          icon: const Icon(Icons.remove_circle_outline_rounded),
+          tooltip: 'Giảm 10 gram',
+          visualDensity: VisualDensity.compact,
+        ),
+        SizedBox(
+          width: 58,
+          child: TextField(
+            key: ValueKey('component-grams-$index'),
+            controller: controller,
+            onChanged: onChanged,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textAlign: TextAlign.center,
+            decoration: const InputDecoration(
+              suffixText: 'g',
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 8,
+              ),
+            ),
+          ),
+        ),
+        IconButton(
+          key: ValueKey('component-plus-$index'),
+          onPressed: onIncrement,
+          icon: const Icon(Icons.add_circle_outline_rounded),
+          tooltip: 'Tăng 10 gram',
+          visualDensity: VisualDensity.compact,
+        ),
+      ],
+    );
+  }
+}
+
+List<Widget> _componentRows(
+  AnalyzeResult result,
+  void Function(int index, double grams) onComponentGramsChanged,
+) {
   final items = result.nutrition?.items ?? const <NutritionItem>[];
   if (items.isNotEmpty) {
-    return items
+    return items.asMap().entries
         .map(
-          (item) => _ComponentRow(
-            name: item.name,
-            grams: item.grams,
-            calories: item.calories,
+          (entry) => _ComponentRow(
+            key: ValueKey('component-row-${entry.key}'),
+            index: entry.key,
+            name: entry.value.name,
+            grams: entry.value.grams,
+            calories: entry.value.calories,
+            onGramsChanged: (grams) =>
+                onComponentGramsChanged(entry.key, grams),
           ),
         )
         .toList(growable: false);
@@ -557,7 +692,12 @@ List<Widget> _componentRows(AnalyzeResult result) {
   return result.dishes
       .map(
         (dish) =>
-            _ComponentRow(name: dish.name, grams: dish.grams, calories: 0),
+            _ComponentRow(
+              index: 0,
+              name: dish.name,
+              grams: dish.grams,
+              calories: 0,
+            ),
       )
       .toList(growable: false);
 }

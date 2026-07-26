@@ -83,4 +83,51 @@ void main() {
       expect(result.missingItems, isEmpty);
     },
   );
+
+  test('scales one component and recalculates all nutrition totals', () {
+    final result = AnalyzeResult.fromJson({
+      'dish_name': 'Bánh mì thập cẩm + Sữa',
+      'source': 'vision',
+      'nutrition': {
+        'total_calories': 800,
+        'total_protein_g': 35,
+        'total_fat_g': 28,
+        'total_carbs_g': 100,
+        'total_fiber_g': 5,
+        'total_grams': 300,
+        'items': [
+          {
+            'item_name': 'Bánh mì thập cẩm',
+            'grams': 200,
+            'calories': 680,
+            'protein_g': 30,
+            'fat_g': 24,
+            'carbs_g': 80,
+            'fiber_g': 3,
+            'found_in_db': true,
+          },
+          {
+            'item_name': 'Sữa',
+            'grams': 100,
+            'calories': 120,
+            'protein_g': 5,
+            'fat_g': 4,
+            'carbs_g': 20,
+            'fiber_g': 2,
+            'found_in_db': true,
+          },
+        ],
+      },
+      'dishes': <Object>[],
+    });
+
+    final adjusted = result.scaledItem(0, 100);
+
+    expect(adjusted.nutrition?.items[0].grams, 100);
+    expect(adjusted.nutrition?.items[0].calories, 340);
+    expect(adjusted.nutrition?.items[0].proteinGrams, 15);
+    expect(adjusted.nutrition?.totalCalories, 460);
+    expect(adjusted.nutrition?.totalProteinGrams, 20);
+    expect(adjusted.nutrition?.totalGrams, 200);
+  });
 }

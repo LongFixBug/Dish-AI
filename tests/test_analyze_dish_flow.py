@@ -29,26 +29,61 @@ def _jpeg_bytes() -> bytes:
     return output.getvalue()
 
 
+def test_cv_family_queries_include_a_plausible_second_prediction() -> None:
+    queries = analyze._cv_family_queries(
+        "Com Tam",
+        [
+            {"class_name": "Com Tam", "probability": 0.68},
+            {"class_name": "Banh Mi Kep Thit", "probability": 0.2797},
+            {"class_name": "Banh Xeo", "probability": 0.0144},
+        ],
+    )
+
+    assert queries == ["Cơm tấm", "Bánh mì"]
+
+
 async def test_high_confidence_cv_uses_db_and_skips_vision(monkeypatch) -> None:
-    """CV chắc chắn + DB đủ dữ liệu thì Vision không được ghi đè tên món."""
+    """CV chỉ tạo prior; Vision chốt tên trong shortlist catalog."""
     offloaded: list[str] = []
     db_dish = SimpleNamespace(
-        dish_name="Xôi xéo",
-        typical_grams=300.0,
-        total_calories=425.0,
-        total_protein_g=12.1,
-        total_fat_g=6.8,
-        total_carbs_g=79.3,
-        total_fiber_g=2.0,
+        dish_name="Bánh mì thập cẩm",
+        typical_grams=150.0,
+        total_calories=678.8,
+        total_protein_g=25.0,
+        total_fat_g=24.0,
+        total_carbs_g=80.0,
+        total_fiber_g=3.0,
         source="vnmeal",
     )
 
+    async def fake_candidates(_session, family_name):
+        assert family_name == "Bánh mì"
+        return [db_dish]
+
     async def fake_lookup(_session, name):
-        assert name == "Xoi Xeo"
+        assert name == "Bánh mì thập cẩm"
         return db_dish
 
-    async def vision_must_not_run(_path):
-        raise AssertionError("CV confidence cao và DB hit thì không được gọi Vision")
+    async def fake_vision(_path, *, candidate_names):
+        assert candidate_names == ["Bánh mì thập cẩm"]
+        return {
+            "dish_name": "Bánh mì thập cẩm",
+            "confidence": 0.93,
+            "dishes": [
+                {
+                    "dish_name": "Bánh mì thập cẩm",
+                    "gram": 150.0,
+                    "is_side": False,
+                    "confidence": 0.93,
+                    "total_calories": 0.0,
+                    "total_protein_g": 0.0,
+                    "total_fat_g": 0.0,
+                    "total_carbs_g": 0.0,
+                    "total_fiber_g": 0.0,
+                }
+            ],
+            "reasoning": None,
+        }
 
     monkeypatch.setattr(analyze.cv_model, "_loaded", True)
 
@@ -61,30 +96,31 @@ async def test_high_confidence_cv_uses_db_and_skips_vision(monkeypatch) -> None:
         analyze.cv_model,
         "predict",
         lambda _path: {
-            "dish_name": "Xoi Xeo",
+            "dish_name": "Bánh mì chảo",
             "confidence": 0.95,
             "all_predictions": [],
             "source": "local",
         },
     )
+    monkeypatch.setattr(analyze, "lookup_dish_candidates", fake_candidates)
     monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
-    monkeypatch.setattr(analyze, "identify_dish", vision_must_not_run)
+    monkeypatch.setattr(analyze, "identify_dish", fake_vision)
 
     upload = UploadFile(
         BytesIO(_jpeg_bytes()),
-        filename="xoi-xeo.jpg",
+        filename="banh-mi.jpg",
         headers=Headers({"content-type": "image/jpeg"}),
     )
     response = await analyze.analyze_food(upload, FakeSession())
 
-    assert response.source == "cv_local"
-    assert response.dish_name == "Xôi xéo"
+    assert response.source == "cv_local_not_found_vision"
+    assert response.dish_name == "Bánh mì thập cẩm"
     assert response.cv_confidence == 0.95
-    assert response.recognition_confidence == 0.95
+    assert response.recognition_confidence == 0.93
     assert response.nutrition is not None
-    assert response.nutrition.total_grams == 300.0
-    assert response.nutrition.total_calories == 425.0
-    assert response.dishes[0].dish_name == "Xôi xéo"
+    assert response.nutrition.total_grams == 150.0
+    assert response.nutrition.total_calories == 678.8
+    assert response.dishes[0].dish_name == "Bánh mì thập cẩm"
     assert "<lambda>" in offloaded
 
 
@@ -138,6 +174,10 @@ async def test_high_confidence_cv_falls_back_when_db_misses(monkeypatch) -> None
             "source": "local",
         },
     )
+    async def no_candidates(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(analyze, "lookup_dish_candidates", no_candidates)
     monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
     monkeypatch.setattr(analyze, "identify_dish", fake_vision)
 
@@ -153,7 +193,7 @@ async def test_high_confidence_cv_falls_back_when_db_misses(monkeypatch) -> None
     assert response.dish_name == "Phở bò"
     assert response.recognition_confidence == 0.88
     assert response.dishes[0].recognition_confidence == 0.9
-    assert response.dishes[0].portion_source == "vision"
+    assert response.dishes[0].portion_source == "catalog_default"
     assert response.nutrition is not None
 
 
@@ -181,7 +221,8 @@ async def test_db_match_uses_canonical_name_and_ignores_vision_nutrition(
         [
             {
                 "dish_name": "Bánh mì kẹp thịt",
-                "gram": 100,
+                "gram": 180,
+                "gram_confidence": 0.9,
                 "is_side": False,
                 "total_calories": 999,
                 "total_protein_g": 99,
@@ -193,8 +234,8 @@ async def test_db_match_uses_canonical_name_and_ignores_vision_nutrition(
     )
 
     assert items[0].item_name == "Bánh mì thịt nướng"
-    assert items[0].calories == 300.0
-    assert items[0].protein_g == 15.0
+    assert items[0].calories == 540.0
+    assert items[0].protein_g == 27.0
     assert items[0].found_in_db is True
     assert dishes[0].dish_name == "Bánh mì thịt nướng"
     assert dishes[0].vision_dish_name == "Bánh mì kẹp thịt"
@@ -323,7 +364,7 @@ async def test_side_item_does_not_use_semantic_dish_or_ingredient_match(
     monkeypatch.setattr(analyze, "lookup_ingredient_text", fake_text_ingredient)
     monkeypatch.setattr(analyze, "lookup_dish", semantic_lookup_must_not_run)
 
-    item, resolved_name = await analyze._resolve_dish_item(
+    item, resolved_name, _ = await analyze._resolve_dish_item(
         FakeSession(), "Trứng ốp la", 50, True
     )
 
@@ -351,7 +392,7 @@ async def test_known_dish_uses_catalog_portion_when_vision_omits_grams(
 
     monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
 
-    item, resolved_name = await analyze._resolve_dish_item(
+    item, resolved_name, _ = await analyze._resolve_dish_item(
         FakeSession(), "Cơm sườn", 0.0, False
     )
 
@@ -360,6 +401,80 @@ async def test_known_dish_uses_catalog_portion_when_vision_omits_grams(
     assert item.grams == 400.0
     assert item.calories == 640.0
     assert item.nutrition_basis == "per_gram_scaled"
+
+
+async def test_banh_mi_ignores_overweight_vision_portion(
+    monkeypatch,
+) -> None:
+    db_dish = SimpleNamespace(
+        dish_name="Bánh mì thập cẩm",
+        typical_grams=200.0,
+        total_calories=678.8,
+        total_protein_g=25.0,
+        total_fat_g=24.0,
+        total_carbs_g=80.0,
+        total_fiber_g=3.0,
+        source="vnmeal",
+    )
+
+    async def fake_lookup(_session, _name):
+        return db_dish
+
+    monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
+
+    items, dishes, _, _ = await analyze._analyze_vision_dishes(
+        FakeSession(),
+        [
+            {
+                "dish_name": "Bánh mì thập cẩm",
+                "gram": 250.0,
+                "gram_confidence": 0.95,
+                "is_side": False,
+                "confidence": 0.95,
+            }
+        ],
+    )
+
+    assert items[0].grams == 200.0
+    assert items[0].calories == 678.8
+    assert dishes[0].portion_source == "catalog_default"
+
+
+async def test_banh_mi_uses_visual_portion_inside_safe_range(
+    monkeypatch,
+) -> None:
+    db_dish = SimpleNamespace(
+        dish_name="Bánh mì thập cẩm",
+        typical_grams=200.0,
+        total_calories=678.8,
+        total_protein_g=25.0,
+        total_fat_g=24.0,
+        total_carbs_g=80.0,
+        total_fiber_g=3.0,
+        source="vnmeal",
+    )
+
+    async def fake_lookup(_session, _name):
+        return db_dish
+
+    monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
+
+    items, dishes, _, _ = await analyze._analyze_vision_dishes(
+        FakeSession(),
+        [
+            {
+                "dish_name": "Bánh mì thập cẩm",
+                "gram": 175.0,
+                "gram_confidence": 0.9,
+                "is_side": False,
+                "confidence": 0.95,
+            }
+        ],
+    )
+
+    assert items[0].grams == 175.0
+    assert items[0].calories == 593.9
+    assert dishes[0].portion_source == "vision"
 
 
 async def test_missing_weight_does_not_persist_vision_estimate(monkeypatch) -> None:
@@ -380,7 +495,7 @@ async def test_missing_weight_does_not_persist_vision_estimate(monkeypatch) -> N
     monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
     session = FakeSession()
 
-    item, resolved_name = await analyze._resolve_dish_item(
+    item, resolved_name, _ = await analyze._resolve_dish_item(
         session, "Canh rau", 350.0, False
     )
 
