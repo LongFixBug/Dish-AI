@@ -7,7 +7,7 @@ from PIL import Image
 from starlette.datastructures import Headers, UploadFile
 
 from backend.api import analyze
-from ml.inference.vision import _normalize_dishes
+from ml.inference.vision import UNKNOWN_CONFIDENCE, _normalize_dishes
 from schemas.nutrition import calculate_totals
 
 
@@ -501,7 +501,9 @@ async def test_missing_weight_does_not_persist_vision_estimate(monkeypatch) -> N
 
     assert resolved_name == "Canh rau"
     assert item is not None
-    assert item.grams == 350.0
+    # Không gán 350 g của Vision vào đây: con số đó không tham gia phép tính,
+    # gán vào sẽ ngụ ý mật độ 0.23 kcal/g và làm hỏng bộ chỉnh khẩu phần.
+    assert item.grams == 0.0
     assert item.calories == 80.0
     assert item.nutrition_basis == "source_serving"
     totals = calculate_totals("Canh rau", [item])
@@ -568,7 +570,8 @@ def test_normalize_vision_dishes_keeps_nutrition_and_calorie_alias() -> None:
             "dish_name": "Phở bò",
             "gram": 500.0,
             "is_side": False,
-            "confidence": 1.0,
+            # Model không trả confidence → UNKNOWN_CONFIDENCE, KHÔNG phải 1.0.
+            "confidence": UNKNOWN_CONFIDENCE,
             "total_calories": 450.0,
             "total_protein_g": 30.0,
             "total_fat_g": 0.0,
@@ -576,3 +579,106 @@ def test_normalize_vision_dishes_keeps_nutrition_and_calorie_alias() -> None:
             "total_fiber_g": 3.0,
         }
     ]
+
+
+async def test_side_ingredient_without_grams_is_not_a_zero_calorie_db_hit(
+    monkeypatch,
+) -> None:
+    """Nguyên liệu không có gram phải rơi vào 'missing', không phải item 0 kcal.
+
+    vn_ingredients chỉ có số liệu theo gram, không có khẩu phần chuẩn để
+    fallback. Trả về item toàn số 0 nhưng gắn found_in_db=True khiến bữa ăn
+    thiếu calo trong khi API vẫn báo phủ 100% catalog.
+    """
+    ingredient = SimpleNamespace(
+        ingredient_name="Sữa tươi",
+        calories_per_g=0.061,
+        protein_per_g=0.0032,
+        fat_per_g=0.0033,
+        carbs_per_g=0.0047,
+        fiber_per_g=0.0,
+    )
+
+    async def fake_exact_dish(_session, _name):
+        return None
+
+    async def fake_text_ingredient(_session, _name):
+        return ingredient
+
+    monkeypatch.setattr(analyze, "lookup_dish_exact", fake_exact_dish)
+    monkeypatch.setattr(analyze, "lookup_ingredient_text", fake_text_ingredient)
+
+    item, resolved_name, portion_source = await analyze._resolve_dish_item(
+        FakeSession(), "Sữa tươi", 0.0, True
+    )
+
+    assert item is None
+    assert resolved_name == "Sữa tươi"
+    assert portion_source == "unknown"
+
+
+async def test_side_ingredient_with_grams_still_resolves(monkeypatch) -> None:
+    ingredient = SimpleNamespace(
+        ingredient_name="Sữa tươi",
+        calories_per_g=0.061,
+        protein_per_g=0.0032,
+        fat_per_g=0.0033,
+        carbs_per_g=0.0047,
+        fiber_per_g=0.0,
+        source="usda",
+    )
+
+    async def fake_exact_dish(_session, _name):
+        return None
+
+    async def fake_text_ingredient(_session, _name):
+        return ingredient
+
+    monkeypatch.setattr(analyze, "lookup_dish_exact", fake_exact_dish)
+    monkeypatch.setattr(analyze, "lookup_ingredient_text", fake_text_ingredient)
+
+    item, _, portion_source = await analyze._resolve_dish_item(
+        FakeSession(), "Sữa tươi", 200.0, True
+    )
+
+    assert item is not None
+    assert item.grams == 200.0
+    assert item.calories > 0
+    assert portion_source == "vision"
+
+
+async def test_staging_failure_counts_the_item_once(monkeypatch) -> None:
+    """Item hỏng lúc stage chỉ được đếm một lần, nếu không confidence_score sai."""
+
+    async def fake_lookup(_session, _name):
+        return None
+
+    async def failing_stage(*_args, **_kwargs):
+        raise RuntimeError("unique key race")
+
+    monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
+    monkeypatch.setattr(analyze, "stage_dish_candidate", failing_stage)
+
+    items, _, staged, missing = await analyze._analyze_vision_dishes(
+        FakeSession(),
+        [
+            {
+                "dish_name": "Món lạ",
+                "gram": 200.0,
+                "is_side": False,
+                "confidence": 0.9,
+                "total_calories": 300.0,
+                "total_protein_g": 10.0,
+                "total_fat_g": 5.0,
+                "total_carbs_g": 40.0,
+                "total_fiber_g": 2.0,
+            }
+        ],
+    )
+
+    assert staged == []
+    assert len(items) == 1
+    assert missing == []
+    totals = calculate_totals("Món lạ", items, missing)
+    # 1 item, 0 missing → mẫu số là 1 chứ không phải 2.
+    assert totals.confidence_score == 0.0

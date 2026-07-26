@@ -20,6 +20,9 @@ class VisionError(Exception):
 MAX_MENU_ITEMS = 3
 MIN_MAIN_CONFIDENCE = 0.55
 MIN_SIDE_CONFIDENCE = 0.80
+# Model không trả confidence → coi như "vừa đủ tin cho món chính, chưa đủ cho món phụ".
+# Tuyệt đối không mặc định 1.0: như vậy là bịa ra sự chắc chắn model chưa từng nói.
+UNKNOWN_CONFIDENCE = MIN_MAIN_CONFIDENCE
 MAX_REASONABLE_ITEM_GRAMS = 3000.0
 MAX_REASONABLE_KCAL_PER_GRAM = 10.0
 MAX_REASONABLE_MACRO_MASS_RATIO = 1.25
@@ -258,9 +261,13 @@ async def identify_dish(
     result["dishes"] = normalized
     result["dish_name"] = normalized[0]["dish_name"] if normalized else None
     result["confidence"] = _as_confidence(
-        result.get("confidence"), default=1.0 if normalized else 0.0
+        result.get("confidence"),
+        default=UNKNOWN_CONFIDENCE if normalized else 0.0,
     )
-    result.setdefault("reasoning", None)
+    # reasoning là text tự do; provider có thể trả dict/list → ép về str|None
+    # để Pydantic không làm hỏng cả response đã tính đúng.
+    reasoning = result.get("reasoning")
+    result["reasoning"] = reasoning if isinstance(reasoning, str) else None
 
     return result
 
@@ -343,7 +350,7 @@ def _normalize_dishes(
       - nếu thiếu gram tổng mà có ingredients → tổng gram nguyên liệu (fallback)
     """
     normalized = []
-    fallback_confidence = _as_confidence(default_confidence, default=1.0)
+    fallback_confidence = _as_confidence(default_confidence, default=UNKNOWN_CONFIDENCE)
     for d in raw_dishes:
         if not isinstance(d, dict):
             continue
@@ -397,9 +404,16 @@ def _normalize_dishes(
             total_carbs,
             total_fiber,
         ):
-            if is_first_valid_item:
-                return []
-            continue
+            # Số model đưa ra bất khả thi → chỉ bỏ CON SỐ, giữ lại TÊN món.
+            # Catalog PostgreSQL mới là nguồn dinh dưỡng chính thức; vứt cả món
+            # đi sẽ làm hỏng những món vốn tra được trong DB.
+            if gram > MAX_REASONABLE_ITEM_GRAMS:
+                gram = 0.0
+            total_calories = 0.0
+            total_protein = 0.0
+            total_fat = 0.0
+            total_carbs = 0.0
+            total_fiber = 0.0
 
         normalized_item = {
             "dish_name": str(name).strip(),

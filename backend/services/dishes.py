@@ -210,23 +210,18 @@ async def _lookup_institute_candidates_by_vector(
     *,
     limit: int = QDRANT_CANDIDATE_LIMIT,
 ) -> list[VnDish]:
-    """Return compatible reviewed dish candidates in Qdrant score order."""
+    """Return compatible reviewed dish candidates in Qdrant score order.
+
+    Chỉ nuốt lỗi của Qdrant/embedding server — đó là index phụ, hỏng thì vẫn
+    còn đường tra chính xác. Lỗi PostgreSQL phải nổi lên: nuốt luôn sẽ biến sự
+    cố DB thành "món này không có trong catalog" và trả về số Vision đoán bừa.
+    """
     try:
         hits = await search_catalog(
             name,
             CatalogType.DISH,
             limit=limit,
         )
-        compatible_hits = [
-            hit for hit in hits if _is_semantic_candidate_compatible(name, hit.name)
-        ]
-        if not compatible_hits:
-            return []
-        result = await session.execute(select(VnDish).where(
-            VnDish.id.in_([hit.record_id for hit in compatible_hits])
-        ))
-        by_id = {str(candidate.id): candidate for candidate in result.scalars().all()}
-        return [by_id[hit.record_id] for hit in compatible_hits if hit.record_id in by_id]
     except Exception:
         logger.warning(
             "Semantic dish lookup unavailable for %r; continuing without candidates",
@@ -234,6 +229,17 @@ async def _lookup_institute_candidates_by_vector(
             exc_info=True,
         )
         return []
+
+    compatible_hits = [
+        hit for hit in hits if _is_semantic_candidate_compatible(name, hit.name)
+    ]
+    if not compatible_hits:
+        return []
+    result = await session.execute(select(VnDish).where(
+        VnDish.id.in_([hit.record_id for hit in compatible_hits])
+    ))
+    by_id = {str(candidate.id): candidate for candidate in result.scalars().all()}
+    return [by_id[hit.record_id] for hit in compatible_hits if hit.record_id in by_id]
 
 
 async def lookup_dish_candidates(
@@ -327,6 +333,11 @@ async def _lookup_ingredient_vector(
     try:
         hits = await search_catalog(name, CatalogType.INGREDIENT, limit=5)
     except Exception:
+        logger.warning(
+            "Semantic ingredient lookup unavailable for %r; continuing without it",
+            name,
+            exc_info=True,
+        )
         return None
     if not hits:
         return None

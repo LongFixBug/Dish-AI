@@ -53,6 +53,8 @@ from schemas.nutrition import (
 MAX_UPLOAD_BYTES = MAX_IMAGE_UPLOAD_BYTES
 CV_FAMILY_MAX_PREDICTIONS = 3
 CV_FAMILY_MIN_PROBABILITY = 0.15
+#: Đủ số gợi ý cho Vision thì dừng, khỏi tốn thêm lượt embedding + Qdrant.
+CV_FAMILY_MAX_CANDIDATES = 8
 
 
 def _safe_filename(filename: str) -> str:
@@ -73,9 +75,13 @@ logger = logging.getLogger("foodai")
 
 def _analysis_response(**values: object) -> AnalyzeResponse:
     source = values.get("source")
+    # Mọi nhánh do CV dẫn dắt đều bắt đầu bằng "cv_local" ("cv_local",
+    # "cv_local_not_found_vision", …) nên phải so bằng prefix, không so bằng nhau.
     values.setdefault(
         "model_version",
-        cv_model.model_version if source == "cv_local" else settings.vision_model,
+        cv_model.model_version
+        if isinstance(source, str) and source.startswith("cv_local")
+        else settings.vision_model,
     )
     response = AnalyzeResponse(**values)
     ANALYSIS_RESULTS.labels(
@@ -182,9 +188,13 @@ async def _resolve_dish_item(
                 portion_source,
             )
         if _has_nutrition(vn):
+            # Catalog có tổng dinh dưỡng nhưng KHÔNG có khối lượng chuẩn.
+            # Không gán gram của Vision vào đây: con số đó không tham gia phép
+            # tính, gán vào sẽ tạo ra mật độ calo vô nghĩa và làm hỏng bộ chỉnh
+            # khẩu phần (calculate_adjusted_totals từ chối basis này).
             return NutritionPerIngredient(
                 item_name=vn.dish_name,
-                grams=gram,
+                grams=0.0,
                 calories=round(vn.total_calories, 1),
                 protein_g=round(vn.total_protein_g, 1),
                 fat_g=round(vn.total_fat_g, 1),
@@ -192,18 +202,21 @@ async def _resolve_dish_item(
                 fiber_g=round(vn.total_fiber_g, 1),
                 found_in_db=True,
                 nutrition_basis="source_serving",
-            ), vn.dish_name, "vision" if gram > 0 else "catalog_default"
+            ), vn.dish_name, "unknown"
         # Catalog rows without nutrition fall back to the Vision estimate.
 
     # ── Tier 2: vn_ingredients (chỉ khi is_side — đồ uống/món kèm) ───────
-    if is_side:
+    # Nguyên liệu chỉ có số liệu theo gram, không có khẩu phần chuẩn để fallback.
+    # Thiếu gram thì coi như chưa tra được, để caller đưa vào "missing" — nếu
+    # không sẽ sinh ra item 0 kcal nhưng vẫn gắn cờ found_in_db=True.
+    if is_side and gram > 0:
         ing = await lookup_ingredient_text(session, dish_name)
         if ing is not None:
             per_gram = _vn_ingredient_to_per_gram(ing)
             return (
                 calculate_item_nutrition(ing.ingredient_name, gram, per_gram),
                 ing.ingredient_name,
-                "vision" if gram > 0 else "catalog_default",
+                "vision",
             )
 
     # Unknown labels are staged by the caller; they are not trusted catalog rows.
@@ -301,7 +314,9 @@ async def _analyze_vision_dishes(
         except Exception:
             await session.rollback()
             logger.exception("Failed to stage Vision dish '%s'", dish_name)
-            missing.append(resolved_name)
+            # Chỉ đếm MỘT lần: calculate_totals lấy tổng = len(items) + len(missing),
+            # thêm vào cả hai chỗ sẽ làm confidence_score tụt sai.
+            # Số liệu Vision vẫn dùng được nên giữ trong items.
             items.append(vision_item)
 
     return items, response_dishes, staged, missing
@@ -342,14 +357,17 @@ async def analyze_food(
         family_queries = _cv_family_queries(cv_dish, cv_predictions)
         for family in family_queries:
             candidate_rows = await lookup_dish_candidates(session, family)
-            for row in candidate_rows:
-                if row.dish_name not in catalog_candidates:
-                    catalog_candidates.append(row.dish_name)
-            logger.info(
-                "CV family %r yielded catalog candidates: %s",
-                family,
-                catalog_candidates,
-            )
+            new_names = [
+                row.dish_name
+                for row in candidate_rows
+                if row.dish_name not in catalog_candidates
+            ]
+            catalog_candidates.extend(new_names)
+            logger.info("CV family %r yielded catalog candidates: %s", family, new_names)
+            # Mỗi vòng tốn 1 lượt embedding + 1 truy vấn Qdrant và nằm trên
+            # critical path trước khi gọi Vision. Đủ gợi ý thì dừng sớm.
+            if len(catalog_candidates) >= CV_FAMILY_MAX_CANDIDATES:
+                break
 
         # CV is a family prior, not the final visual decision. Vision sees the
         # image and chooses among the reviewed candidates returned by Qdrant.

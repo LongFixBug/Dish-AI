@@ -61,11 +61,11 @@ def test_prompt_requests_a_separate_portion_confidence() -> None:
 
 def test_normalizer_keeps_at_most_three_menu_items() -> None:
     raw_dishes = [
-        {"dish_name": "Cơm sườn", "gram": 450},
-        {"dish_name": "Trứng ốp la", "gram": 50, "is_side": True},
-        {"dish_name": "Chả bì", "gram": 70, "is_side": True},
-        {"dish_name": "Đồ chua", "gram": 40, "is_side": True},
-        {"dish_name": "Mỡ hành", "gram": 10, "is_side": True},
+        {"dish_name": "Cơm sườn", "gram": 450, "confidence": 0.9},
+        {"dish_name": "Trứng ốp la", "gram": 50, "is_side": True, "confidence": 0.9},
+        {"dish_name": "Chả bì", "gram": 70, "is_side": True, "confidence": 0.9},
+        {"dish_name": "Đồ chua", "gram": 40, "is_side": True, "confidence": 0.9},
+        {"dish_name": "Mỡ hành", "gram": 10, "is_side": True, "confidence": 0.9},
     ]
 
     normalized = _normalize_dishes(raw_dishes)
@@ -80,12 +80,13 @@ def test_normalizer_keeps_at_most_three_menu_items() -> None:
 def test_normalizer_uses_char_bi_label_for_com_suon_combo() -> None:
     normalized = _normalize_dishes(
         [
-            {"dish_name": "Cơm sườn", "gram": 350},
-            {"dish_name": "Trứng ốp la", "gram": 60, "is_side": True},
+            {"dish_name": "Cơm sườn", "gram": 350, "confidence": 0.9},
+            {"dish_name": "Trứng ốp la", "gram": 60, "is_side": True, "confidence": 0.9},
             {
                 "dish_name": "Chả trứng hấp",
                 "gram": 40,
                 "is_side": True,
+                "confidence": 0.9,
                 "total_calories": 85,
             },
         ]
@@ -157,7 +158,12 @@ def test_normalizer_preserves_item_confidence_for_the_api() -> None:
     assert normalized[0]["confidence"] == 0.87
 
 
-def test_normalizer_rejects_physically_implausible_nutrition() -> None:
+def test_normalizer_drops_implausible_numbers_but_keeps_the_dish_name() -> None:
+    """Số bất khả thi thì bỏ số, KHÔNG bỏ món.
+
+    Catalog PostgreSQL mới là nguồn dinh dưỡng chính thức; vứt cả món đi sẽ làm
+    hỏng cả những món vốn tra được trong DB.
+    """
     normalized = _normalize_dishes(
         [
             {
@@ -173,4 +179,32 @@ def test_normalizer_rejects_physically_implausible_nutrition() -> None:
         ]
     )
 
-    assert normalized == []
+    assert [dish["dish_name"] for dish in normalized] == ["Món lỗi"]
+    assert normalized[0]["gram"] == 100.0
+    assert normalized[0]["total_calories"] == 0.0
+    assert normalized[0]["total_protein_g"] == 0.0
+
+
+def test_normalizer_zeroes_the_weight_when_it_is_impossible() -> None:
+    normalized = _normalize_dishes(
+        [{"dish_name": "Món nặng", "gram": 50_000, "confidence": 0.95}]
+    )
+
+    assert normalized[0]["gram"] == 0.0
+
+
+def test_normalizer_treats_a_missing_confidence_as_main_only() -> None:
+    """Model không nói confidence → giữ món chính, bỏ món phụ.
+
+    Mặc định 1.0 là bịa ra sự chắc chắn model chưa từng khẳng định, và làm hai
+    ngưỡng MIN_MAIN_CONFIDENCE / MIN_SIDE_CONFIDENCE mất tác dụng hoàn toàn.
+    """
+    normalized = _normalize_dishes(
+        [
+            {"dish_name": "Cơm sườn", "gram": 350},
+            {"dish_name": "Rong biển", "gram": 40, "is_side": True},
+        ]
+    )
+
+    assert [dish["dish_name"] for dish in normalized] == ["Cơm sườn"]
+    assert normalized[0]["confidence"] < 1.0
