@@ -41,6 +41,8 @@ class AnalyzeDish(BaseModel):
 class AnalyzeResponse(BaseModel):
     """Response cho POST /api/v1/analyze.
 
+    - source='image_knn': ảnh match album ảnh tham chiếu (SigLIP + Qdrant),
+      không cần gọi Vision.
     - source='cv_local_not_found_vision': CV family prior + Qdrant shortlist +
       Vision visual selection.
     - source='vision': Vision nhận diện + lookup vn_dishes/vn_ingredients.
@@ -51,7 +53,7 @@ class AnalyzeResponse(BaseModel):
     """
 
     dish_name: str | None = Field(default=None, description="Tên món chính / bữa ăn")
-    source: Literal["cv_local", "vision", "cv_local_not_found_vision"]
+    source: Literal["cv_local", "vision", "cv_local_not_found_vision", "image_knn"]
     model_version: str | None = Field(
         default=None,
         description="Version của CV checkpoint hoặc tên cloud Vision model.",

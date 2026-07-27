@@ -26,6 +26,18 @@ from backend.main import app
 from backend.services.auth import TokenManager
 
 
+@pytest.fixture(autouse=True)
+def _album_offline_by_default(monkeypatch) -> None:
+    """Tắt image cascade trong test để suite kín (hermetic).
+
+    Khi sidecar :8082 + Qdrant thật đang chạy trên máy dev, analyze/feedback
+    test sẽ gọi NHẦM vào hạ tầng thật: ăn kết quả album thật và ghi rác vào
+    collection ``dish_images``. Test nào cần đường album thì tự bật lại
+    ``image_embed_enabled=True`` và mock embed/upsert.
+    """
+    monkeypatch.setattr(settings, "image_embed_enabled", False)
+
+
 @pytest.fixture
 def client() -> Generator[TestClient, None, None]:
     """Authenticated FastAPI test client for existing endpoint contracts."""

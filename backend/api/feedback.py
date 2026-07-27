@@ -55,6 +55,44 @@ def _normalize_dish_name(name: str) -> str:
     return slug
 
 
+async def _index_feedback_image(
+    object_key: str,
+    image_bytes: bytes,
+    dish_name: str,
+    class_slug: str,
+) -> None:
+    """Best-effort: thêm ảnh feedback vừa lưu vào album ảnh tham chiếu.
+
+    Album (Qdrant ``dish_images``) chỉ là index dẫn xuất — sidecar embedding
+    hay Qdrant sập thì bỏ qua kèm warning, TUYỆT ĐỐI không làm hỏng việc lưu
+    phản hồi đã thành công. Import trong hàm để module load nhẹ.
+    """
+    if not settings.image_embed_enabled:
+        return
+    try:
+        from backend.services.dish_image_index import (
+            DishImageEntry,
+            upsert_dish_image_vectors,
+        )
+        from backend.services.image_embeddings import embed_image
+
+        vector = await embed_image(image_bytes)
+        entry = DishImageEntry(
+            record_id=str(uuid.uuid5(uuid.NAMESPACE_URL, object_key)),
+            dish_name=dish_name,
+            class_slug=class_slug,
+            source="feedback",
+        )
+        await upsert_dish_image_vectors([entry], [vector])
+        logger.info("Indexed feedback image %s into dish album", object_key)
+    except Exception:
+        logger.warning(
+            "Không index được ảnh feedback %s vào album ảnh tham chiếu",
+            object_key,
+            exc_info=True,
+        )
+
+
 class TrainingDataResponse(BaseModel):
     """Response cho POST /feedback/training-data."""
 
@@ -145,6 +183,13 @@ async def save_training_data(
             status_code=503,
             detail="Chưa thể lưu phản hồi lúc này. Vui lòng thử lại sau.",
         ) from exc
+
+    await _index_feedback_image(
+        object_key=object_key,
+        image_bytes=image.content,
+        dish_name=correct_dish_name.strip(),
+        class_slug=normalized,
+    )
 
     return TrainingDataResponse(
         submission_id=str(submission.id),

@@ -8,6 +8,12 @@ from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import VnDish, VnIngredient
+from backend.services.menu_vocabulary import (
+    CANONICAL_FAMILY_NAMES,
+    DISH_FAMILY_TOKENS,
+    family_pair,
+    menu_tokens,
+)
 from backend.services.vector_catalog import CatalogType, search_catalog
 from schemas.nutrition import NutritionPerGram
 
@@ -106,31 +112,7 @@ def _has_nutrition(vn: VnDish) -> bool:
 # Reviewed dish lookup
 
 
-_DISH_FAMILY_TOKENS = {
-    "banh", "bun", "canh", "chao", "com", "goi", "hu", "lau", "mi",
-    "pho", "tieu", "xoi",
-}
-_CANONICAL_FAMILY_NAMES = {
-    ("banh", "mi"): "Bánh mì",
-    ("banh", "cuon"): "Bánh cuốn",
-    ("banh", "xeo"): "Bánh xèo",
-    ("bun", "cha"): "Bún chả",
-    ("com", "tam"): "Cơm tấm",
-    ("pho", "bo"): "Phở bò",
-    ("pho", "ga"): "Phở gà",
-    ("xoi", "xeo"): "Xôi xéo",
-}
-_MENU_STOP_TOKENS = {"cac", "kem", "kep", "loai", "mon", "va", "voi"}
 QDRANT_CANDIDATE_LIMIT = 10
-
-
-def _menu_tokens(name: str) -> set[str]:
-    """Normalize a Vietnamese dish name into accent-insensitive lexical tokens."""
-    normalized = unicodedata.normalize("NFKD", name.casefold())
-    ascii_name = "".join(
-        char for char in normalized if not unicodedata.combining(char)
-    ).replace("đ", "d")
-    return set(re.findall(r"[a-z0-9]+", ascii_name)) - _MENU_STOP_TOKENS
 
 
 def dish_family_query(name: str) -> str:
@@ -147,29 +129,41 @@ def dish_family_query(name: str) -> str:
     # from over-constraining the Qdrant shortlist.
     if len(words) < 2:
         return name.strip()
-    normalized_prefix = tuple(
-        "".join(
-            char
-            for char in unicodedata.normalize("NFKD", word.casefold())
-            if not unicodedata.combining(char)
-        ).replace("đ", "d")
-        for word in words[:2]
-    )
-    return _CANONICAL_FAMILY_NAMES.get(
-        normalized_prefix,
+    return CANONICAL_FAMILY_NAMES.get(
+        family_pair(name),
         " ".join(words[:2]),
+    )
+
+
+def _is_different_canonical_family(query: str, candidate: str) -> bool:
+    """True khi hai tên thuộc hai họ món trọn vẹn khác nhau.
+
+    So token đầu là không đủ: "bánh mì" và "bánh cuốn" cùng bắt đầu bằng
+    "bánh" nhưng là hai món khác hẳn — đúng kẽ hở đã biến ảnh bánh mì thành
+    "Bánh cuốn thịt". Chỉ chốt khi CẢ HAI cặp mở đầu đều là họ đã biết, để
+    tên tự do như "Cơm bì chả trứng" vẫn tra được "Cơm tấm sườn bì chả".
+    """
+    query_family = family_pair(query)
+    candidate_family = family_pair(candidate)
+    return (
+        query_family in CANONICAL_FAMILY_NAMES
+        and candidate_family in CANONICAL_FAMILY_NAMES
+        and query_family != candidate_family
     )
 
 
 def _is_semantic_candidate_compatible(query: str, candidate: str) -> bool:
     """Require semantic candidates to share a compatible lexical dish family."""
-    query_tokens = _menu_tokens(query)
-    candidate_tokens = _menu_tokens(candidate)
+    query_tokens = menu_tokens(query)
+    candidate_tokens = menu_tokens(candidate)
     if not query_tokens or not candidate_tokens:
         return False
 
-    query_families = query_tokens & _DISH_FAMILY_TOKENS
-    candidate_families = candidate_tokens & _DISH_FAMILY_TOKENS
+    if _is_different_canonical_family(query, candidate):
+        return False
+
+    query_families = query_tokens & DISH_FAMILY_TOKENS
+    candidate_families = candidate_tokens & DISH_FAMILY_TOKENS
     if query_families and candidate_families and query_families.isdisjoint(
         candidate_families
     ):
@@ -196,12 +190,28 @@ async def _lookup_institute_exact(
     return exact.scalar_one_or_none()
 
 
+def _refinement_distance(query: str, candidate_name: str) -> int:
+    """Số chữ tên catalog thêm vào so với tên tra — càng nhỏ càng sát nghĩa."""
+    return len(menu_tokens(candidate_name) - menu_tokens(query))
+
+
 async def _lookup_institute_by_vector(
     session: AsyncSession, name: str
 ) -> VnDish | None:
-    """Resolve Qdrant candidates through authoritative PostgreSQL UUIDs."""
+    """Resolve Qdrant candidates through authoritative PostgreSQL UUIDs.
+
+    Điểm vector cao không có nghĩa là đúng món: tra "Phở bò" mà Qdrant xếp
+    "Phở bò sốt vang" trên "Phở bò chín" thì bản sát nghĩa nhất vẫn phải
+    thắng. ``min`` ổn định nên khi hòa số chữ thừa, thứ tự điểm vector được
+    giữ nguyên làm tiêu chí phụ.
+    """
     candidates = await _lookup_institute_candidates_by_vector(session, name)
-    return candidates[0] if candidates else None
+    if not candidates:
+        return None
+    return min(
+        candidates,
+        key=lambda candidate: _refinement_distance(name, candidate.dish_name),
+    )
 
 
 async def _lookup_institute_candidates_by_vector(

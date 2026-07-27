@@ -32,6 +32,45 @@ def test_rejects_same_family_with_only_generic_token_shared() -> None:
     assert not _is_semantic_candidate_compatible("Phở bò", "Phở gà")
 
 
+def test_rejects_candidate_from_a_different_banh_family() -> None:
+    """Họ món phải so cả cặp từ: "bánh mì" và "bánh cuốn" là hai món khác nhau.
+
+    Chỉ so token đơn thì cả hai cùng có "bánh" nên lọt, đúng lỗi đã đẩy ảnh
+    bánh mì thành "Bánh cuốn thịt" trên app.
+    """
+    assert not _is_semantic_candidate_compatible(
+        "Bánh mì kẹp thịt", "Bánh cuốn thịt"
+    )
+
+
+async def test_vector_lookup_prefers_the_tightest_refinement(monkeypatch) -> None:
+    """Giữa các ứng viên hợp lệ, tên thêm ít chữ thừa nhất mới là sát nghĩa nhất."""
+    candidates = [
+        SimpleNamespace(id="sot-vang", dish_name="Phở bò sốt vang"),
+        SimpleNamespace(id="chin", dish_name="Phở bò chín"),
+    ]
+
+    class FakeSession:
+        async def execute(self, _statement):
+            return SimpleNamespace(
+                scalars=lambda: SimpleNamespace(all=lambda: candidates)
+            )
+
+    async def fake_search(_query, _catalog_type, limit):
+        assert limit == dishes.QDRANT_CANDIDATE_LIMIT
+        return [
+            CatalogHit("sot-vang", "Phở bò sốt vang", 0.97),
+            CatalogHit("chin", "Phở bò chín", 0.95),
+        ]
+
+    monkeypatch.setattr(dishes, "search_catalog", fake_search)
+
+    result = await dishes._lookup_institute_by_vector(FakeSession(), "Phở bò")
+
+    assert result is not None
+    assert result.dish_name == "Phở bò chín"
+
+
 async def test_lookup_scans_past_incompatible_top_results(monkeypatch) -> None:
     candidates = [SimpleNamespace(
         id="target-id",

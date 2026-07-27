@@ -1,0 +1,41 @@
+{
+  "banh_mi_kep_thit": [
+    "Bánh mì",
+    "Bánh mì thịt",
+    "Bánh mì thịt nguội",
+    "Bánh mì thập cẩm"
+  ],
+  "banh_xeo": [
+    "Bánh xèo tôm thịt",
+    "Bánh xèo miền Tây"
+  ],
+  "com_tam": [
+    "Cơm tấm sườn",
+    "Cơm tấm sườn bì chả",
+    "Cơm tấm sườn nướng"
+  ],
+  "ha_cao": [
+    "Há cảo tôm",
+    "Há cảo hấp"
+  ],
+  "hu_tieu": [
+    "Hủ tiếu nước"
+  ],
+  "nem_nuong": [
+    "Nem nướng cuốn",
+    "Nem nướng Nha Trang"
+  ],
+  "pho_bo": [
+    "Phở bò tái",
+    "Phở bò chín",
+    "Phở bò tái chín",
+    "Phở tái"
+  ],
+  "pho_ga": [
+    "Phở gà ta",
+    "Phở gà chặt"
+  ],
+  "xoi_xeo": [
+    "Xôi xéo thập cẩm"
+  ]
+}

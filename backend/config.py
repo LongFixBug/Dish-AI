@@ -79,10 +79,28 @@ class Settings(BaseSettings):
     # LLM + Embedding (local with llama.cpp)
     llm_url: str = "http://localhost:8080"
     embedding_url: str = "http://localhost:8081"
-
     # Model names (as reported by llama-server)
     llm_model: str = "qwen2.5-7b-instruct-q4_k_m.gguf"
     embedding_model: str = "qwen3-embedding-0.6b-q8_0.gguf"
+
+    # SigLIP 2 image-embedding sidecar (dish photo matching)
+    image_embed_enabled: bool = True
+    image_embed_url: str = "http://localhost:8082"
+    image_embed_model: str = "google/siglip2-base-patch16-224"
+    image_embed_max_concurrency: int = Field(default=4, ge=1, le=64)
+
+    # Sidecar tách chủ thể thành sticker (ml/serving/segment_server.py).
+    segment_enabled: bool = True
+    segment_url: str = "http://localhost:8083"
+    segment_max_concurrency: int = Field(default=2, ge=1, le=32)
+    segment_max_side: int = Field(default=512, ge=64, le=2048)
+    segment_outline_width: int = Field(default=10, ge=0, le=40)
+    # Ngưỡng đo bằng ml/evaluation/tune_cascade.py trên data/images/golden
+    # (26/7, album 34 món, 427 ảnh golden: coverage 53.6%, precision 95.2%).
+    # Tune lại mỗi khi album đổi lớn.
+    image_match_threshold: float = Field(default=0.82, ge=0, le=1)
+    image_match_margin: float = Field(default=0.02, ge=0, le=1)
+    image_candidates_limit: int = Field(default=8, ge=1, le=20)
 
     @property
     def is_production(self) -> bool:

@@ -94,9 +94,10 @@ class CVModel:
         """
         Args:
             checkpoint_path: Đường dẫn đến file .pth checkpoint.
-            device: "mps", "cuda", hoặc "cpu" (auto-detect nếu None).
+            device: "mps", "cuda", hoặc "cpu" (auto-detect lúc load() nếu None,
+                để import module không kéo torch vào backend).
         """
-        self.device = device or _default_device()
+        self.device: Optional[str] = device
         self.checkpoint_path = checkpoint_path or DEFAULT_CHECKPOINT
         self.manifest_path = manifest_path or BEST_MANIFEST
         self.require_manifest = require_manifest
@@ -124,6 +125,7 @@ class CVModel:
         except ImportError:
             return
 
+        self.device = self.device or _default_device()
         checkpoint = torch.load(
             self.checkpoint_path,
             map_location=self.device,

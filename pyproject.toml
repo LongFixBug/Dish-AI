@@ -31,6 +31,10 @@ dependencies = [
     "boto3>=1.40.0,<2",
     "prometheus-client>=0.23.0,<1",
     "google-auth>=2.56.2",
+    "transformers>=5.14.1",
+    "imagehash>=4.3.2",
+    "icrawler>=0.6.10",
+    "rembg[cpu]>=2.0.60",
 ]
 
 [dependency-groups]

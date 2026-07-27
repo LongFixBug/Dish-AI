@@ -682,3 +682,69 @@ async def test_staging_failure_counts_the_item_once(monkeypatch) -> None:
     totals = calculate_totals("Món lạ", items, missing)
     # 1 item, 0 missing → mẫu số là 1 chứ không phải 2.
     assert totals.confidence_score == 0.0
+
+
+async def test_vision_dish_rejects_catalog_row_that_morphs_the_name(monkeypatch) -> None:
+    """Nhánh Vision cũng phải soi tên như nhánh album, không tin bừa catalog.
+
+    Semantic search trả "Bánh cuốn thịt" cho "Bánh mì kẹp thịt": tên rơi mất
+    "mì", tức món khác hẳn. Nhánh album đã chặn bằng is_name_refinement, nhánh
+    Vision thì chưa nên số liệu bánh cuốn từng hiện lên app kèm nhãn
+    "Dữ liệu catalog: 100%".
+    """
+    morphed = SimpleNamespace(
+        dish_name="Bánh cuốn thịt",
+        typical_grams=150.0,
+        total_calories=440.0,
+        total_protein_g=16.7,
+        total_fat_g=18.5,
+        total_carbs_g=51.5,
+        total_fiber_g=1.0,
+        source="vnmeal",
+    )
+
+    async def fake_lookup(_session, name):
+        assert name == "Bánh mì kẹp thịt"
+        return morphed
+
+    monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
+
+    item, resolved_name, portion_source = await analyze._resolve_dish_item(
+        FakeSession(),
+        "Bánh mì kẹp thịt",
+        gram=150.0,
+        is_side=False,
+    )
+
+    assert item is None
+    assert resolved_name == "Bánh mì kẹp thịt"
+    assert portion_source == "unknown"
+
+
+async def test_vision_dish_keeps_catalog_row_that_only_refines_the_name(monkeypatch) -> None:
+    """Ngược lại, mở rộng hợp lệ vẫn phải dùng số liệu catalog."""
+    refined = SimpleNamespace(
+        dish_name="Phở bò chín",
+        typical_grams=400.0,
+        total_calories=440.0,
+        total_protein_g=25.0,
+        total_fat_g=10.0,
+        total_carbs_g=60.0,
+        total_fiber_g=2.0,
+        source="vnmeal",
+    )
+
+    async def fake_lookup(_session, _name):
+        return refined
+
+    monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
+
+    item, resolved_name, _ = await analyze._resolve_dish_item(
+        FakeSession(),
+        "Phở bò",
+        gram=400.0,
+        is_side=False,
+    )
+
+    assert item is not None
+    assert resolved_name == "Phở bò chín"

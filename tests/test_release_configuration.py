@@ -50,6 +50,29 @@ def test_api_image_can_run_database_migrations() -> None:
     assert "alembic" in requirements
 
 
+def test_release_build_passes_every_compile_time_secret() -> None:
+    """Client ID là hằng số compile-time: thiếu nó thì nút Google hỏng vĩnh viễn.
+
+    Không test Flutter nào bắt được vì test dùng gateway giả, nên chốt ở đây.
+    """
+    workflow = (ROOT / ".github/workflows/release-mobile.yml").read_text()
+
+    assert "--dart-define=API_BASE_URL=$API_BASE_URL" in workflow
+    assert "--dart-define=GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID" in workflow
+    assert "secrets.GOOGLE_WEB_CLIENT_ID" in workflow
+    assert "GOOGLE_WEB_CLIENT_ID secret is missing or malformed" in workflow
+
+
+def test_mobile_documents_the_required_dart_defines() -> None:
+    readme = (ROOT / "mobile/README.md").read_text()
+    example = (ROOT / "mobile/dart_defines.example.json").read_text()
+
+    assert "--dart-define-from-file" in readme
+    for key in ("API_BASE_URL", "GOOGLE_WEB_CLIENT_ID", "IOS_CLIENT_ID"):
+        assert key in readme, key
+        assert key in example, key
+
+
 def test_dependency_and_toolchain_versions_are_reproducible() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text()
     lockfile = (ROOT / "requirements.api.lock").read_text()

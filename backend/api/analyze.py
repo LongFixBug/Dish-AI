@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.postgres import get_session
@@ -38,6 +38,14 @@ from backend.services.dishes import (
     resolve_catalog_portion_grams,
 )
 from backend.services.dish_candidates import stage_dish_candidate
+from backend.services.image_segmentation import cut_out_subject
+from backend.services.recognition_cascade import (
+    CascadeDecision,
+    decide_cascade,
+    image_candidates,
+    is_name_refinement,
+    merge_candidate_names,
+)
 from ml.inference.cv import cv_model
 from ml.inference.vision import VisionError, identify_dish
 from schemas.analyze import AnalyzeDish, AnalyzeResponse
@@ -55,6 +63,9 @@ CV_FAMILY_MAX_PREDICTIONS = 3
 CV_FAMILY_MIN_PROBABILITY = 0.15
 #: Đủ số gợi ý cho Vision thì dừng, khỏi tốn thêm lượt embedding + Qdrant.
 CV_FAMILY_MAX_CANDIDATES = 8
+#: Trần danh sách ứng viên đưa vào prompt Vision — khớp cap [:12] trong
+#: ml/inference/vision.py để tên từ album ảnh không đẩy rớt tên từ catalog.
+VISION_PROMPT_CANDIDATE_LIMIT = 12
 
 
 def _safe_filename(filename: str) -> str:
@@ -172,6 +183,17 @@ async def _resolve_dish_item(
         if is_side
         else await lookup_dish(session, dish_name)
     )
+    # Cùng một tấm khiên với nhánh album: semantic search có thể trả về món
+    # khác hẳn mà vẫn "tra được". Tin nó là gắn số dinh dưỡng của món khác
+    # kèm nhãn "dữ liệu catalog 100%" — thà coi như chưa có trong catalog để
+    # số của Vision được dùng và món mới được stage chờ duyệt.
+    if vn is not None and not is_name_refinement(dish_name, vn.dish_name):
+        logger.info(
+            "Catalog morphed %r into %r; giữ tên Vision và stage món mới",
+            dish_name,
+            vn.dish_name,
+        )
+        vn = None
     resolved_name = vn.dish_name if vn is not None else dish_name
     if vn is not None:
         if _has_nutrition(vn) and _has_weight(vn):
@@ -322,7 +344,92 @@ async def _analyze_vision_dishes(
     return items, response_dishes, staged, missing
 
 
+async def _image_knn_response(
+    session: AsyncSession,
+    decision: CascadeDecision,
+) -> AnalyzeResponse | None:
+    """Build the answer for a photo the reference album resolved on its own.
+
+    Tên do album trả vẫn phải tra được trong catalog (đúng đường lookup_dish
+    của món chính Vision). Tra miss → trả None để caller rơi về flow Vision,
+    tuyệt đối không tin một cái tên không có dữ liệu dinh dưỡng.
+    """
+    if not decision.dish_name:
+        return None
+    item, resolved_name, portion_source = await _resolve_dish_item(
+        session,
+        decision.dish_name,
+        gram=0.0,
+        is_side=False,
+    )
+    if item is None:
+        logger.info(
+            "Image cascade matched %r but catalog lookup missed; using Vision",
+            decision.dish_name,
+        )
+        return None
+    if not is_name_refinement(decision.dish_name, resolved_name):
+        logger.info(
+            "Image cascade matched %r but catalog morphed it to %r; using Vision",
+            decision.dish_name,
+            resolved_name,
+        )
+        return None
+
+    confidence = min(1.0, max(0.0, decision.score))
+    response_dish = AnalyzeDish(
+        dish_name=resolved_name,
+        grams=item.grams,
+        is_side=False,
+        found_in_db=True,
+        recognition_confidence=confidence,
+        portion_source=portion_source,
+    )
+    logger.info(
+        "Image cascade resolved %r (score=%.4f, margin=%.4f) without Vision",
+        resolved_name,
+        decision.score,
+        decision.margin,
+    )
+    return _analysis_response(
+        dish_name=resolved_name,
+        source="image_knn",
+        model_version=settings.image_embed_model,
+        recognition_confidence=confidence,
+        nutrition=calculate_totals(resolved_name, [item]),
+        dishes=[response_dish],
+    )
+
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
+
+
+
+@router.post("/sticker")
+async def create_sticker(
+    file: UploadFile = File(...),
+    _current_user: CurrentUser = Depends(require_user),
+) -> Response:
+    """Tách món chính khỏi nền, trả PNG viền trắng để app dán làm sticker.
+
+    Tách riêng khỏi /analyze để hai việc chạy song song: người dùng không
+    phải chờ cộng dồn thời gian của cả hai. Sidecar hỏng thì trả 503 và app
+    cứ hiện ảnh gốc như trước.
+    """
+    validate_image_content_type(file)
+    content = await read_upload_limited(file, max_bytes=MAX_UPLOAD_BYTES)
+    image = await asyncio.to_thread(
+        validate_and_sanitize_image,
+        content,
+        file.content_type,
+    )
+    sticker = await cut_out_subject(image.content)
+    if sticker is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Chưa tạo được sticker cho ảnh này.",
+        )
+    return Response(content=sticker, media_type="image/png")
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
@@ -343,6 +450,21 @@ async def analyze_food(
     await asyncio.to_thread(temp_path.write_bytes, image.content)
 
     try:
+        # Album ảnh tham chiếu biểu quyết trước: match đủ tự tin thì trả lời
+        # ngay, khỏi tốn cả lượt CV local lẫn cloud Vision. Sidecar/Qdrant sập
+        # thì image_candidates trả [] và flow bên dưới chạy y như trước.
+        cascade_candidates = await image_candidates(image.content)
+        decision = decide_cascade(
+            cascade_candidates,
+            settings.image_match_threshold,
+            settings.image_match_margin,
+            settings.image_candidates_limit,
+        )
+        if decision.resolved:
+            resolved_response = await _image_knn_response(session, decision)
+            if resolved_response is not None:
+                return resolved_response
+
         # Use local inference first to avoid a cloud call for reliable classes.
         cv_conf: float | None = None
         cv_dish: str | None = None
@@ -371,9 +493,16 @@ async def analyze_food(
 
         # CV is a family prior, not the final visual decision. Vision sees the
         # image and chooses among the reviewed candidates returned by Qdrant.
+        # Tên từ album ảnh (dù chưa đủ điểm để resolve) đứng trước tên từ
+        # CV-family/Qdrant text; khử trùng lặp không phân biệt dấu.
+        prompt_candidates = merge_candidate_names(
+            decision.candidate_names,
+            catalog_candidates,
+            VISION_PROMPT_CANDIDATE_LIMIT,
+        )
         vision_kwargs = (
-            {"candidate_names": catalog_candidates}
-            if catalog_candidates
+            {"candidate_names": prompt_candidates}
+            if prompt_candidates
             else {}
         )
         try:

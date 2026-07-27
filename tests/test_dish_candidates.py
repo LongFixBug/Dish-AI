@@ -177,7 +177,10 @@ async def test_approve_candidate_publishes_reviewed_catalog_dish(monkeypatch) ->
     assert candidate.approved_dish_id == dish.id
     assert candidate.reviewed_at is not None
     assert session.added == [dish]
-    assert session.flushes == 1
+    # 2 lượt flush: một để hàng vn_dishes có thật, một để ghi trạng thái đã
+    # duyệt. Gộp lại thành một là khóa ngoại trỏ vào hàng chưa tồn tại — xem
+    # test_approve_new_dish_satisfies_the_foreign_key_on_a_real_database.
+    assert session.flushes == 2
 
 
 async def test_approve_candidate_enriches_an_existing_empty_catalog_row(
@@ -279,3 +282,58 @@ async def test_reject_candidate_keeps_it_out_of_catalog(monkeypatch) -> None:
     assert candidate.reviewed_at is not None
     assert session.added == []
     assert session.flushes == 1
+
+
+async def test_approve_new_dish_satisfies_the_foreign_key_on_a_real_database(
+    db_session,
+) -> None:
+    """Duyệt món chưa có trong catalog phải chạy được trên PostgreSQL thật.
+
+    FakeSession không có ràng buộc khóa ngoại nên không thấy được thứ tự phát
+    câu lệnh: SQLAlchemy gom UPDATE dish_candidates (trỏ approved_dish_id sang
+    vn_dishes) cùng lượt flush với INSERT vn_dishes, và UPDATE chạy trước nên
+    khóa ngoại trỏ vào hàng chưa tồn tại.
+    """
+    from sqlalchemy import delete, select
+
+    name = "Món kiểm thử duyệt ứng viên"
+    await dish_candidates.stage_dish_candidate(
+        db_session,
+        name,
+        250.0,
+        nutrition=NutritionPerIngredient(
+            item_name=name,
+            grams=250.0,
+            calories=400.0,
+            protein_g=20.0,
+            fat_g=12.0,
+            carbs_g=50.0,
+            fiber_g=2.0,
+            found_in_db=False,
+        ),
+    )
+    await db_session.commit()
+    staged = (await db_session.execute(
+        select(DishCandidate).where(DishCandidate.dish_name == name)
+    )).scalar_one()
+
+    try:
+        dish = await dish_candidates.approve_dish_candidate(db_session, staged.id)
+        await db_session.commit()
+
+        assert dish.dish_name == name
+        assert dish.source == "vision_reviewed"
+        published = (await db_session.execute(
+            select(VnDish).where(VnDish.id == dish.id)
+        )).scalar_one()
+        assert published.total_calories == 400.0
+        await db_session.refresh(staged)
+        assert staged.status == "approved"
+        assert staged.approved_dish_id == dish.id
+    finally:
+        await db_session.rollback()
+        await db_session.execute(
+            delete(DishCandidate).where(DishCandidate.dish_name == name)
+        )
+        await db_session.execute(delete(VnDish).where(VnDish.dish_name == name))
+        await db_session.commit()

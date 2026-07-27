@@ -183,6 +183,11 @@ async def approve_dish_candidate(
             source="vision_reviewed",
         )
         session.add(dish)
+        # Hàng vn_dishes phải có thật trước khi approved_dish_id trỏ vào nó.
+        # Gộp chung một lượt flush thì SQLAlchemy phát UPDATE dish_candidates
+        # trước INSERT vn_dishes (không có relationship() nên nó không biết
+        # thứ tự phụ thuộc) và PostgreSQL từ chối vì khóa ngoại treo.
+        await session.flush()
     else:
         _enrich_existing_catalog_row(dish, candidate)
 
