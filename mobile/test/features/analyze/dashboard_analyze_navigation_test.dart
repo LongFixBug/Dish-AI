@@ -1,4 +1,7 @@
+import 'package:balance/core/state/app_scope.dart';
+import 'package:balance/core/state/app_state.dart';
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/main_shell.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/features/analyze/presentation/analyze_screen.dart';
 import 'package:balance/features/dashboard/presentation/dashboard_screen.dart';
@@ -42,16 +45,20 @@ void main() {
   testWidgets('suggestion tab opens the dinner recommendation screen', (
     tester,
   ) async {
+    // Tab nằm trên MainShell chứ không còn trong từng màn hình.
     await tester.pumpWidget(
-      MaterialApp(theme: BalanceTheme.light, home: const DashboardScreen()),
+      AppScope(
+        notifier: AppState.memory(),
+        child: MaterialApp(theme: BalanceTheme.light, home: const MainShell()),
+      ),
     );
 
     await tester.tap(find.text('Gợi ý'));
     await tester.pumpAndSettle();
 
     expect(find.byType(SuggestionsScreen), findsOneWidget);
-    expect(find.text('Gợi ý bữa tối'), findsOneWidget);
-    expect(find.text('Cá kho tộ + cơm'), findsOneWidget);
-    expect(find.text('Bún gà rau củ'), findsOneWidget);
+    // Món gợi ý nay do backend trả về, không còn là chữ cứng trong code —
+    // ở đây chỉ cần chốt là đã sang đúng tab.
+    expect(find.text('Gợi ý cho bạn'), findsOneWidget);
   });
 }

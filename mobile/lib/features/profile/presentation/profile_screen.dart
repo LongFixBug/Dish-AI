@@ -1,14 +1,10 @@
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/theme/balance_theme.dart';
-import 'package:balance/core/widgets/balance_bottom_bar.dart';
 import 'package:balance/core/widgets/graph_paper_background.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
-import 'package:balance/features/analyze/presentation/analyze_screen.dart';
 import 'package:balance/features/auth/presentation/welcome_screen.dart';
-import 'package:balance/features/journal/presentation/journal_screen.dart';
 import 'package:balance/features/onboarding/presentation/profile_setup_screen.dart';
-import 'package:balance/features/suggestions/presentation/suggestions_screen.dart';
 import 'package:flutter/material.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -23,20 +19,6 @@ class ProfileScreen extends StatelessWidget {
         title: const Text('Hồ sơ'),
         centerTitle: true,
         backgroundColor: BalanceColors.paperBlue,
-      ),
-      bottomNavigationBar: BalanceBottomBar(
-        currentIndex: 4,
-        onHomePressed: () =>
-            Navigator.of(context).popUntil((route) => route.isFirst),
-        onJournalPressed: () => Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(builder: (_) => const JournalScreen()),
-        ),
-        onCameraPressed: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute<void>(builder: (_) => const AnalyzeScreen())),
-        onSuggestionsPressed: () => Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(builder: (_) => const SuggestionsScreen()),
-        ),
       ),
       body: GraphPaperBackground(
         child: SafeArea(

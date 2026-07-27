@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       API_BASE_URL: ${{ secrets.API_BASE_URL }}
+      GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
     defaults:
       run:
         working-directory: mobile
@@ -32,11 +33,18 @@ jobs:
           test -n "$ANDROID_UPLOAD_KEYSTORE"
           printf '%s' "$ANDROID_KEY_PROPERTIES" > android/key.properties
           printf '%s' "$ANDROID_UPLOAD_KEYSTORE" | base64 --decode > android/app/upload-keystore.jks
-      - name: Validate production API endpoint
+      - name: Validate production build configuration
         run: |
           case "$API_BASE_URL" in
             https://*) ;;
             *) printf '%s\n' "API_BASE_URL must use HTTPS" >&2; exit 1 ;;
+          esac
+          # Client ID la hang so compile-time. Thieu no thi ban release van build
+          # duoc nhung nut "Tiep tuc voi Google" hong vinh vien, va khong test nao
+          # bat duoc vi test dung gateway gia.
+          case "$GOOGLE_WEB_CLIENT_ID" in
+            *.apps.googleusercontent.com) ;;
+            *) printf '%s\n' "GOOGLE_WEB_CLIENT_ID secret is missing or malformed" >&2; exit 1 ;;
           esac
       - run: flutter pub get
       - run: flutter analyze
@@ -44,6 +52,7 @@ jobs:
       - run: >-
           flutter build appbundle --release
           --dart-define=API_BASE_URL=$API_BASE_URL
+          --dart-define=GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID
       - uses: actions/upload-artifact@v4
         with:
           name: foodai-android-aab

@@ -65,7 +65,16 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Bún bò Huế'), findsOneWidget);
+    // Lịch tháng chiếm phần trên nên thẻ bữa ăn nằm dưới tầm nhìn; ListView
+    // dựng lười nên phải cuộn tới thì widget mới tồn tại.
+    await tester.scrollUntilVisible(
+      find.text('Bún bò Huế'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    // Tên món có thể xuất hiện thêm lần nữa trong thẻ "Phổ biến nhất" của
+    // phần tổng kết tháng, nên không đòi đúng-một.
+    expect(find.text('Bún bò Huế'), findsWidgets);
     expect(find.text('534 kcal'), findsOneWidget);
   });
 }

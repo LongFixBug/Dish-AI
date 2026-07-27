@@ -2,7 +2,7 @@ import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/features/auth/presentation/auth_components.dart';
 import 'package:balance/features/auth/presentation/sign_up_screen.dart';
-import 'package:balance/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:balance/core/widgets/main_shell.dart';
 import 'package:balance/features/onboarding/presentation/profile_setup_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -39,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       final nextPage = state.profile == null
           ? const ProfileSetupScreen()
-          : const DashboardScreen();
+          : const MainShell();
       await Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute<void>(builder: (_) => nextPage),
         (_) => false,
@@ -63,7 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       final nextPage = state.profile == null
           ? const ProfileSetupScreen()
-          : const DashboardScreen();
+          : const MainShell();
       await Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute<void>(builder: (_) => nextPage),
         (_) => false,

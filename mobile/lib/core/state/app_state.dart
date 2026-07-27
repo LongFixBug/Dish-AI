@@ -1,6 +1,7 @@
 import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/features/auth/data/auth_api.dart';
 import 'package:balance/features/auth/data/google_sign_in_api.dart';
+import 'package:balance/features/journal/data/sticker_store.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
 import 'package:balance/features/nutrition/data/nutrition_goal_api.dart';
 import 'package:balance/features/profile/domain/user_profile.dart';
@@ -76,11 +77,15 @@ class AppState extends ChangeNotifier {
     AuthGateway authGateway = const UnavailableAuthGateway(),
     GoogleIdentityGateway? googleIdentityGateway,
     NutritionGoalGateway? nutritionGoalGateway,
+    StickerStore? stickerStore,
   }) async {
     // Lỗi ĐỌC (keystore bị vô hiệu khi đổi khoá màn hình, khôi phục máy mới…)
     // khác hẳn dữ liệu hỏng: coi nó là "chưa có gì" thì lần ghi kế tiếp sẽ đè
     // trắng lên payload vẫn còn giải mã được, biến sự cố tạm thời thành mất
     // dữ liệu vĩnh viễn. Để lỗi đó nổi lên cho tầng gọi xử lý.
+    // Không nạp thư mục sticker ở đây: hàm này chạy cả trong unit test, nơi
+    // không có platform channel để hỏi đường dẫn. main.dart lo việc đó.
+    final stickers = stickerStore ?? FileStickerStore();
     final json = await storage.read();
     if (json == null) {
       return _empty(
@@ -88,7 +93,7 @@ class AppState extends ChangeNotifier {
         authGateway,
         googleIdentityGateway,
         nutritionGoalGateway,
-      );
+      ).._stickerStore = stickers;
     }
     try {
       final profileJson = json['profile'];
@@ -98,35 +103,39 @@ class AppState extends ChangeNotifier {
       final refreshToken = json['refresh_token'] as String?;
       final expiresRaw = json['access_token_expires_at'] as String?;
       final hasSession = accessToken != null && refreshToken != null;
+      final snapshotsJson = json['account_snapshots'];
       return AppState._(
-        storage: storage,
-        authGateway: authGateway,
-        googleIdentityGateway: googleIdentityGateway,
-        nutritionGoalGateway: nutritionGoalGateway,
-        isSignedIn: hasSession,
-        accountEmail: json['account_email'] as String? ?? '',
-        displayName: json['display_name'] as String? ?? '',
-        profile: profileJson is Map
-            ? UserProfile.fromJson(Map<String, dynamic>.from(profileJson))
-            : null,
-        journalEntries: entriesJson is List
-            ? entriesJson
-                  .whereType<Map>()
-                  .map(
-                    (entry) =>
-                        JournalEntry.fromJson(Map<String, dynamic>.from(entry)),
-                  )
-                  .toList()
-            : [],
-        preferences: preferencesJson is List
-            ? preferencesJson.whereType<String>().toSet()
-            : {...defaultPreferences},
-        accessToken: accessToken,
-        refreshToken: refreshToken,
-        accessTokenExpiresAt: expiresRaw == null
-            ? null
-            : DateTime.tryParse(expiresRaw)?.toUtc(),
-      );
+          storage: storage,
+          authGateway: authGateway,
+          googleIdentityGateway: googleIdentityGateway,
+          nutritionGoalGateway: nutritionGoalGateway,
+          isSignedIn: hasSession,
+          accountEmail: json['account_email'] as String? ?? '',
+          displayName: json['display_name'] as String? ?? '',
+          profile: profileJson is Map
+              ? UserProfile.fromJson(Map<String, dynamic>.from(profileJson))
+              : null,
+          journalEntries: entriesJson is List
+              ? entriesJson
+                    .whereType<Map>()
+                    .map(
+                      (entry) => JournalEntry.fromJson(
+                        Map<String, dynamic>.from(entry),
+                      ),
+                    )
+                    .toList()
+              : [],
+          preferences: preferencesJson is List
+              ? preferencesJson.whereType<String>().toSet()
+              : {...defaultPreferences},
+          accessToken: accessToken,
+          refreshToken: refreshToken,
+          accessTokenExpiresAt: expiresRaw == null
+              ? null
+              : DateTime.tryParse(expiresRaw)?.toUtc(),
+        )
+        .._stickerStore = stickers
+        .._loadAccountSnapshots(snapshotsJson);
     } on FormatException {
       // JSON đọc được nhưng nội dung sai định dạng → khởi động lại từ đầu là hợp lý.
       return _empty(
@@ -134,14 +143,14 @@ class AppState extends ChangeNotifier {
         authGateway,
         googleIdentityGateway,
         nutritionGoalGateway,
-      );
+      ).._stickerStore = stickers;
     } on TypeError {
       return _empty(
         storage,
         authGateway,
         googleIdentityGateway,
         nutritionGoalGateway,
-      );
+      ).._stickerStore = stickers;
     }
   }
 
@@ -180,6 +189,12 @@ class AppState extends ChangeNotifier {
   String? _refreshToken;
   DateTime? _accessTokenExpiresAt;
   Future<AuthSession>? _refreshInFlight;
+  // email đã chuẩn hoá -> {profile, journal_entries, preferences} của lần
+  // đăng xuất gần nhất. Xem _archiveAccountSnapshot.
+  final Map<String, dynamic> _accountSnapshots = {};
+  StickerStore _stickerStore = FileStickerStore();
+
+  StickerStore get stickerStore => _stickerStore;
 
   bool get isSignedIn => _isSignedIn;
   String get accountEmail => _accountEmail;
@@ -259,15 +274,49 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> addJournalEntry(JournalEntry entry) async {
+  /// Thêm bữa ăn, ghi kèm sticker ra file nếu có.
+  ///
+  /// Chỉ đường dẫn được lưu vào nhật ký; ảnh nằm riêng ngoài đĩa.
+  Future<void> addJournalEntry(
+    JournalEntry entry, {
+    Uint8List? stickerBytes,
+  }) async {
     if (_journalEntries.any((item) => item.id == entry.id)) return;
-    _journalEntries.insert(0, entry);
+    var saved = entry;
+    if (stickerBytes != null && stickerBytes.isNotEmpty) {
+      final path = await _stickerStore.save(
+        entryId: entry.id,
+        bytes: stickerBytes,
+      );
+      if (path != null) saved = entry.withStickerPath(path);
+    }
+    _journalEntries.insert(0, saved);
     await _saveAndNotify();
   }
 
+  /// Xoá bữa ăn kèm file sticker của nó.
+  ///
+  /// Bỏ bước xoá file thì thư mục tài liệu phình dần bằng ảnh mồ côi mà người
+  /// dùng không có cách nào thấy hay dọn.
   Future<void> removeJournalEntry(String id) async {
+    final removed = _journalEntries
+        .where((entry) => entry.id == id)
+        .toList(growable: false);
     _journalEntries.removeWhere((entry) => entry.id == id);
+    for (final entry in removed) {
+      await _stickerStore.delete(entry.stickerPath);
+    }
     await _saveAndNotify();
+  }
+
+  /// Dò lại dữ liệu nằm ngoài bộ nhớ rồi báo cho UI vẽ lại.
+  ///
+  /// Dùng cho thao tác kéo-xuống-tải-lại. Nhật ký vốn đã nằm sẵn trong bộ
+  /// nhớ nên không cần đọc lại kho; thứ thật sự có thể đã đổi là thư mục ảnh
+  /// sticker — nó nằm ngoài JSON và đường dẫn đổi sau mỗi lần cài lại app.
+  Future<void> refresh() async {
+    await _stickerStore.prepare();
+    notifyListeners();
   }
 
   Future<void> updatePreferences(Set<String> values) async {
@@ -279,6 +328,7 @@ class AppState extends ChangeNotifier {
     final googleIdentityGateway = _googleIdentityGateway;
     final accessToken = _accessToken;
     final refreshToken = _refreshToken;
+    _archiveAccountSnapshot();
     _isSignedIn = false;
     _accessToken = null;
     _refreshToken = null;
@@ -289,18 +339,26 @@ class AppState extends ChangeNotifier {
     _journalEntries.clear();
     _preferences = {...defaultPreferences};
     await _saveAndNotify();
-    try {
-      if (googleIdentityGateway != null) {
+    // Hai việc độc lập, mỗi việc một try riêng. Gộp chung sẽ khiến Google
+    // signOut ném (v7 bắt buộc initialize trước — tài khoản đăng nhập bằng mật
+    // khẩu thì chưa từng initialize) nuốt luôn bước thu hồi refresh token, để
+    // token sống tiếp trên máy chủ dù người dùng đã bấm đăng xuất.
+    if (googleIdentityGateway != null) {
+      try {
         await googleIdentityGateway.signOut();
+      } on Object {
+        // Phiên Google cục bộ không quan trọng bằng việc thu hồi token phía sau.
       }
-      if (accessToken != null && refreshToken != null) {
+    }
+    if (accessToken != null && refreshToken != null) {
+      try {
         await _authGateway.logout(
           accessToken: accessToken,
           refreshToken: refreshToken,
         );
+      } on Object {
+        // The local session is already closed; remote revocation can retry later.
       }
-    } on Object {
-      // The local session is already closed; remote revocation can retry later.
     }
   }
 
@@ -318,7 +376,60 @@ class AppState extends ChangeNotifier {
     _accountEmail = session.user.email.trim().toLowerCase();
     _displayName = session.user.displayName.trim();
     _isSignedIn = true;
+    _restoreAccountSnapshot(_accountEmail);
     await _saveAndNotify();
+  }
+
+  /// Cất hồ sơ + nhật ký của tài khoản đang đăng xuất để lần sau vào lại ngay.
+  ///
+  /// Đăng xuất vẫn phải dọn sạch phiên đang chạy, nhưng xoá luôn hồ sơ thì
+  /// người dùng cũ đăng nhập lại bị ném về màn hình khai báo từ đầu. Bản lưu
+  /// đánh theo email nên tài khoản khác đăng nhập trên cùng máy không bao giờ
+  /// thấy dữ liệu của người trước.
+  void _loadAccountSnapshots(Object? raw) {
+    if (raw is Map) _accountSnapshots.addAll(Map<String, dynamic>.from(raw));
+  }
+
+  void _archiveAccountSnapshot() {
+    final email = _accountEmail;
+    final profile = _profile;
+    if (email.isEmpty || profile == null) return;
+    _accountSnapshots[email] = {
+      'profile': profile.toJson(),
+      'journal_entries': _journalEntries
+          .map((entry) => entry.toJson())
+          .toList(growable: false),
+      'preferences': _preferences.toList(growable: false)..sort(),
+    };
+  }
+
+  void _restoreAccountSnapshot(String email) {
+    if (_profile != null) return;
+    final snapshot = _accountSnapshots[email];
+    if (snapshot is! Map) return;
+    final profileJson = snapshot['profile'];
+    if (profileJson is! Map) return;
+    try {
+      _profile = UserProfile.fromJson(Map<String, dynamic>.from(profileJson));
+    } on Object {
+      // Bản lưu hỏng thì coi như chưa có: người dùng khai lại còn hơn crash.
+      return;
+    }
+    _displayName = _displayName.isEmpty ? _profile!.name : _displayName;
+    final entries = snapshot['journal_entries'];
+    if (entries is List) {
+      _journalEntries
+        ..clear()
+        ..addAll(
+          entries.whereType<Map>().map(
+            (entry) => JournalEntry.fromJson(Map<String, dynamic>.from(entry)),
+          ),
+        );
+    }
+    final preferences = snapshot['preferences'];
+    if (preferences is List) {
+      _preferences = preferences.whereType<String>().toSet();
+    }
   }
 
   Future<AuthSession> _refreshSession(String refreshToken) async {
@@ -346,6 +457,7 @@ class AppState extends ChangeNotifier {
           .map((entry) => entry.toJson())
           .toList(growable: false),
       'preferences': _preferences.toList(growable: false)..sort(),
+      'account_snapshots': _accountSnapshots,
     });
     notifyListeners();
   }

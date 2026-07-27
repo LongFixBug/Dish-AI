@@ -1,18 +1,22 @@
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/theme/balance_theme.dart';
-import 'package:balance/core/widgets/balance_bottom_bar.dart';
 import 'package:balance/core/widgets/graph_paper_background.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
 import 'package:balance/features/analyze/presentation/analyze_screen.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
-import 'package:balance/features/journal/presentation/journal_screen.dart';
-import 'package:balance/features/profile/presentation/profile_screen.dart';
-import 'package:balance/features/suggestions/presentation/suggestions_screen.dart';
+import 'package:balance/features/mascot/domain/mascot_shape.dart';
+import 'package:balance/features/profile/domain/user_profile.dart';
+import 'package:balance/features/mascot/presentation/walking_mascot.dart';
+import 'package:balance/features/journal/presentation/sticker_thumb.dart';
 import 'package:flutter/material.dart';
 
 class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({this.now, super.key});
+
+  /// Đồng hồ tiêm được. Golden test cần một mốc thời gian cố định, nếu không
+  /// lời chào đổi theo giờ chạy test và ảnh mẫu hỏng vào buổi khác trong ngày.
+  final DateTime? now;
 
   void _open(BuildContext context, Widget page) {
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
@@ -22,7 +26,8 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.maybeOf(context);
     final profile = state?.profile;
-    final entries = state?.entriesForDate(DateTime.now()) ?? const [];
+    final today = now ?? DateTime.now();
+    final entries = state?.entriesForDate(today) ?? const [];
     final hasAppState = state != null;
     final totals = hasAppState
         ? _DayTotals.fromEntries(entries)
@@ -30,40 +35,69 @@ class DashboardScreen extends StatelessWidget {
     final calorieTarget = profile?.dailyCalorieTarget ?? 1800;
 
     return Scaffold(
-      bottomNavigationBar: BalanceBottomBar(
-        onHomePressed: () {},
-        onJournalPressed: () => _open(context, const JournalScreen()),
-        onCameraPressed: () => _open(context, const AnalyzeScreen()),
-        onSuggestionsPressed: () => _open(context, const SuggestionsScreen()),
-        onProfilePressed: () => _open(context, const ProfileScreen()),
-      ),
       body: GraphPaperBackground(
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _DashboardHeader(
-                  name: profile?.name ?? 'An',
-                  date: hasAppState ? DateTime.now() : DateTime(2024, 5, 15),
-                  useLegacyGreeting: !hasAppState,
-                ),
-                const SizedBox(height: 16),
-                _TodayCard(totals: totals, calorieTarget: calorieTarget),
-                const SizedBox(height: 16),
-                _MealList(entries: entries, useDemo: !hasAppState),
-                const SizedBox(height: 16),
-                PressableButton(
-                  label: 'Chụp món ăn',
-                  icon: Icons.camera_alt_outlined,
-                  onPressed: () => _open(context, const AnalyzeScreen()),
-                ),
-              ],
+          child: RefreshIndicator(
+            onRefresh: () async => state?.refresh(),
+            color: BalanceColors.blueDark,
+            backgroundColor: BalanceColors.paper,
+            child: SingleChildScrollView(
+              // Nội dung ngắn hơn màn hình vẫn phải kéo được, không thì thao
+              // tác tải lại chết ngay ở ngày chưa ăn gì.
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _DashboardHeader(
+                    name: profile?.name ?? 'An',
+                    date: hasAppState ? today : DateTime(2024, 5, 15),
+                    useLegacyGreeting: !hasAppState,
+                  ),
+                  const SizedBox(height: 16),
+                  _TodayCard(
+                    totals: totals,
+                    calorieTarget: calorieTarget,
+                    entries: entries,
+                  ),
+                  const SizedBox(height: 12),
+                  _MascotCard(profile: profile),
+                  const SizedBox(height: 16),
+                  _MealList(entries: entries, useDemo: !hasAppState),
+                  const SizedBox(height: 16),
+                  PressableButton(
+                    label: 'Chụp món ăn',
+                    icon: Icons.camera_alt_outlined,
+                    onPressed: () => _open(context, const AnalyzeScreen()),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Khoảnh sân cho linh vật đi qua đi lại.
+class _MascotCard extends StatelessWidget {
+  const _MascotCard({required this.profile});
+
+  final UserProfile? profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final shape = profile == null
+        ? MascotShape.fit
+        : mascotShapeFor(
+            heightCm: profile!.heightCm,
+            weightKg: profile!.weightKg,
+          );
+    return SketchCard(
+      color: BalanceColors.paperBlue,
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+      child: WalkingMascot(shape: shape),
     );
   }
 }
@@ -143,10 +177,15 @@ class _MealList extends StatelessWidget {
 }
 
 class _TodayCard extends StatelessWidget {
-  const _TodayCard({required this.totals, required this.calorieTarget});
+  const _TodayCard({
+    required this.totals,
+    required this.calorieTarget,
+    this.entries = const [],
+  });
 
   final _DayTotals totals;
   final int calorieTarget;
+  final List<JournalEntry> entries;
 
   @override
   Widget build(BuildContext context) {
@@ -197,6 +236,11 @@ class _TodayCard extends StatelessWidget {
               ),
             ],
           ),
+          if (entries.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            // Ăn gì hôm nay nhìn phát biết, khỏi phải cuộn xuống danh sách.
+            Center(child: StickerStrip(entries: entries, size: 38)),
+          ],
           const SizedBox(height: 14),
           Row(
             children: [

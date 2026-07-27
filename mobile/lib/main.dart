@@ -3,14 +3,20 @@ import 'package:balance/core/state/app_state.dart';
 import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/features/auth/data/auth_api.dart';
 import 'package:balance/features/auth/data/google_sign_in_api.dart';
+import 'package:balance/features/journal/data/sticker_store.dart';
 import 'package:balance/features/nutrition/data/nutrition_goal_api.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/widgets.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Nạp thư mục sticker TRƯỚC khi dựng UI: widget đọc file sticker đồng bộ
+  // nên đường dẫn phải sẵn sàng từ trước, không kịp chờ.
+  await FileStickerStore().prepare();
   const secureStorage = FlutterSecureStorage();
-  runApp(BalanceApp(appState: await _restoreState(SecureAppStorage(secureStorage))));
+  runApp(
+    BalanceApp(appState: await _restoreState(SecureAppStorage(secureStorage))),
+  );
 }
 
 Future<AppState> _restoreState(AppStorage storage) async {

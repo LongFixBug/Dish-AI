@@ -1,47 +1,34 @@
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/state/app_state.dart';
 import 'package:balance/core/theme/balance_theme.dart';
-import 'package:balance/core/widgets/balance_bottom_bar.dart';
-import 'package:balance/core/widgets/food_photo.dart';
 import 'package:balance/core/widgets/graph_paper_background.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
-import 'package:balance/features/analyze/presentation/analyze_screen.dart';
-import 'package:balance/features/journal/presentation/journal_screen.dart';
-import 'package:balance/features/profile/presentation/profile_screen.dart';
+import 'package:balance/features/journal/domain/journal_entry.dart';
+import 'package:balance/features/suggestions/data/suggestions_api.dart';
+import 'package:balance/features/suggestions/domain/suggested_dish.dart';
 import 'package:flutter/material.dart';
 
 class SuggestionsScreen extends StatelessWidget {
-  const SuggestionsScreen({super.key});
+  const SuggestionsScreen({this.gateway, super.key});
+
+  /// Bỏ trống thì gọi backend thật; test tiêm bản giả.
+  final SuggestionsGateway? gateway;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gợi ý bữa tối'),
+        title: const Text('Gợi ý cho bạn'),
         centerTitle: true,
         backgroundColor: BalanceColors.paperBlue,
-      ),
-      bottomNavigationBar: BalanceBottomBar(
-        currentIndex: 3,
-        onHomePressed: () =>
-            Navigator.of(context).popUntil((route) => route.isFirst),
-        onJournalPressed: () => Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(builder: (_) => const JournalScreen()),
-        ),
-        onCameraPressed: () => Navigator.of(
-          context,
-        ).push(MaterialPageRoute<void>(builder: (_) => const AnalyzeScreen())),
-        onProfilePressed: () => Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(builder: (_) => const ProfileScreen()),
-        ),
       ),
       body: GraphPaperBackground(
         child: SafeArea(
           top: false,
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
-            child: const _SuggestionsContent(),
+            child: _SuggestionsContent(gateway: gateway),
           ),
         ),
       ),
@@ -49,57 +36,201 @@ class SuggestionsScreen extends StatelessWidget {
   }
 }
 
-class _SuggestionsContent extends StatelessWidget {
-  const _SuggestionsContent();
+class _SuggestionsContent extends StatefulWidget {
+  const _SuggestionsContent({this.gateway});
+
+  final SuggestionsGateway? gateway;
+
+  @override
+  State<_SuggestionsContent> createState() => _SuggestionsContentState();
+}
+
+class _SuggestionsContentState extends State<_SuggestionsContent> {
+  SuggestionsApi? _ownApi;
+  Future<SuggestionResult>? _request;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _request ??= _load();
+  }
+
+  @override
+  void dispose() {
+    _ownApi?.close();
+    super.dispose();
+  }
+
+  Future<SuggestionResult> _load() async {
+    final state = AppScope.maybeOf(context);
+    if (state == null) throw const SuggestionsApiException('Chưa đăng nhập.');
+    final gateway = widget.gateway ?? (_ownApi ??= SuggestionsApi());
+    final today = state.entriesForDate(DateTime.now());
+    final token = await state.validAccessToken();
+    return gateway.fetch(
+      accessToken: token,
+      query: SuggestionQuery(
+        consumedCalories: today.fold<double>(0, (a, e) => a + e.calories),
+        consumedProtein: today.fold<double>(0, (a, e) => a + e.proteinGrams),
+        consumedFat: today.fold<double>(0, (a, e) => a + e.fatGrams),
+        consumedCarbs: today.fold<double>(0, (a, e) => a + e.carbsGrams),
+        // Đã ăn hôm nay rồi thì đừng gợi ý lại đúng món đó.
+        excludeDishNames: today.map((entry) => entry.dishName).toList(),
+        allergies: state.profile?.allergies ?? const [],
+        preferences: state.preferences.toList(),
+      ),
+    );
+  }
+
+  Future<void> _addToJournal(SuggestedDish dish) async {
+    final state = AppScope.maybeOf(context);
+    if (state == null) return;
+    final now = DateTime.now();
+    await state.addJournalEntry(
+      JournalEntry(
+        id: '${now.microsecondsSinceEpoch}-${dish.dishName}',
+        dishName: dish.dishName,
+        loggedAt: now,
+        mealType: _mealTypeFor(now),
+        calories: dish.calories,
+        proteinGrams: dish.proteinGrams,
+        fatGrams: dish.fatGrams,
+        carbsGrams: dish.carbsGrams,
+        fiberGrams: 0,
+        totalGrams: dish.grams,
+      ),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Đã thêm ${dish.dishName} vào nhật ký')),
+    );
+    // Ăn xong thì khoảng trống đổi, gợi ý cũ không còn đúng nữa.
+    setState(() {
+      _request = _load();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.maybeOf(context);
-    final target = state?.profile?.dailyCalorieTarget ?? 1800;
-    final consumed = state?.todayCalories(DateTime.now()) ?? 1240;
-    final remaining = (target - consumed).round().clamp(0, 4000);
     final preferences = state?.preferences ?? AppState.defaultPreferences;
     final hasSafetyFlags = state?.profile?.hasNutritionSafetyFlags ?? false;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _RemainingCaloriesCard(calories: remaining),
-        const SizedBox(height: 12),
-        _SuggestionDisclaimer(hasSafetyFlags: hasSafetyFlags),
-        const SizedBox(height: 18),
-        const _SuggestionCard(
-          meal: FoodPhotoMeal.caKho,
-          background: Color(0xFFE3F6D7),
-          name: 'Cá kho tộ + cơm',
-          calories: 520,
-          protein: 28,
-          carbs: 64,
-          fat: 16,
+    return FutureBuilder<SuggestionResult>(
+      future: _request,
+      builder: (context, snapshot) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _RemainingCaloriesCard(
+              calories: (snapshot.data?.remaining.calories ?? 0).round(),
+              loading: snapshot.connectionState == ConnectionState.waiting,
+            ),
+            const SizedBox(height: 12),
+            _SuggestionDisclaimer(hasSafetyFlags: hasSafetyFlags),
+            const SizedBox(height: 18),
+            ..._results(snapshot),
+            const SizedBox(height: 22),
+            _PreferenceSection(
+              preferences: preferences,
+              onEdit: state == null
+                  ? null
+                  : () async {
+                      await _editPreferences(context);
+                      if (mounted) {
+                        setState(() {
+                          _request = _load();
+                        });
+                      }
+                    },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  List<Widget> _results(AsyncSnapshot<SuggestionResult> snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+      return const [
+        Padding(
+          padding: EdgeInsets.symmetric(vertical: 28),
+          child: Center(child: CircularProgressIndicator()),
         ),
-        const SizedBox(height: 16),
-        const _SuggestionCard(
-          meal: FoodPhotoMeal.bunGa,
-          background: Color(0xFFFFE1BE),
-          name: 'Bún gà rau củ',
-          calories: 480,
-          protein: 28,
-          carbs: 54,
-          fat: 14,
+      ];
+    }
+    if (snapshot.hasError) {
+      return [
+        _SuggestionNotice(
+          icon: Icons.cloud_off_rounded,
+          message: '${snapshot.error}',
+          onRetry: () => setState(() {
+            _request = _load();
+          }),
         ),
-        const SizedBox(height: 22),
-        _PreferenceSection(
-          preferences: preferences,
-          onEdit: state == null ? null : () => _editPreferences(context),
+      ];
+    }
+    final dishes = snapshot.data?.dishes ?? const <SuggestedDish>[];
+    if (dishes.isEmpty) {
+      return const [
+        _SuggestionNotice(
+          icon: Icons.check_circle_outline_rounded,
+          message: 'Hôm nay bạn đã ăn đủ rồi, Balance không gợi ý thêm nhé!',
         ),
-        const SizedBox(height: 18),
-        PressableButton(
-          label: 'Xem thực đơn',
-          icon: Icons.restaurant_menu_rounded,
-          backgroundColor: BalanceColors.yellow,
-          foregroundColor: BalanceColors.ink,
-          onPressed: () => _showWeeklyMenu(context),
-        ),
+      ];
+    }
+    return [
+      for (final dish in dishes) ...[
+        _SuggestionCard(dish: dish, onAdd: () => _addToJournal(dish)),
+        const SizedBox(height: 14),
       ],
+    ];
+  }
+}
+
+MealType _mealTypeFor(DateTime moment) {
+  final hour = moment.hour;
+  if (hour < 10) return MealType.breakfast;
+  if (hour < 15) return MealType.lunch;
+  if (hour < 21) return MealType.dinner;
+  return MealType.snack;
+}
+
+/// Thông báo thay cho danh sách khi lỗi hoặc không có gợi ý nào.
+class _SuggestionNotice extends StatelessWidget {
+  const _SuggestionNotice({
+    required this.icon,
+    required this.message,
+    this.onRetry,
+  });
+
+  final IconData icon;
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return SketchCard(
+      shadow: false,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 26),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              ),
+            ],
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 12),
+            PressableButton(label: 'Thử lại', onPressed: onRetry),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -141,18 +272,19 @@ class _SuggestionDisclaimer extends StatelessWidget {
 }
 
 class _RemainingCaloriesCard extends StatelessWidget {
-  const _RemainingCaloriesCard({required this.calories});
+  const _RemainingCaloriesCard({required this.calories, this.loading = false});
 
   final int calories;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     return SketchCard(
-      color: Color(0xFFFFE69A),
+      color: const Color(0xFFFFE69A),
       child: Row(
         children: [
-          Icon(Icons.lightbulb_outline_rounded, size: 42),
-          SizedBox(width: 14),
+          const Icon(Icons.lightbulb_outline_rounded, size: 42),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,88 +354,75 @@ class _PreferenceSection extends StatelessWidget {
 }
 
 class _SuggestionCard extends StatelessWidget {
-  const _SuggestionCard({
-    required this.meal,
-    required this.background,
-    required this.name,
-    required this.calories,
-    required this.protein,
-    required this.carbs,
-    required this.fat,
-  });
+  const _SuggestionCard({required this.dish, required this.onAdd});
 
-  final FoodPhotoMeal meal;
-  final Color background;
-  final String name;
-  final int calories;
-  final int protein;
-  final int carbs;
-  final int fat;
+  final SuggestedDish dish;
+  final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
     return SketchCard(
-      color: background,
-      padding: const EdgeInsets.all(10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(9),
-            child: SizedBox(
-              width: 142,
-              height: 154,
-              child: FoodPhoto(meal: meal),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  dish.dishName,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              Text(
+                '${dish.calories.round()} kcal',
+                style: const TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.w900,
+                  color: BalanceColors.blueDark,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        name,
-                        style: Theme.of(
-                          context,
-                        ).textTheme.headlineSmall?.copyWith(fontSize: 22),
+          const SizedBox(height: 4),
+          Text(
+            '${dish.grams.round()} g · đạm ${dish.proteinGrams.round()}g · '
+            'carb ${dish.carbsGrams.round()}g · béo ${dish.fatGrams.round()}g',
+            style: const TextStyle(fontSize: 13, color: BalanceColors.muted),
+          ),
+          if (dish.reason.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            // Gợi ý nói được lý do thì người dùng tin và bấm; gợi ý im lặng
+            // thì bị lướt qua.
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: BalanceColors.paperBlue,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.tips_and_updates_outlined, size: 17),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      dish.reason,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Lưu món gợi ý',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () =>
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Đã lưu gợi ý $name')),
-                          ),
-                      icon: const Icon(Icons.bookmark_border_rounded),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '$calories kcal',
-                  style: const TextStyle(
-                    color: Color(0xFF228238),
-                    fontSize: 25,
-                    fontWeight: FontWeight.w900,
                   ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    _TinyMacro('Đạm', protein, const Color(0xFF208B36)),
-                    const SizedBox(width: 5),
-                    _TinyMacro('Carb', carbs, BalanceColors.blueDark),
-                    const SizedBox(width: 5),
-                    _TinyMacro('Béo', fat, const Color(0xFFE94F14)),
-                  ],
-                ),
-              ],
+                ],
+              ),
             ),
+          ],
+          const SizedBox(height: 10),
+          PressableButton(
+            label: 'Thêm vào nhật ký',
+            icon: Icons.add_circle_outline_rounded,
+            onPressed: onAdd,
           ),
         ],
       ),
@@ -358,72 +477,6 @@ Future<void> _editPreferences(BuildContext context) async {
   await state.updatePreferences(selected);
 }
 
-Future<void> _showWeeklyMenu(BuildContext context) {
-  return showModalBottomSheet<void>(
-    context: context,
-    builder: (context) => const SafeArea(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, 18, 20, 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Thực đơn cân bằng',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
-            ),
-            SizedBox(height: 14),
-            Text('Thứ Hai • Cá kho tộ + cơm'),
-            Text('Thứ Ba • Bún gà rau củ'),
-            Text('Thứ Tư • Cơm tấm sườn'),
-            Text('Thứ Năm • Phở bò'),
-            Text('Thứ Sáu • Cá hấp + rau luộc'),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
-Color _preferenceColor(String preference) => switch (preference) {
-  'Nhiều đạm' => const Color(0xFFE0F6CE),
-  'Ít dầu' => const Color(0xFFE1EDFF),
-  'Món Việt' => const Color(0xFFFFE2C8),
-  'Ăn chay' => const Color(0xFFE7F7DB),
-  _ => const Color(0xFFFFE7CB),
-};
-
-class _TinyMacro extends StatelessWidget {
-  const _TinyMacro(this.label, this.value, this.color);
-
-  final String label;
-  final int value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        decoration: BoxDecoration(
-          color: BalanceColors.paper,
-          border: Border.all(color: BalanceColors.ink, width: 1.5),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Column(
-          children: [
-            Text(label, style: const TextStyle(fontSize: 10)),
-            Text(
-              '${value}g',
-              style: TextStyle(color: color, fontWeight: FontWeight.w900),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _PreferenceChip extends StatelessWidget {
   const _PreferenceChip({required this.label, required this.color});
 
@@ -450,3 +503,11 @@ class _PreferenceChip extends StatelessWidget {
     );
   }
 }
+
+Color _preferenceColor(String preference) => switch (preference) {
+  'Nhiều đạm' => const Color(0xFFE0F6CE),
+  'Ít dầu' => const Color(0xFFE1EDFF),
+  'Món Việt' => const Color(0xFFFFE2C8),
+  'Ăn chay' => const Color(0xFFE7F7DB),
+  _ => const Color(0xFFFFE7CB),
+};

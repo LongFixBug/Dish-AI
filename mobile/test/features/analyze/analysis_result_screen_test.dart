@@ -138,6 +138,15 @@ void main() {
       ),
     );
 
+
+    // Khối lượng chỉ sửa được sau khi bấm nút mở — chạm nhầm không còn bật
+    // bàn phím giữa lúc đang cuộn xem kết quả.
+    expect(find.byKey(const ValueKey('component-grams-0')), findsNothing);
+    final toggle = find.byKey(const ValueKey('component-edit-toggle-0'));
+    await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('component-grams-0')), findsOneWidget);
     expect(
       tester
@@ -147,7 +156,6 @@ void main() {
           .data,
       '680 kcal',
     );
-    expect(find.text('30 g'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('component-plus-0')));
     await tester.pump();
@@ -236,6 +244,12 @@ void main() {
       ),
     );
 
+    final toggle = find.byKey(const ValueKey('component-edit-toggle-0'));
+    await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+
     await tester.enterText(find.byKey(const ValueKey('component-grams-0')), '0');
     await tester.pump();
     expect(
@@ -275,7 +289,9 @@ void main() {
     );
 
     // 2 dòng thành phần + 1 tổng ở phần tóm tắt.
-    expect(find.text('— kcal'), findsNWidgets(3));
+    expect(find.text('500 g  •  — kcal'), findsOneWidget);
+    expect(find.text('40 g  •  — kcal'), findsOneWidget);
+    expect(find.text('— kcal'), findsOneWidget);
     expect(find.text('0 kcal'), findsNothing);
   });
 }

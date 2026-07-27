@@ -5,6 +5,8 @@ import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/core/widgets/food_photo.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
 import 'package:balance/features/analyze/data/analyze_api.dart';
+import 'package:balance/features/analyze/data/sticker_api.dart';
+import 'package:balance/features/analyze/presentation/scan_beam.dart';
 import 'package:balance/features/analyze/domain/analyze_result.dart';
 import 'package:balance/features/analyze/presentation/analysis_result_screen.dart';
 import 'package:flutter/material.dart';
@@ -21,11 +23,15 @@ class AnalyzeScreen extends StatefulWidget {
   const AnalyzeScreen({
     this.pickImage = _devicePickImage,
     this.analyzeImage,
+    this.stickerGateway,
     super.key,
   });
 
   final PickImage pickImage;
   final AnalyzeImage? analyzeImage;
+
+  /// Bỏ trống thì dùng backend thật; test tiêm bản giả để khỏi chạm mạng.
+  final StickerGateway? stickerGateway;
 
   static Future<XFile?> _devicePickImage(ImageSource source) {
     return ImagePicker().pickImage(
@@ -41,6 +47,7 @@ class AnalyzeScreen extends StatefulWidget {
 
 class _AnalyzeScreenState extends State<AnalyzeScreen> {
   AnalyzeApi? _api;
+  StickerApi? _stickerApi;
   Uint8List? _imageBytes;
   String? _error;
   bool _loading = false;
@@ -60,8 +67,26 @@ class _AnalyzeScreenState extends State<AnalyzeScreen> {
 
   @override
   void dispose() {
+    _stickerApi?.close();
     _api?.close();
     super.dispose();
+  }
+
+  /// Sticker là phần trang trí: hỏng thì trả null để màn kết quả dùng ảnh gốc.
+  Future<Uint8List?> _cutOutSticker(Uint8List bytes, String filename) async {
+    final state = AppScope.maybeOf(context);
+    if (state == null) return null;
+    final gateway = widget.stickerGateway ?? (_stickerApi ??= StickerApi());
+    try {
+      final token = await state.validAccessToken();
+      return await gateway.cutOut(
+        imageBytes: bytes,
+        filename: filename,
+        accessToken: token,
+      );
+    } on Object {
+      return null;
+    }
   }
 
   Future<void> _pickAndAnalyze(ImageSource source) async {
@@ -81,12 +106,20 @@ class _AnalyzeScreenState extends State<AnalyzeScreen> {
       });
 
       final analyze = widget.analyzeImage ?? _api!.analyzeImage;
-      final result = await analyze(bytes: bytes, filename: image.name);
+      // Hai việc chạy song song: người dùng chỉ chờ bằng việc lâu hơn, chứ
+      // không phải chờ cộng dồn cả hai.
+      final analysis = analyze(bytes: bytes, filename: image.name);
+      final sticker = _cutOutSticker(bytes, image.name);
+      final result = await analysis;
+      final stickerBytes = await sticker;
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
-          builder: (_) =>
-              AnalysisResultScreen(result: result, imageBytes: bytes),
+          builder: (_) => AnalysisResultScreen(
+            result: result,
+            imageBytes: bytes,
+            stickerBytes: stickerBytes,
+          ),
         ),
       );
     } catch (error) {
@@ -246,11 +279,13 @@ class _CameraFrame extends StatelessWidget {
       fit: StackFit.expand,
       children: [
         if (imageBytes case final bytes?)
-          Image.memory(
-            bytes,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) =>
-                const FoodPhoto(meal: FoodPhotoMeal.comTam),
+          // Đang phân tích thì luồng sáng quét dọc tấm ảnh, để người dùng
+          // thấy máy đang làm việc trên đúng ảnh của mình.
+          ScanBeam(
+            imageBytes: bytes,
+            running: loading,
+            borderRadius: 0,
+            fallback: const FoodPhoto(meal: FoodPhotoMeal.comTam),
           )
         else
           const ColoredBox(

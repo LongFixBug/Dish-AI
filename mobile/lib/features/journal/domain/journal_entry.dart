@@ -22,6 +22,7 @@ class JournalEntry {
     required this.carbsGrams,
     required this.fiberGrams,
     required this.totalGrams,
+    this.stickerPath,
   });
 
   factory JournalEntry.fromAnalysis({
@@ -44,6 +45,21 @@ class JournalEntry {
     );
   }
 
+  /// Bản sao gắn đường dẫn sticker vừa ghi ra đĩa.
+  JournalEntry withStickerPath(String? path) => JournalEntry(
+    id: id,
+    dishName: dishName,
+    loggedAt: loggedAt,
+    mealType: mealType,
+    calories: calories,
+    proteinGrams: proteinGrams,
+    fatGrams: fatGrams,
+    carbsGrams: carbsGrams,
+    fiberGrams: fiberGrams,
+    totalGrams: totalGrams,
+    stickerPath: path,
+  );
+
   factory JournalEntry.fromJson(Map<String, dynamic> json) {
     return JournalEntry(
       id: json['id'] as String? ?? '',
@@ -61,6 +77,7 @@ class JournalEntry {
       carbsGrams: _doubleValue(json['carbs_g']),
       fiberGrams: _doubleValue(json['fiber_g']),
       totalGrams: _doubleValue(json['total_grams']),
+      stickerPath: json['sticker_path'] as String?,
     );
   }
 
@@ -75,6 +92,9 @@ class JournalEntry {
   final double fiberGrams;
   final double totalGrams;
 
+  /// Đường dẫn file PNG sticker trên máy; ``null`` khi bữa ăn chưa có sticker.
+  final String? stickerPath;
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'dish_name': dishName,
@@ -86,6 +106,9 @@ class JournalEntry {
     'carbs_g': carbsGrams,
     'fiber_g': fiberGrams,
     'total_grams': totalGrams,
+    // Chỉ đường dẫn, KHÔNG phải ảnh: nhật ký nằm chung một chuỗi JSON nên
+    // nhét ảnh vào đây là mỗi lần ghi phải mã hoá lại toàn bộ.
+    'sticker_path': stickerPath,
   };
 }
 

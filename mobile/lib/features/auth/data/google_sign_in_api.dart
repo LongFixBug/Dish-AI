@@ -21,7 +21,7 @@ class GoogleSignInGateway implements GoogleIdentityGateway {
   final GoogleSignIn _signIn;
   final String _serverClientId;
   final String _clientId;
-  Future<void>? _initialization;
+  final RetryableOnce _initialization = RetryableOnce();
 
   @override
   Future<String> authenticate() async {
@@ -31,12 +31,14 @@ class GoogleSignInGateway implements GoogleIdentityGateway {
       );
     }
     try {
-      await (_initialization ??= _signIn.initialize(
-        clientId: kIsWeb
-            ? _serverClientId
-            : (_clientId.isEmpty ? null : _clientId),
-        serverClientId: _serverClientId,
-      ));
+      await _initialization.run(
+        () => _signIn.initialize(
+          clientId: kIsWeb
+              ? _serverClientId
+              : (_clientId.isEmpty ? null : _clientId),
+          serverClientId: _serverClientId,
+        ),
+      );
       final account = await _signIn.authenticate();
       final idToken = account.authentication.idToken;
       if (idToken == null || idToken.isEmpty) {
@@ -62,6 +64,22 @@ class GoogleSignInGateway implements GoogleIdentityGateway {
 
   @override
   Future<void> signOut() => _signIn.signOut();
+}
+
+/// Chạy một tác vụ đúng một lần, nhưng chỉ ghi nhớ kết quả THÀNH CÔNG.
+///
+/// Kiểu `_pending ??= task()` thông thường nhớ luôn cả Future lỗi: một lần
+/// initialize hỏng vì mất mạng sẽ khiến mọi lần gọi sau đó `await` lại đúng
+/// Future đã reject đó, và nút "thử lại" thành vô nghĩa cho tới khi tắt app.
+class RetryableOnce {
+  Future<void>? _pending;
+
+  Future<void> run(Future<void> Function() task) {
+    return _pending ??= task().onError<Object>((error, stackTrace) {
+      _pending = null;
+      Error.throwWithStackTrace(error, stackTrace);
+    });
+  }
 }
 
 class GoogleSignInApiException implements Exception {

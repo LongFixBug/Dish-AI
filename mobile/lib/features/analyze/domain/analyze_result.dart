@@ -114,6 +114,26 @@ class AnalyzeResult {
       error: error,
     );
   }
+
+  /// Đổi tên món theo đính chính của người dùng, giữ nguyên mọi số liệu.
+  ///
+  /// Chỉ sửa nhãn: người dùng biết mình ăn món gì, nhưng khối lượng và dinh
+  /// dưỡng thì vẫn là ước lượng của hệ thống nên không được bịa lại.
+  AnalyzeResult renamed(String newDishName) {
+    final name = newDishName.trim();
+    if (name.isEmpty) return this;
+    return AnalyzeResult(
+      dishName: name,
+      source: source,
+      cvConfidence: cvConfidence,
+      recognitionConfidence: recognitionConfidence,
+      nutrition: nutrition,
+      dishes: dishes,
+      reasoning: reasoning,
+      missingItems: missingItems,
+      error: error,
+    );
+  }
 }
 
 class AnalyzedDish {
@@ -218,25 +238,18 @@ class NutritionSummary {
         .asMap()
         .entries
         .map(
-          (entry) => entry.key == index
-              ? entry.value.scaledTo(grams)
-              : entry.value,
+          (entry) =>
+              entry.key == index ? entry.value.scaledTo(grams) : entry.value,
         )
         .toList(growable: false);
     return NutritionSummary(
       items: updatedItems,
-      totalCalories: updatedItems.fold(
-        0.0,
-        (sum, item) => sum + item.calories,
-      ),
+      totalCalories: updatedItems.fold(0.0, (sum, item) => sum + item.calories),
       totalProteinGrams: updatedItems.fold(
         0.0,
         (sum, item) => sum + item.proteinGrams,
       ),
-      totalFatGrams: updatedItems.fold(
-        0.0,
-        (sum, item) => sum + item.fatGrams,
-      ),
+      totalFatGrams: updatedItems.fold(0.0, (sum, item) => sum + item.fatGrams),
       totalCarbsGrams: updatedItems.fold(
         0.0,
         (sum, item) => sum + item.carbsGrams,

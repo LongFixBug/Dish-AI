@@ -34,3 +34,6 @@ logs/
 # RAG eval reports (output, không commit — chạy lại sinh mới)
 ml/evaluation/reports/
 reports/
+
+# Dart defines (chứa client ID thật — dùng dart_defines.example.json làm mẫu)
+mobile/dart_defines.json

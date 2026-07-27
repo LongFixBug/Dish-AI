@@ -1,5 +1,7 @@
 import 'package:balance/core/theme/balance_theme.dart';
-import 'package:balance/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:balance/core/state/app_scope.dart';
+import 'package:balance/core/state/app_state.dart';
+import 'package:balance/core/widgets/main_shell.dart';
 import 'package:balance/features/onboarding/presentation/profile_setup_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -53,11 +55,16 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(_testApp(const DashboardScreen()));
+    await tester.pumpWidget(
+      AppScope(
+        notifier: AppState.memory(),
+        child: _testApp(MainShell(now: DateTime(2026, 5, 15, 9))),
+      ),
+    );
     await tester.pumpAndSettle();
 
     await expectLater(
-      find.byType(DashboardScreen),
+      find.byType(MainShell),
       matchesGoldenFile('goldens/dashboard.png'),
     );
   });

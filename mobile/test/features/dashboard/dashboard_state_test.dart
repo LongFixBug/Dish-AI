@@ -3,7 +3,7 @@ import 'package:balance/core/state/app_state.dart';
 import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/features/analyze/domain/analyze_result.dart';
-import 'package:balance/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:balance/core/widgets/main_shell.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
 import 'package:balance/features/journal/presentation/journal_screen.dart';
 import 'package:balance/features/profile/domain/user_profile.dart';
@@ -35,7 +35,7 @@ void main() {
         notifier: state,
         child: MaterialApp(
           theme: BalanceTheme.light,
-          home: const DashboardScreen(),
+          home: const MainShell(),
         ),
       ),
     );
@@ -48,7 +48,17 @@ void main() {
     await tester.tap(find.text('Nhật ký'));
     await tester.pumpAndSettle();
     expect(find.byType(JournalScreen), findsOneWidget);
-    expect(find.text('Cơm tấm'), findsOneWidget);
+    // Lịch tháng đứng trên danh sách nên thẻ bữa ăn tụt xuống dưới tầm nhìn;
+    // ListView dựng lười nên phải kéo tới thì widget mới tồn tại. Dùng drag
+    // thẳng thay cho scrollUntilVisible: màn hình có nhiều Scrollable lồng
+    // nhau (lưới lịch) khiến finder của nó không chốt được cái nào.
+    for (var attempt = 0; attempt < 8; attempt++) {
+      if (find.text('Cơm tấm').evaluate().isNotEmpty) break;
+      await tester.drag(find.byType(ListView), const Offset(0, -260));
+      await tester.pumpAndSettle();
+    }
+    // Tên món còn xuất hiện trong thẻ "Phổ biến nhất" của tổng kết tháng.
+    expect(find.text('Cơm tấm'), findsWidgets);
   });
 }
 

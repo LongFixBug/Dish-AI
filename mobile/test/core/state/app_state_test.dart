@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:balance/core/state/app_state.dart';
 import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/features/analyze/domain/analyze_result.dart';
 import 'package:balance/features/auth/data/auth_api.dart';
 import 'package:balance/features/auth/data/google_sign_in_api.dart';
+import 'package:balance/features/journal/data/sticker_store.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
 import 'package:balance/features/nutrition/data/nutrition_goal_api.dart';
 import 'package:balance/features/profile/domain/user_profile.dart';
@@ -166,6 +168,25 @@ void main() {
     },
   );
 
+  test('revokes the refresh token even when Google sign-out fails', () async {
+    // google_sign_in v7 bắt buộc initialize() trước; tài khoản đăng nhập bằng
+    // mật khẩu chưa từng initialize nên signOut() ném. Nếu hai việc dùng chung
+    // một try, refresh token sẽ sống tiếp 30 ngày trên máy chủ.
+    final auth = FakeAuthGateway();
+    final google = _FakeGoogleIdentityGateway(signOutThrows: true);
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: auth,
+      googleIdentityGateway: google,
+    );
+    await state.signIn(email: 'an@example.com', password: 'mat-khau-123');
+
+    await state.signOut();
+
+    expect(auth.loggedOut, isTrue);
+    expect(state.isSignedIn, isFalse);
+  });
+
   test('signs in with a Google ID token through the auth gateway', () async {
     final auth = FakeAuthGateway();
     final google = _FakeGoogleIdentityGateway();
@@ -198,6 +219,172 @@ void main() {
       'fresh-access',
       'fresh-access',
     ]);
+  });
+
+  test('sticker được ghi ra file và dọn sạch khi xoá bữa ăn', () async {
+    // Ảnh nằm ngoài JSON: nhật ký chỉ giữ đường dẫn, nên xoá bữa ăn phải kéo
+    // theo cả file, không thì thư mục tài liệu phình dần bằng ảnh mồ côi.
+    final store = _RecordingStickerStore();
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: FakeAuthGateway(),
+      stickerStore: store,
+    );
+    final entry = JournalEntry(
+      id: 'entry-1',
+      dishName: 'Cơm tấm',
+      loggedAt: DateTime(2026, 7, 27, 12),
+      mealType: MealType.lunch,
+      calories: 680,
+      proteinGrams: 32,
+      fatGrams: 28,
+      carbsGrams: 72,
+      fiberGrams: 3,
+      totalGrams: 350,
+    );
+
+    await state.addJournalEntry(entry, stickerBytes: Uint8List.fromList([1, 2]));
+
+    expect(state.journalEntries.single.stickerPath, '/fake/entry-1.png');
+    expect(store.saved, ['entry-1']);
+
+
+    await state.removeJournalEntry('entry-1');
+
+    expect(store.deleted, ['/fake/entry-1.png']);
+    expect(state.journalEntries, isEmpty);
+  });
+
+  test('bữa ăn không có sticker thì không đụng tới kho ảnh', () async {
+    final store = _RecordingStickerStore();
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: FakeAuthGateway(),
+      stickerStore: store,
+    );
+
+    await state.addJournalEntry(
+      JournalEntry(
+        id: 'entry-2',
+        dishName: 'Phở',
+        loggedAt: DateTime(2026, 7, 27, 8),
+        mealType: MealType.breakfast,
+        calories: 400,
+        proteinGrams: 20,
+        fatGrams: 10,
+        carbsGrams: 60,
+        fiberGrams: 2,
+        totalGrams: 400,
+      ),
+    );
+    await state.removeJournalEntry('entry-2');
+
+    expect(store.saved, isEmpty);
+    expect(store.deleted, isEmpty);
+  });
+
+  test('refresh nạp lại thư mục sticker và báo cho UI dựng lại', () async {
+    // Kéo xuống tải lại: ảnh sticker nằm ngoài JSON nên phải dò lại thư mục,
+    // rồi báo listener để màn hình vẽ lại bằng dữ liệu vừa dò.
+    final store = _RecordingStickerStore();
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: FakeAuthGateway(),
+      stickerStore: store,
+    );
+    var notified = 0;
+    state.addListener(() => notified += 1);
+    expect(store.prepared, isFalse, reason: 'restore không tự nạp');
+
+    await state.refresh();
+
+    expect(store.prepared, isTrue);
+    expect(notified, 1);
+  });
+
+  test('signing back in with the same account returns to a ready profile', () async {
+    // Đăng xuất xoá hồ sơ khỏi phiên đang chạy, nhưng đăng nhập lại cùng tài
+    // khoản thì phải vào thẳng màn hình chính chứ không bắt khai báo lại từ đầu.
+    final storage = MemoryAppStorage();
+    final auth = FakeAuthGateway();
+    final state = await AppState.restore(storage, authGateway: auth);
+    await state.signIn(email: 'an@example.com', password: 'mat-khau-123');
+    await state.completeProfile(
+      UserProfile(
+        name: 'An',
+        email: 'an@example.com',
+        age: 25,
+        heightCm: 170,
+        weightKg: 65,
+        targetWeightKg: 70,
+        gender: 'Nam',
+        activity: 'Vừa phải',
+        goal: 'Tăng cân',
+      ),
+    );
+    await state.addJournalEntry(
+      JournalEntry(
+        id: 'entry-1',
+        dishName: 'Cơm tấm',
+        loggedAt: DateTime(2026, 7, 26, 12),
+        mealType: MealType.lunch,
+        calories: 650,
+        proteinGrams: 32,
+        fatGrams: 22,
+        carbsGrams: 78,
+        fiberGrams: 4,
+        totalGrams: 370,
+      ),
+    );
+
+    await state.signOut();
+    expect(state.profile, isNull, reason: 'phiên đã đăng xuất không giữ hồ sơ');
+
+    await state.signIn(email: 'an@example.com', password: 'mat-khau-123');
+
+    expect(state.profile?.goal, 'Tăng cân');
+    expect(state.profile?.targetWeightKg, 70);
+    expect(state.journalEntries.single.dishName, 'Cơm tấm');
+  });
+
+  test('signing in with a different account never inherits an old profile', () async {
+    final storage = MemoryAppStorage();
+    final auth = FakeAuthGateway();
+    final state = await AppState.restore(storage, authGateway: auth);
+    await state.signIn(email: 'an@example.com', password: 'mat-khau-123');
+    await state.completeProfile(
+      UserProfile(
+        name: 'An',
+        email: 'an@example.com',
+        age: 25,
+        heightCm: 170,
+        weightKg: 65,
+        targetWeightKg: 60,
+        gender: 'Nam',
+        activity: 'Vừa phải',
+        goal: 'Giảm cân',
+      ),
+    );
+    await state.signOut();
+
+    final otherAuth = FakeAuthGateway(
+      session: AuthSession(
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        expiresIn: 900,
+        user: const AuthUser(
+          id: 'other-id',
+          email: 'binh@example.com',
+          displayName: 'Bình',
+          role: 'user',
+        ),
+      ),
+    );
+    final other = await AppState.restore(storage, authGateway: otherAuth);
+    await other.signIn(email: 'binh@example.com', password: 'mat-khau-123');
+
+    expect(other.profile, isNull);
+    expect(other.journalEntries, isEmpty);
   });
 }
 
@@ -274,6 +461,9 @@ class _FakeNutritionGoalGateway implements NutritionGoalGateway {
 }
 
 class _FakeGoogleIdentityGateway implements GoogleIdentityGateway {
+  _FakeGoogleIdentityGateway({this.signOutThrows = false});
+
+  final bool signOutThrows;
   int signInCalls = 0;
 
   @override
@@ -283,5 +473,35 @@ class _FakeGoogleIdentityGateway implements GoogleIdentityGateway {
   }
 
   @override
-  Future<void> signOut() async {}
+  Future<void> signOut() async {
+    if (signOutThrows) {
+      throw StateError('GoogleSignIn has not been initialized');
+    }
+  }
+}
+
+class _RecordingStickerStore implements StickerStore {
+  final List<String> saved = [];
+  final List<String> deleted = [];
+  bool prepared = false;
+
+  @override
+  Future<void> prepare() async => prepared = true;
+
+  @override
+  Future<String?> save({
+    required String entryId,
+    required Uint8List bytes,
+  }) async {
+    saved.add(entryId);
+    return '/fake/$entryId.png';
+  }
+
+  @override
+  Future<Uint8List?> read(String? path) async => null;
+
+  @override
+  Future<void> delete(String? path) async {
+    if (path != null) deleted.add(path);
+  }
 }

@@ -6,6 +6,11 @@ abstract final class BalanceColors {
   static const blueDark = Color(0xFF256DDB);
   static const paperBlue = Color(0xFFDCEBFA);
   static const paper = Color(0xFFFFFCF7);
+
+  // Nền đặt sticker. Sticker có viền TRẮNG, đặt lên `paper` (#FFFCF7 — kem
+  // gần trắng) là viền tàng hình; tông hồng kem đủ đậm để đường viền hiện ra
+  // mà vẫn nằm trong bảng màu ấm của app.
+  static const stickerMat = Color(0xFFF6EDE6);
   static const yellow = Color(0xFFFFD928);
   static const green = Color(0xFF19D978);
   static const orange = Color(0xFFFF7A23);

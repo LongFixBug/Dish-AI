@@ -60,7 +60,10 @@ echo "▶ 4/4  API (:8000)"
 if port_open 8000; then
   echo "   ⏭  đã chạy sẵn"
 else
+  # --timeout-graceful-shutdown: request treo (vd Vision cloud chậm) không được
+  # phép kẹt vòng reload/shutdown vô hạn như từng gặp 26/7.
   DEBUG=false uv run uvicorn backend.main:app --reload --port 8000 \
+    --timeout-graceful-shutdown 5 \
     > "$LOG_DIR/api.log" 2>&1 &
   echo $! > "$RUN_DIR/api.pid"
   wait_for_port 8000 api

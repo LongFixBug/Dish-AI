@@ -3,24 +3,32 @@ import 'dart:typed_data';
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/core/widgets/balance_bottom_bar.dart';
+import 'package:balance/core/widgets/main_shell.dart';
 import 'package:balance/core/widgets/food_photo.dart';
 import 'package:balance/core/widgets/graph_paper_background.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
 import 'package:balance/features/analyze/domain/analyze_result.dart';
+import 'package:balance/features/analyze/data/feedback_api.dart';
 import 'package:balance/features/analyze/presentation/analyze_screen.dart';
+import 'package:balance/features/analyze/presentation/quick_feedback_card.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
-import 'package:balance/features/journal/presentation/journal_screen.dart';
-import 'package:balance/features/profile/presentation/profile_screen.dart';
-import 'package:balance/features/suggestions/presentation/suggestions_screen.dart';
 import 'package:flutter/material.dart';
 
 class AnalysisResultScreen extends StatefulWidget {
   const AnalysisResultScreen({
     required this.result,
     this.imageBytes,
+    this.stickerBytes,
+    this.feedbackGateway,
     super.key,
   });
+
+  /// PNG đã tách nền kèm viền trắng; ``null`` thì rơi về ảnh gốc.
+  final Uint8List? stickerBytes;
+
+  /// Tiêm được để test không chạm mạng.
+  final FeedbackGateway? feedbackGateway;
 
   final AnalyzeResult result;
   final Uint8List? imageBytes;
@@ -33,6 +41,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
   late AnalyzeResult _result = widget.result;
   bool _saving = false;
   bool _saved = false;
+  QuickVerdict _verdict = QuickVerdict.none;
 
   /// Id của entry đã lưu cho chính bữa ăn này, để lần lưu sau ghi đè thay vì
   /// thêm mới — sửa khẩu phần rồi lưu lại không được đếm thành hai bữa.
@@ -59,7 +68,7 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       if (previousId != null) {
         await state.removeJournalEntry(previousId);
       }
-      await state.addJournalEntry(entry);
+      await state.addJournalEntry(entry, stickerBytes: widget.stickerBytes);
       if (!mounted) return;
       _savedEntryId = entry.id;
       setState(() => _saved = true);
@@ -95,6 +104,55 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     });
   }
 
+  void _markRecognitionGood() {
+    setState(() => _verdict = QuickVerdict.good);
+  }
+
+  /// Người dùng bảo nhận diện sai: hỏi tên đúng, sửa ngay trên máy, và chỉ
+  /// gửi ảnh đi khi họ tự tích ô đồng ý.
+  Future<void> _reportRecognitionWrong() async {
+    final input = await showDialog<CorrectionInput>(
+      context: context,
+      builder: (_) => CorrectionDialog(initialName: _result.dishName ?? ''),
+    );
+    if (input == null || !mounted) return;
+
+    setState(() {
+      _result = _result.renamed(input.dishName);
+      _verdict = QuickVerdict.thanks;
+      _saved = false;
+    });
+
+    if (!input.shareImage) return;
+    final bytes = widget.imageBytes;
+    final state = AppScope.maybeOf(context);
+    if (bytes == null || state == null) return;
+    final gateway = widget.feedbackGateway ?? FeedbackApi();
+    try {
+      final token = await state.validAccessToken();
+      await gateway.submitCorrection(
+        imageBytes: bytes,
+        filename: 'correction.jpg',
+        correctDishName: input.dishName,
+        consentToTraining: true,
+        accessToken: token,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã gửi ảnh góp ý. Cảm ơn bạn!')),
+      );
+    } on Object {
+      if (!mounted) return;
+      // Tên món đã sửa xong trên máy rồi, nên lỗi mạng chỉ là mất phần đóng
+      // góp cho việc huấn luyện — không được làm hỏng kết quả đang xem.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chưa gửi được ảnh góp ý, nhưng tên món đã được sửa.'),
+        ),
+      );
+    }
+  }
+
   void _updateComponentGrams(int index, double grams) {
     setState(() {
       _result = _result.scaledItem(index, grams);
@@ -107,20 +165,16 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     return Scaffold(
       bottomNavigationBar: BalanceBottomBar(
         currentIndex: -1,
-        onHomePressed: () =>
-            Navigator.of(context).popUntil((route) => route.isFirst),
-        onJournalPressed: () => Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(builder: (_) => const JournalScreen()),
-        ),
+        // Màn hình kết quả nằm chồng lên khung chính, nên bấm một tab là
+        // đóng cả chồng màn hình rồi mở khung chính đúng tab đó — người dùng
+        // không bị kẹt lại nhiều lớp lịch sử phía sau.
+        onHomePressed: () => _openShell(context, ShellTab.home),
+        onJournalPressed: () => _openShell(context, ShellTab.journal),
         onCameraPressed: () => Navigator.of(context).pushReplacement(
           MaterialPageRoute<void>(builder: (_) => const AnalyzeScreen()),
         ),
-        onSuggestionsPressed: () => Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(builder: (_) => const SuggestionsScreen()),
-        ),
-        onProfilePressed: () => Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(builder: (_) => const ProfileScreen()),
-        ),
+        onSuggestionsPressed: () => _openShell(context, ShellTab.suggestions),
+        onProfilePressed: () => _openShell(context, ShellTab.profile),
       ),
       appBar: AppBar(
         title: const Text('Kết quả phân tích'),
@@ -135,11 +189,15 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
             child: _ResultContent(
               result: _result,
               imageBytes: widget.imageBytes,
+              stickerBytes: widget.stickerBytes,
               saving: _saving,
               saved: _saved,
+              verdict: _verdict,
               onSave: _saveToJournal,
               onEdit: _editPortion,
               onComponentGramsChanged: _updateComponentGrams,
+              onRecognitionGood: _markRecognitionGood,
+              onRecognitionWrong: _reportRecognitionWrong,
             ),
           ),
         ),
@@ -193,20 +251,28 @@ class _ResultContent extends StatelessWidget {
   const _ResultContent({
     required this.result,
     required this.imageBytes,
+    required this.stickerBytes,
     required this.saving,
     required this.saved,
+    required this.verdict,
     required this.onSave,
     required this.onEdit,
     required this.onComponentGramsChanged,
+    required this.onRecognitionGood,
+    required this.onRecognitionWrong,
   });
 
   final AnalyzeResult result;
   final Uint8List? imageBytes;
+  final Uint8List? stickerBytes;
   final bool saving;
   final bool saved;
+  final QuickVerdict verdict;
   final VoidCallback onSave;
   final VoidCallback onEdit;
   final void Function(int index, double grams) onComponentGramsChanged;
+  final VoidCallback onRecognitionGood;
+  final VoidCallback onRecognitionWrong;
 
   @override
   Widget build(BuildContext context) {
@@ -214,9 +280,19 @@ class _ResultContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ResultSummary(result: result, imageBytes: imageBytes),
+        _ResultSummary(
+          result: result,
+          imageBytes: imageBytes,
+          stickerBytes: stickerBytes,
+        ),
         const SizedBox(height: 14),
         if (nutrition != null) _MacroRow(nutrition: nutrition),
+        const SizedBox(height: 12),
+        QuickFeedbackCard(
+          verdict: verdict,
+          onGood: onRecognitionGood,
+          onWrong: onRecognitionWrong,
+        ),
         const SizedBox(height: 12),
         const _NutritionDisclaimer(),
         const SizedBox(height: 20),
@@ -278,10 +354,15 @@ class _NutritionDisclaimer extends StatelessWidget {
 }
 
 class _ResultSummary extends StatelessWidget {
-  const _ResultSummary({required this.result, required this.imageBytes});
+  const _ResultSummary({
+    required this.result,
+    required this.imageBytes,
+    this.stickerBytes,
+  });
 
   final AnalyzeResult result;
   final Uint8List? imageBytes;
+  final Uint8List? stickerBytes;
 
   @override
   Widget build(BuildContext context) {
@@ -296,7 +377,10 @@ class _ResultSummary extends StatelessWidget {
             child: SizedBox(
               width: 132,
               height: 132,
-              child: _ResultImage(imageBytes: imageBytes),
+              child: _ResultImage(
+                imageBytes: imageBytes,
+                stickerBytes: stickerBytes,
+              ),
             ),
           ),
           const SizedBox(width: 14),
@@ -308,7 +392,36 @@ class _ResultSummary extends StatelessWidget {
 }
 
 class _ResultImage extends StatelessWidget {
-  const _ResultImage({required this.imageBytes});
+  const _ResultImage({required this.imageBytes, this.stickerBytes});
+
+  final Uint8List? imageBytes;
+  final Uint8List? stickerBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    final sticker = stickerBytes;
+    // Sticker đã cắt sát viền nên phải `contain`: `cover` sẽ xén mất chính
+    // cái viền trắng vừa tạo ra.
+    if (sticker != null && sticker.isNotEmpty) {
+      return ColoredBox(
+        color: BalanceColors.stickerMat,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Image.memory(
+            sticker,
+            key: const ValueKey('result-sticker'),
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => _RawPhoto(imageBytes: imageBytes),
+          ),
+        ),
+      );
+    }
+    return _RawPhoto(imageBytes: imageBytes);
+  }
+}
+
+class _RawPhoto extends StatelessWidget {
+  const _RawPhoto({required this.imageBytes});
 
   final Uint8List? imageBytes;
 
@@ -319,6 +432,7 @@ class _ResultImage extends StatelessWidget {
     }
     return Image.memory(
       imageBytes!,
+      key: const ValueKey('result-raw-photo'),
       fit: BoxFit.cover,
       errorBuilder: (_, _, _) => const FoodPhoto(meal: FoodPhotoMeal.comTam),
     );
@@ -519,12 +633,18 @@ class _ComponentRow extends StatefulWidget {
     required this.name,
     required this.grams,
     required this.calories,
+    this.proteinGrams,
+    this.fatGrams,
+    this.carbsGrams,
     this.onGramsChanged,
   });
 
   final int index;
   final String name;
   final double grams;
+  final double? proteinGrams;
+  final double? fatGrams;
+  final double? carbsGrams;
 
   /// ``null`` khi chưa tra được dinh dưỡng — hiện "—" chứ không hiện "0 kcal".
   final double? calories;
@@ -536,6 +656,14 @@ class _ComponentRow extends StatefulWidget {
 
 class _ComponentRowState extends State<_ComponentRow> {
   late final TextEditingController _controller;
+  bool _editing = false;
+
+  bool get _isEditing => _editing && widget.onGramsChanged != null;
+
+  bool get _hasMacros =>
+      (widget.proteinGrams ?? 0) > 0 ||
+      (widget.fatGrams ?? 0) > 0 ||
+      (widget.carbsGrams ?? 0) > 0;
 
   String get _caloriesLabel {
     final calories = widget.calories;
@@ -581,51 +709,204 @@ class _ComponentRowState extends State<_ComponentRow> {
       child: SketchCard(
         shadow: false,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const CircleAvatar(
-              radius: 17,
-              backgroundColor: BalanceColors.paperBlue,
-              child: Icon(
-                Icons.restaurant_rounded,
-                size: 18,
-                color: BalanceColors.ink,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.name,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+            Row(
+              children: [
+                const CircleAvatar(
+                  radius: 17,
+                  backgroundColor: BalanceColors.paperBlue,
+                  child: Icon(
+                    Icons.restaurant_rounded,
+                    size: 18,
+                    color: BalanceColors.ink,
                   ),
-                  Text(
-                    widget.onGramsChanged == null
-                        ? '${_format(widget.grams)} g'
-                        : _caloriesLabel,
-                    key: widget.onGramsChanged == null
-                        ? null
-                        : ValueKey('component-calories-${widget.index}'),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.name,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 2),
+                      if (_isEditing)
+                        Row(
+                          children: [
+                            _PortionStepper(
+                              index: widget.index,
+                              controller: _controller,
+                              onChanged: (value) {
+                                final grams = double.tryParse(value.trim());
+                                if (grams != null) {
+                                  widget.onGramsChanged?.call(grams);
+                                }
+                              },
+                              onDecrement: () => _commit(widget.grams - 10),
+                              onIncrement: () => _commit(widget.grams + 10),
+                            ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                _caloriesLabel,
+                                key: ValueKey(
+                                  'component-calories-${widget.index}',
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        Text(
+                          '${_format(widget.grams)} g  •  $_caloriesLabel',
+                          key: ValueKey('component-calories-${widget.index}'),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      if (_hasMacros) ...[
+                        const SizedBox(height: 5),
+                        _MacroChips(
+                          proteinGrams: widget.proteinGrams ?? 0,
+                          fatGrams: widget.fatGrams ?? 0,
+                          carbsGrams: widget.carbsGrams ?? 0,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (widget.onGramsChanged != null) ...[
+                  const SizedBox(width: 8),
+                  _EditToggle(
+                    index: widget.index,
+                    editing: _editing,
+                    onPressed: () => setState(() => _editing = !_editing),
                   ),
                 ],
-              ),
+              ],
             ),
-            if (widget.onGramsChanged == null)
-              Text(_caloriesLabel)
-            else
-              _PortionStepper(
-                index: widget.index,
-                controller: _controller,
-                onChanged: (value) {
-                  final grams = double.tryParse(value.trim());
-                  if (grams != null) widget.onGramsChanged?.call(grams);
-                },
-                onDecrement: () => _commit(widget.grams - 10),
-                onIncrement: () => _commit(widget.grams + 10),
-              ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Ba chỉ số macro kèm icon, đọc lướt được mà không cần mở bảng chi tiết.
+class _MacroChips extends StatelessWidget {
+  const _MacroChips({
+    required this.proteinGrams,
+    required this.fatGrams,
+    required this.carbsGrams,
+  });
+
+  final double proteinGrams;
+  final double fatGrams;
+  final double carbsGrams;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        _MacroChip(
+          icon: Icons.grass_rounded,
+          color: BalanceColors.blue,
+          label: 'Carb',
+          grams: carbsGrams,
+        ),
+        _MacroChip(
+          icon: Icons.egg_alt_rounded,
+          color: BalanceColors.green,
+          label: 'Đạm',
+          grams: proteinGrams,
+        ),
+        _MacroChip(
+          icon: Icons.water_drop_rounded,
+          color: BalanceColors.orange,
+          label: 'Béo',
+          grams: fatGrams,
+        ),
+      ],
+    );
+  }
+}
+
+class _MacroChip extends StatelessWidget {
+  const _MacroChip({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.grams,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String label;
+  final double grams;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '$label ${_format(grams)} gam',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 3),
+          Text(
+            _format(grams),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Nút mở/đóng chế độ sửa khối lượng.
+///
+/// Ô nhập luôn mở khiến người dùng chạm nhầm vào bàn phím khi chỉ định cuộn
+/// xem kết quả, nên khối lượng chỉ sửa được sau khi bấm nút này.
+class _EditToggle extends StatelessWidget {
+  const _EditToggle({
+    required this.index,
+    required this.editing,
+    required this.onPressed,
+  });
+
+  final int index;
+  final bool editing;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: editing ? 'Đóng sửa khối lượng' : 'Sửa khối lượng',
+      child: InkWell(
+        key: ValueKey('component-edit-toggle-$index'),
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: editing ? BalanceColors.blue : BalanceColors.paperBlue,
+            shape: BoxShape.circle,
+            border: Border.all(color: BalanceColors.ink, width: 1.6),
+          ),
+          child: Icon(
+            editing ? Icons.close_rounded : Icons.remove_rounded,
+            size: 20,
+            color: editing ? Colors.white : BalanceColors.ink,
+          ),
         ),
       ),
     );
@@ -670,10 +951,7 @@ class _PortionStepper extends StatelessWidget {
             decoration: const InputDecoration(
               suffixText: 'g',
               isDense: true,
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 4,
-                vertical: 8,
-              ),
+              contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             ),
           ),
         ),
@@ -695,7 +973,9 @@ List<Widget> _componentRows(
 ) {
   final items = result.nutrition?.items ?? const <NutritionItem>[];
   if (items.isNotEmpty) {
-    return items.asMap().entries
+    return items
+        .asMap()
+        .entries
         .map(
           (entry) => _ComponentRow(
             key: ValueKey('component-row-${entry.key}'),
@@ -703,6 +983,9 @@ List<Widget> _componentRows(
             name: entry.value.name,
             grams: entry.value.grams,
             calories: entry.value.calories,
+            proteinGrams: entry.value.proteinGrams,
+            fatGrams: entry.value.fatGrams,
+            carbsGrams: entry.value.carbsGrams,
             onGramsChanged: (grams) =>
                 onComponentGramsChanged(entry.key, grams),
           ),
@@ -711,7 +994,9 @@ List<Widget> _componentRows(
   }
   // Không món nào tra được trong catalog: chỉ liệt kê tên, KHÔNG hiện "0 kcal"
   // vì người dùng sẽ đọc thành "món này không có calo" thay vì "chưa có dữ liệu".
-  return result.dishes.asMap().entries
+  return result.dishes
+      .asMap()
+      .entries
       .map(
         (entry) => _ComponentRow(
           key: ValueKey('component-row-${entry.key}'),
@@ -748,3 +1033,10 @@ MealType _mealTypeFor(DateTime time) => switch (time.hour) {
   < 21 => MealType.dinner,
   _ => MealType.snack,
 };
+
+void _openShell(BuildContext context, ShellTab tab) {
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute<void>(builder: (_) => MainShell(initialTab: tab)),
+    (route) => false,
+  );
+}

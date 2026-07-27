@@ -2,7 +2,7 @@ import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/state/app_state.dart';
 import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/features/auth/presentation/welcome_screen.dart';
-import 'package:balance/features/dashboard/presentation/dashboard_screen.dart';
+import 'package:balance/core/widgets/main_shell.dart';
 import 'package:balance/features/onboarding/presentation/profile_setup_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -30,7 +30,7 @@ class _BalanceAppState extends State<BalanceApp> {
         ? const WelcomeScreen()
         : _state.profile == null
         ? const ProfileSetupScreen()
-        : const DashboardScreen();
+        : const MainShell();
     return AppScope(
       notifier: _state,
       child: MaterialApp(

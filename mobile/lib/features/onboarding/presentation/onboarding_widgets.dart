@@ -1,4 +1,5 @@
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/features/onboarding/presentation/ruler_picker.dart';
 import 'package:flutter/material.dart';
 
 class OnboardingProgressHeader extends StatelessWidget {
@@ -158,8 +159,8 @@ class NumberStepperCard extends StatelessWidget {
                 ],
               ),
               if (_showRuler) ...[
-                const SizedBox(height: 8),
-                _Ruler(
+                const SizedBox(height: 4),
+                RulerPicker(
                   value: value,
                   min: min!,
                   max: max!,
@@ -206,62 +207,6 @@ class _SquareControl extends StatelessWidget {
         ),
         child: Icon(icon, size: 30),
       ),
-    );
-  }
-}
-
-class _Ruler extends StatelessWidget {
-  const _Ruler({
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.onChanged,
-  });
-
-  final int value;
-  final int min;
-  final int max;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final labels = List.generate(
-      5,
-      (index) => min + ((max - min) ~/ 4) * index,
-    );
-    return Column(
-      children: [
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            activeTrackColor: BalanceColors.ink,
-            inactiveTrackColor: BalanceColors.ink,
-            trackHeight: 1.5,
-            activeTickMarkColor: BalanceColors.ink,
-            inactiveTickMarkColor: BalanceColors.ink,
-            thumbColor: BalanceColors.blue,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-            tickMarkShape: const RoundSliderTickMarkShape(tickMarkRadius: 2),
-            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-          ),
-          child: Slider(
-            value: value.clamp(min, max).toDouble(),
-            min: min.toDouble(),
-            max: max.toDouble(),
-            divisions: 8,
-            onChanged: (next) => onChanged(next.round()),
-          ),
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            for (final label in labels)
-              Text(
-                '$label',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-          ],
-        ),
-      ],
     );
   }
 }
