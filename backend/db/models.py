@@ -282,6 +282,66 @@ class User(Base):
     )
 
 
+class MealLog(Base):
+    """User-owned meal snapshot used by journal sync and chat tools."""
+
+    __tablename__ = "meal_logs"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "client_entry_id",
+            name="uq_meal_logs_user_client_entry",
+        ),
+        CheckConstraint(
+            "meal_type IN ('breakfast', 'lunch', 'dinner', 'snack')",
+            name="ck_meal_logs_meal_type",
+        ),
+        CheckConstraint(
+            "total_grams >= 0 AND calories >= 0 AND protein_g >= 0 "
+            "AND fat_g >= 0 AND carbs_g >= 0 AND fiber_g >= 0",
+            name="ck_meal_logs_nonnegative_nutrients",
+        ),
+        Index("ix_meal_logs_user_eaten_at", "user_id", "eaten_at"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+        server_default=text("gen_random_uuid()"),
+    )
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    client_entry_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    eaten_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    meal_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    dish_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    total_grams: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    calories: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    protein_g: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    fat_g: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    carbs_g: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    fiber_g: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    source: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="manual", server_default=text("'manual'")
+    )
+    analyze_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        onupdate=func.now(),
+    )
+
+
 class UserIdentity(Base):
     """External login identity linked to one FoodAI user."""
 

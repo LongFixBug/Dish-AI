@@ -15,9 +15,9 @@ def test_alembic_has_linear_baseline_and_schema_revision() -> None:
     revision = scripts.get_revision(head)
 
     assert revision is not None
-    assert head == "0015_google_identities"
+    assert head == "0016_meal_logs"
     assert len(head) <= 32
-    assert revision.down_revision == "0014_nutrition_reference_targets"
+    assert revision.down_revision == "0015_google_identities"
     assert scripts.get_revision("0004_dish_nutrition_basis").down_revision == (
         "0003_schema_contract"
     )
