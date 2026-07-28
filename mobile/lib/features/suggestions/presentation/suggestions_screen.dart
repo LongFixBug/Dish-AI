@@ -86,20 +86,20 @@ class _SuggestionsContentState extends State<_SuggestionsContent> {
     final state = AppScope.maybeOf(context);
     if (state == null) return;
     final now = DateTime.now();
-    await state.addJournalEntry(
-      JournalEntry(
-        id: '${now.microsecondsSinceEpoch}-${dish.dishName}',
-        dishName: dish.dishName,
-        loggedAt: now,
-        mealType: _mealTypeFor(now),
-        calories: dish.calories,
-        proteinGrams: dish.proteinGrams,
-        fatGrams: dish.fatGrams,
-        carbsGrams: dish.carbsGrams,
-        fiberGrams: 0,
-        totalGrams: dish.grams,
-      ),
+    final entry = JournalEntry(
+      id: '${now.microsecondsSinceEpoch}-${dish.dishName}',
+      dishName: dish.dishName,
+      loggedAt: now,
+      mealType: _mealTypeFor(now),
+      calories: dish.calories,
+      proteinGrams: dish.proteinGrams,
+      fatGrams: dish.fatGrams,
+      carbsGrams: dish.carbsGrams,
+      fiberGrams: 0,
+      totalGrams: dish.grams,
     );
+    await state.addJournalEntry(entry);
+    await state.syncJournalEntry(entry, source: 'suggestion');
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Đã thêm ${dish.dishName} vào nhật ký')),

@@ -75,4 +75,50 @@ void main() {
     );
     api.close();
   });
+
+  test('parses the display-ready daily nutrition table', () async {
+    final api = NutritionGoalApi(
+      client: MockClient(
+        (_) async => http.Response.bytes(
+          utf8.encode(
+            jsonEncode({
+              'maintenance_calories': 2575,
+              'target_calories': 2075,
+              'profile': {
+                'age': 30,
+                'sex': 'male',
+                'height_cm': 170,
+                'weight_kg': 75,
+                'bmi': 26,
+                'bmi_category': 'overweight',
+                'nutrition_group': 'overweight_obesity',
+              },
+              'daily_targets': [
+                {
+                  'code': 'energy',
+                  'name_vi': 'Năng lượng',
+                  'category': 'energy',
+                  'unit': 'kcal/day',
+                  'display_value': '2075',
+                  'source': 'mifflin_goal_rate_v1',
+                },
+              ],
+              'safety_status': 'review_required',
+              'warnings': ['Cần chuyên gia kiểm tra'],
+            }),
+          ),
+          200,
+        ),
+      ),
+      baseUrl: Uri.parse('http://api.test'),
+    );
+
+    final result = await api.preview(profile, accessToken: 'access-token');
+
+    expect(result.targetCalories, 2075);
+    expect(result.profile.bmi, 26);
+    expect(result.dailyTargets.single.nameVi, 'Năng lượng');
+    expect(result.safetyStatus, 'review_required');
+    api.close();
+  });
 }

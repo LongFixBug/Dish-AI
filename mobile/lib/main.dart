@@ -4,6 +4,7 @@ import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/features/auth/data/auth_api.dart';
 import 'package:balance/features/auth/data/google_sign_in_api.dart';
 import 'package:balance/features/journal/data/sticker_store.dart';
+import 'package:balance/features/journal/data/meal_api.dart';
 import 'package:balance/features/nutrition/data/nutrition_goal_api.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/widgets.dart';
@@ -26,6 +27,7 @@ Future<AppState> _restoreState(AppStorage storage) async {
       authGateway: AuthApi(),
       googleIdentityGateway: GoogleSignInGateway(),
       nutritionGoalGateway: NutritionGoalApi(),
+      mealGateway: MealApi(),
     );
   } on Object {
     // Không đọc được kho bảo mật (keystore bị vô hiệu sau khi đổi khoá màn
@@ -36,6 +38,7 @@ Future<AppState> _restoreState(AppStorage storage) async {
       authGateway: AuthApi(),
       googleIdentityGateway: GoogleSignInGateway(),
       nutritionGoalGateway: NutritionGoalApi(),
+      mealGateway: MealApi(),
     );
   }
 }

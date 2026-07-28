@@ -41,10 +41,22 @@ void main() {
     });
 
     test('đếm đủ số ngày của tháng, kể cả tháng 2 năm nhuận', () {
-      expect(monthGridDays(DateTime(2026, 2)).whereType<DateTime>(), hasLength(28));
-      expect(monthGridDays(DateTime(2024, 2)).whereType<DateTime>(), hasLength(29));
-      expect(monthGridDays(DateTime(2026, 7)).whereType<DateTime>(), hasLength(31));
-      expect(monthGridDays(DateTime(2026, 4)).whereType<DateTime>(), hasLength(30));
+      expect(
+        monthGridDays(DateTime(2026, 2)).whereType<DateTime>(),
+        hasLength(28),
+      );
+      expect(
+        monthGridDays(DateTime(2024, 2)).whereType<DateTime>(),
+        hasLength(29),
+      );
+      expect(
+        monthGridDays(DateTime(2026, 7)).whereType<DateTime>(),
+        hasLength(31),
+      );
+      expect(
+        monthGridDays(DateTime(2026, 4)).whereType<DateTime>(),
+        hasLength(30),
+      );
     });
 
     test('tháng 12 không tràn sang năm sau khi tính số ngày', () {
@@ -73,10 +85,10 @@ void main() {
         _entry(id: 'sang', loggedAt: DateTime(2026, 7, 27, 7)),
       ]);
 
-      expect(
-        grouped[const DayKey(2026, 7, 27)]!.map((entry) => entry.id),
-        ['sang', 'toi'],
-      );
+      expect(grouped[const DayKey(2026, 7, 27)]!.map((entry) => entry.id), [
+        'sang',
+        'toi',
+      ]);
     });
   });
 

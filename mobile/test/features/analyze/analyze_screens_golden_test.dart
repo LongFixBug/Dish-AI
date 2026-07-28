@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/core/widgets/food_photo.dart';
 import 'package:balance/features/analyze/domain/analyze_result.dart';
 import 'package:balance/features/analyze/presentation/analyze_screen.dart';
 import 'package:balance/features/analyze/presentation/analysis_result_screen.dart';
+import 'package:balance/features/analyze/presentation/scan_beam.dart';
 import 'package:balance/features/suggestions/presentation/suggestions_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image_picker/image_picker.dart';
 
 void main() {
   setUpAll(() async {
@@ -24,6 +28,65 @@ void main() {
     await expectLater(
       find.byType(AnalyzeScreen),
       matchesGoldenFile('goldens/camera_screen.png'),
+    );
+  });
+
+  testWidgets('3D scan reveal matches the approved depth frame', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 480));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final data = await rootBundle.load(FoodPhoto.comTamAssetPath);
+    final bytes = data.buffer.asUint8List(
+      data.offsetInBytes,
+      data.lengthInBytes,
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        Scaffold(body: ScanDepthFrame(imageBytes: bytes, progress: 0.58)),
+      ),
+    );
+    final context = tester.element(find.byType(ScanDepthFrame));
+    await tester.runAsync(() => precacheImage(MemoryImage(bytes), context));
+    await tester.pumpAndSettle();
+
+    await expectLater(
+      find.byType(ScanDepthFrame),
+      matchesGoldenFile('goldens/scan_depth_frame.png'),
+    );
+  });
+
+  testWidgets('camera loading state shows the raised 3D scan', (tester) async {
+    await _setPhoneSize(tester);
+    final data = await rootBundle.load(FoodPhoto.comTamAssetPath);
+    final bytes = data.buffer.asUint8List(
+      data.offsetInBytes,
+      data.lengthInBytes,
+    );
+    final analysis = Completer<AnalyzeResult>();
+
+    await tester.pumpWidget(
+      _testApp(
+        AnalyzeScreen(
+          pickImage: (_) async =>
+              XFile.fromData(bytes, name: 'com-tam.png', mimeType: 'image/png'),
+          analyzeImage: ({required bytes, required filename}) =>
+              analysis.future,
+        ),
+      ),
+    );
+    final context = tester.element(find.byType(AnalyzeScreen));
+    await tester.runAsync(
+      () => precacheImage(MemoryImage(bytes), context),
+    );
+    await tester.tap(find.text('Thư viện'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1300));
+
+    await expectLater(
+      find.byType(AnalyzeScreen),
+      matchesGoldenFile('goldens/camera_scanning_3d.png'),
     );
   });
 

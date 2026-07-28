@@ -69,3 +69,28 @@ async def test_readiness_component_timeout_is_reported_not_hung(
     )
 
     assert result == {"ready": False, "detail": "TimeoutError"}
+
+
+async def test_enabled_chat_requires_local_llm_readiness(monkeypatch) -> None:
+    async def ok() -> None:
+        return None
+
+    async def unavailable() -> None:
+        raise RuntimeError("llama.cpp is unavailable")
+
+    monkeypatch.setattr(readiness, "_check_postgres", ok)
+    monkeypatch.setattr(readiness.object_storage, "healthcheck", ok)
+    monkeypatch.setattr(readiness, "_check_chat_llm", unavailable, raising=False)
+    monkeypatch.setattr(readiness.settings, "chat_enabled", True)
+    monkeypatch.setattr(readiness.settings, "qdrant_required", False)
+    monkeypatch.setattr(readiness.settings, "rate_limit_backend", "memory")
+    monkeypatch.setattr(readiness.settings, "vision_enabled", False)
+    monkeypatch.setattr(readiness.settings, "cv_enabled", False)
+
+    report = await readiness._probe_components()
+
+    assert report["status"] == "not_ready"
+    assert report["components"]["llm"] == {
+        "ready": False,
+        "detail": "RuntimeError",
+    }

@@ -54,3 +54,25 @@ def test_preview_returns_review_status_for_medical_condition(client) -> None:
 
     assert response.status_code == 200
     assert response.json()["safety_status"] == "review_required"
+
+
+def test_preview_returns_table_ready_profile_and_targets(client) -> None:
+    response = client.post(
+        "/api/v1/nutrition-goals/preview",
+        json=_payload(
+            age=25,
+            height_cm=165,
+            weight_kg=75,
+            goal="maintain",
+            target_weight_kg=75,
+        ),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["profile"]["bmi"] == 27.5
+    assert body["profile"]["bmi_category"] == "overweight"
+    codes = {row["code"] for row in body["daily_targets"]}
+    assert {"energy", "protein", "fiber", "calcium", "iron"}.issubset(codes)
+    sodium = next(row for row in body["daily_targets"] if row["code"] == "sodium")
+    assert sodium["comparator"] == "<"

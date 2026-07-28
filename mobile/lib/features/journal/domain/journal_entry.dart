@@ -29,10 +29,13 @@ class JournalEntry {
     required AnalyzeResult result,
     required DateTime loggedAt,
     required MealType mealType,
+    String? id,
   }) {
     final nutrition = result.nutrition;
     return JournalEntry(
-      id: '${loggedAt.microsecondsSinceEpoch}-${result.dishName ?? 'meal'}',
+      id:
+          id ??
+          '${loggedAt.microsecondsSinceEpoch}-${result.dishName ?? 'meal'}',
       dishName: result.dishName ?? 'Món ăn đã nhận diện',
       loggedAt: loggedAt,
       mealType: mealType,

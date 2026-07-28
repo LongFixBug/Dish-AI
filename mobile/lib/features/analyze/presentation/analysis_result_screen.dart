@@ -63,17 +63,25 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         result: _result,
         loggedAt: now,
         mealType: _mealTypeFor(now),
+        id: _savedEntryId,
       );
       final previousId = _savedEntryId;
       if (previousId != null) {
         await state.removeJournalEntry(previousId);
       }
       await state.addJournalEntry(entry, stickerBytes: widget.stickerBytes);
+      final synced = await state.syncJournalEntry(entry, source: 'analyze');
       if (!mounted) return;
       _savedEntryId = entry.id;
       setState(() => _saved = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã lưu bữa ăn vào nhật ký')),
+        SnackBar(
+          content: Text(
+            synced
+                ? 'Đã lưu bữa ăn vào nhật ký và đồng bộ tài khoản'
+                : 'Đã lưu bữa ăn vào nhật ký trên máy',
+          ),
+        ),
       );
     } on Object {
       if (!mounted) return;

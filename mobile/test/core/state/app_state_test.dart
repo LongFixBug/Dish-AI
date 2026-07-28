@@ -243,11 +243,13 @@ void main() {
       totalGrams: 350,
     );
 
-    await state.addJournalEntry(entry, stickerBytes: Uint8List.fromList([1, 2]));
+    await state.addJournalEntry(
+      entry,
+      stickerBytes: Uint8List.fromList([1, 2]),
+    );
 
     expect(state.journalEntries.single.stickerPath, '/fake/entry-1.png');
     expect(store.saved, ['entry-1']);
-
 
     await state.removeJournalEntry('entry-1');
 
@@ -302,90 +304,100 @@ void main() {
     expect(notified, 1);
   });
 
-  test('signing back in with the same account returns to a ready profile', () async {
-    // Đăng xuất xoá hồ sơ khỏi phiên đang chạy, nhưng đăng nhập lại cùng tài
-    // khoản thì phải vào thẳng màn hình chính chứ không bắt khai báo lại từ đầu.
-    final storage = MemoryAppStorage();
-    final auth = FakeAuthGateway();
-    final state = await AppState.restore(storage, authGateway: auth);
-    await state.signIn(email: 'an@example.com', password: 'mat-khau-123');
-    await state.completeProfile(
-      UserProfile(
-        name: 'An',
-        email: 'an@example.com',
-        age: 25,
-        heightCm: 170,
-        weightKg: 65,
-        targetWeightKg: 70,
-        gender: 'Nam',
-        activity: 'Vừa phải',
-        goal: 'Tăng cân',
-      ),
-    );
-    await state.addJournalEntry(
-      JournalEntry(
-        id: 'entry-1',
-        dishName: 'Cơm tấm',
-        loggedAt: DateTime(2026, 7, 26, 12),
-        mealType: MealType.lunch,
-        calories: 650,
-        proteinGrams: 32,
-        fatGrams: 22,
-        carbsGrams: 78,
-        fiberGrams: 4,
-        totalGrams: 370,
-      ),
-    );
-
-    await state.signOut();
-    expect(state.profile, isNull, reason: 'phiên đã đăng xuất không giữ hồ sơ');
-
-    await state.signIn(email: 'an@example.com', password: 'mat-khau-123');
-
-    expect(state.profile?.goal, 'Tăng cân');
-    expect(state.profile?.targetWeightKg, 70);
-    expect(state.journalEntries.single.dishName, 'Cơm tấm');
-  });
-
-  test('signing in with a different account never inherits an old profile', () async {
-    final storage = MemoryAppStorage();
-    final auth = FakeAuthGateway();
-    final state = await AppState.restore(storage, authGateway: auth);
-    await state.signIn(email: 'an@example.com', password: 'mat-khau-123');
-    await state.completeProfile(
-      UserProfile(
-        name: 'An',
-        email: 'an@example.com',
-        age: 25,
-        heightCm: 170,
-        weightKg: 65,
-        targetWeightKg: 60,
-        gender: 'Nam',
-        activity: 'Vừa phải',
-        goal: 'Giảm cân',
-      ),
-    );
-    await state.signOut();
-
-    final otherAuth = FakeAuthGateway(
-      session: AuthSession(
-        accessToken: 'access-token',
-        refreshToken: 'refresh-token',
-        expiresIn: 900,
-        user: const AuthUser(
-          id: 'other-id',
-          email: 'binh@example.com',
-          displayName: 'Bình',
-          role: 'user',
+  test(
+    'signing back in with the same account returns to a ready profile',
+    () async {
+      // Đăng xuất xoá hồ sơ khỏi phiên đang chạy, nhưng đăng nhập lại cùng tài
+      // khoản thì phải vào thẳng màn hình chính chứ không bắt khai báo lại từ đầu.
+      final storage = MemoryAppStorage();
+      final auth = FakeAuthGateway();
+      final state = await AppState.restore(storage, authGateway: auth);
+      await state.signIn(email: 'an@example.com', password: 'mat-khau-123');
+      await state.completeProfile(
+        UserProfile(
+          name: 'An',
+          email: 'an@example.com',
+          age: 25,
+          heightCm: 170,
+          weightKg: 65,
+          targetWeightKg: 70,
+          gender: 'Nam',
+          activity: 'Vừa phải',
+          goal: 'Tăng cân',
         ),
-      ),
-    );
-    final other = await AppState.restore(storage, authGateway: otherAuth);
-    await other.signIn(email: 'binh@example.com', password: 'mat-khau-123');
+      );
+      await state.addJournalEntry(
+        JournalEntry(
+          id: 'entry-1',
+          dishName: 'Cơm tấm',
+          loggedAt: DateTime(2026, 7, 26, 12),
+          mealType: MealType.lunch,
+          calories: 650,
+          proteinGrams: 32,
+          fatGrams: 22,
+          carbsGrams: 78,
+          fiberGrams: 4,
+          totalGrams: 370,
+        ),
+      );
 
-    expect(other.profile, isNull);
-    expect(other.journalEntries, isEmpty);
-  });
+      await state.signOut();
+      expect(
+        state.profile,
+        isNull,
+        reason: 'phiên đã đăng xuất không giữ hồ sơ',
+      );
+
+      await state.signIn(email: 'an@example.com', password: 'mat-khau-123');
+
+      expect(state.profile?.goal, 'Tăng cân');
+      expect(state.profile?.targetWeightKg, 70);
+      expect(state.journalEntries.single.dishName, 'Cơm tấm');
+    },
+  );
+
+  test(
+    'signing in with a different account never inherits an old profile',
+    () async {
+      final storage = MemoryAppStorage();
+      final auth = FakeAuthGateway();
+      final state = await AppState.restore(storage, authGateway: auth);
+      await state.signIn(email: 'an@example.com', password: 'mat-khau-123');
+      await state.completeProfile(
+        UserProfile(
+          name: 'An',
+          email: 'an@example.com',
+          age: 25,
+          heightCm: 170,
+          weightKg: 65,
+          targetWeightKg: 60,
+          gender: 'Nam',
+          activity: 'Vừa phải',
+          goal: 'Giảm cân',
+        ),
+      );
+      await state.signOut();
+
+      final otherAuth = FakeAuthGateway(
+        session: AuthSession(
+          accessToken: 'access-token',
+          refreshToken: 'refresh-token',
+          expiresIn: 900,
+          user: const AuthUser(
+            id: 'other-id',
+            email: 'binh@example.com',
+            displayName: 'Bình',
+            role: 'user',
+          ),
+        ),
+      );
+      final other = await AppState.restore(storage, authGateway: otherAuth);
+      await other.signIn(email: 'binh@example.com', password: 'mat-khau-123');
+
+      expect(other.profile, isNull);
+      expect(other.journalEntries, isEmpty);
+    },
+  );
 }
 
 class _DelayedRefreshGateway implements AuthGateway {

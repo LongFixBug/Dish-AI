@@ -38,23 +38,26 @@ void main() {
     expect(File('${root.path}/$name').existsSync(), isTrue);
   });
 
-  test('StickerPaths ghép tên với thư mục hiện tại, chịu cả path kiểu cũ', () async {
-    final name = await store.save(
-      entryId: 'entry-1',
-      bytes: Uint8List.fromList([1]),
-    );
-    StickerPaths.directory = root.path;
+  test(
+    'StickerPaths ghép tên với thư mục hiện tại, chịu cả path kiểu cũ',
+    () async {
+      final name = await store.save(
+        entryId: 'entry-1',
+        bytes: Uint8List.fromList([1]),
+      );
+      StickerPaths.directory = root.path;
 
-    expect(StickerPaths.fileFor(name)?.existsSync(), isTrue);
-    // Dữ liệu cũ lưu đường dẫn tuyệt đối của container đã biến mất: vẫn khớp
-    // lại được vì chỉ phần tên file được dùng.
-    expect(
-      StickerPaths.fileFor('/khong/con/ton/tai/$name')?.existsSync(),
-      isTrue,
-    );
-    expect(StickerPaths.fileFor('khong-co-that.png'), isNull);
-    expect(StickerPaths.fileFor(null), isNull);
-  });
+      expect(StickerPaths.fileFor(name)?.existsSync(), isTrue);
+      // Dữ liệu cũ lưu đường dẫn tuyệt đối của container đã biến mất: vẫn khớp
+      // lại được vì chỉ phần tên file được dùng.
+      expect(
+        StickerPaths.fileFor('/khong/con/ton/tai/$name')?.existsSync(),
+        isTrue,
+      );
+      expect(StickerPaths.fileFor('khong-co-that.png'), isNull);
+      expect(StickerPaths.fileFor(null), isNull);
+    },
+  );
 
   test('tên file bám theo id bữa ăn nên không đụng nhau', () async {
     final first = await store.save(

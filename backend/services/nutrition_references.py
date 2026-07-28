@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from html.parser import HTMLParser
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
 
 _NUMBER_PATTERN = re.compile(r"(?<!\d)(?:\d+[.,]\d+|\d+)")
 
@@ -106,3 +110,72 @@ def _slug(value: str) -> str:
         char for char in normalized if not unicodedata.combining(char)
     )
     return re.sub(r"[^a-z0-9]+", "_", without_marks.lower()).strip("_")
+
+
+_REFERENCE_PATH = (
+    Path(__file__).resolve().parents[2] / "data" / "vn_nutrition_reference_targets.json"
+)
+_LABOR_LEVELS = {
+    "sedentary": "light",
+    "light": "light",
+    "moderate": "moderate",
+    "very_active": "heavy",
+}
+
+
+@lru_cache(maxsize=1)
+def _load_reference_snapshot() -> dict[str, Any]:
+    """Load the checked-in, provenance-labelled NCDD snapshot once per process."""
+    return json.loads(_REFERENCE_PATH.read_text(encoding="utf-8"))
+
+
+def lookup_nutrition_reference_targets(
+    *,
+    age: int,
+    sex: str,
+    activity_level: str,
+) -> list[dict[str, Any]]:
+    """Return adult reference rows matching the normalized profile.
+
+    The public calculator is intentionally independent from PostgreSQL so its
+    preview endpoint remains deterministic. The same snapshot is seeded into
+    ``nutrition_reference_targets`` for database-backed reporting.
+    """
+    if age < 18:
+        return []
+    age_group = _age_group_for_adult(age)
+    if sex not in {"male", "female"}:
+        return []
+    reference_sex = sex
+    labor_level = _LABOR_LEVELS[activity_level]
+    rows = _load_reference_snapshot()["records"]
+    return [
+        row
+        for row in rows
+        if row["age_group_name"] == age_group
+        and row["sex"] == reference_sex
+        and row["labor_level"] == labor_level
+        and row["physiological_condition_id"] is None
+    ]
+
+
+def reference_snapshot_metadata() -> dict[str, str]:
+    """Return source metadata for response provenance."""
+    return _load_reference_snapshot()["metadata"]
+
+
+def adult_age_group(age: int) -> str:
+    """Return the snapshot's adult age-group label."""
+    return _age_group_for_adult(age)
+
+
+def _age_group_for_adult(age: int) -> str:
+    if age <= 29:
+        return "18-29 tuổi"
+    if age <= 49:
+        return "30-49 tuổi"
+    if age <= 64:
+        return "50-64 tuổi"
+    if age <= 74:
+        return "65-74 tuổi"
+    return "≥75 tuổi"

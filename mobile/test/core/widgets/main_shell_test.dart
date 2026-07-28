@@ -42,7 +42,9 @@ void main() {
   testWidgets('tab đang mở được tô đậm trên thanh điều hướng', (tester) async {
     await tester.pumpWidget(_testApp());
     expect(
-      tester.widget<BalanceBottomBar>(find.byType(BalanceBottomBar)).currentIndex,
+      tester
+          .widget<BalanceBottomBar>(find.byType(BalanceBottomBar))
+          .currentIndex,
       0,
     );
 
@@ -50,7 +52,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<BalanceBottomBar>(find.byType(BalanceBottomBar)).currentIndex,
+      tester
+          .widget<BalanceBottomBar>(find.byType(BalanceBottomBar))
+          .currentIndex,
       1,
     );
   });

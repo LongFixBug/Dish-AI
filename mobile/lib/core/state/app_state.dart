@@ -2,6 +2,7 @@ import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/features/auth/data/auth_api.dart';
 import 'package:balance/features/auth/data/google_sign_in_api.dart';
 import 'package:balance/features/journal/data/sticker_store.dart';
+import 'package:balance/features/journal/data/meal_api.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
 import 'package:balance/features/nutrition/data/nutrition_goal_api.dart';
 import 'package:balance/features/profile/domain/user_profile.dart';
@@ -13,6 +14,7 @@ class AppState extends ChangeNotifier {
     required AuthGateway authGateway,
     required GoogleIdentityGateway? googleIdentityGateway,
     required NutritionGoalGateway? nutritionGoalGateway,
+    required MealGateway? mealGateway,
     required bool isSignedIn,
     required String accountEmail,
     required String displayName,
@@ -27,6 +29,7 @@ class AppState extends ChangeNotifier {
          authGateway,
          googleIdentityGateway,
          nutritionGoalGateway,
+         mealGateway,
          isSignedIn,
          accountEmail,
          displayName,
@@ -43,6 +46,7 @@ class AppState extends ChangeNotifier {
     this._authGateway,
     this._googleIdentityGateway,
     this._nutritionGoalGateway,
+    this._mealGateway,
     this._isSignedIn,
     this._accountEmail,
     this._displayName,
@@ -59,6 +63,7 @@ class AppState extends ChangeNotifier {
     authGateway: const UnavailableAuthGateway(),
     googleIdentityGateway: null,
     nutritionGoalGateway: null,
+    mealGateway: null,
     isSignedIn: false,
     accountEmail: '',
     displayName: '',
@@ -77,6 +82,7 @@ class AppState extends ChangeNotifier {
     AuthGateway authGateway = const UnavailableAuthGateway(),
     GoogleIdentityGateway? googleIdentityGateway,
     NutritionGoalGateway? nutritionGoalGateway,
+    MealGateway? mealGateway,
     StickerStore? stickerStore,
   }) async {
     // Lỗi ĐỌC (keystore bị vô hiệu khi đổi khoá màn hình, khôi phục máy mới…)
@@ -93,6 +99,7 @@ class AppState extends ChangeNotifier {
         authGateway,
         googleIdentityGateway,
         nutritionGoalGateway,
+        mealGateway,
       ).._stickerStore = stickers;
     }
     try {
@@ -109,6 +116,7 @@ class AppState extends ChangeNotifier {
           authGateway: authGateway,
           googleIdentityGateway: googleIdentityGateway,
           nutritionGoalGateway: nutritionGoalGateway,
+          mealGateway: mealGateway,
           isSignedIn: hasSession,
           accountEmail: json['account_email'] as String? ?? '',
           displayName: json['display_name'] as String? ?? '',
@@ -143,6 +151,7 @@ class AppState extends ChangeNotifier {
         authGateway,
         googleIdentityGateway,
         nutritionGoalGateway,
+        mealGateway,
       ).._stickerStore = stickers;
     } on TypeError {
       return _empty(
@@ -150,6 +159,7 @@ class AppState extends ChangeNotifier {
         authGateway,
         googleIdentityGateway,
         nutritionGoalGateway,
+        mealGateway,
       ).._stickerStore = stickers;
     }
   }
@@ -159,11 +169,13 @@ class AppState extends ChangeNotifier {
     AuthGateway authGateway,
     GoogleIdentityGateway? googleIdentityGateway,
     NutritionGoalGateway? nutritionGoalGateway,
+    MealGateway? mealGateway,
   ) => AppState._(
     storage: storage,
     authGateway: authGateway,
     googleIdentityGateway: googleIdentityGateway,
     nutritionGoalGateway: nutritionGoalGateway,
+    mealGateway: mealGateway,
     isSignedIn: false,
     accountEmail: '',
     displayName: '',
@@ -179,6 +191,7 @@ class AppState extends ChangeNotifier {
   final AuthGateway _authGateway;
   final GoogleIdentityGateway? _googleIdentityGateway;
   final NutritionGoalGateway? _nutritionGoalGateway;
+  final MealGateway? _mealGateway;
   bool _isSignedIn;
   String _accountEmail;
   String _displayName;
@@ -274,6 +287,18 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<NutritionGoalDetails?> previewNutritionGoal() async {
+    final gateway = _nutritionGoalGateway;
+    final profile = _profile;
+    if (profile == null || !_isSignedIn) {
+      return null;
+    }
+    if (gateway is! NutritionGoalDetailsGateway) return null;
+    final detailsGateway = gateway as NutritionGoalDetailsGateway;
+    final token = await validAccessToken();
+    return detailsGateway.preview(profile, accessToken: token);
+  }
+
   /// Thêm bữa ăn, ghi kèm sticker ra file nếu có.
   ///
   /// Chỉ đường dẫn được lưu vào nhật ký; ảnh nằm riêng ngoài đĩa.
@@ -292,6 +317,22 @@ class AppState extends ChangeNotifier {
     }
     _journalEntries.insert(0, saved);
     await _saveAndNotify();
+  }
+
+  /// Đồng bộ bản ghi đã lưu local lên backend; lỗi mạng không làm mất nhật ký.
+  Future<bool> syncJournalEntry(
+    JournalEntry entry, {
+    String source = 'manual',
+  }) async {
+    final gateway = _mealGateway;
+    if (gateway == null || !_isSignedIn) return false;
+    try {
+      final token = await validAccessToken();
+      await gateway.upsert(entry, accessToken: token, source: source);
+      return true;
+    } on Object {
+      return false;
+    }
   }
 
   /// Xoá bữa ăn kèm file sticker của nó.

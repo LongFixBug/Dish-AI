@@ -13,10 +13,17 @@ The output is an estimate for healthy adults, not a clinical prescription.
 
 from schemas.nutrition_goals import (
     NutritionGoalRequest,
+    NutritionProfile,
     NutritionGoalResponse,
     NutritionReference,
     MacroTarget,
 )
+from backend.services.nutrition_references import (
+    adult_age_group,
+    lookup_nutrition_reference_targets,
+    reference_snapshot_metadata,
+)
+from backend.services.nutrition_target_table import build_daily_targets
 
 ALGORITHM_VERSION = "mifflin_goal_rate_v1"
 STANDARD = "VN_NCDD_2016"
@@ -57,6 +64,20 @@ def calculate_nutrition_goal(
     warnings: list[str] = []
     _validate_goal_direction(request)
 
+    bmi = _calculate_bmi(request)
+    bmi_category = _bmi_category(bmi)
+    nutrition_group = _resolve_nutrition_group(request, bmi_category)
+    if bmi_category != "normal" or nutrition_group != "normal":
+        warnings.append(
+            "BMI hoặc nhóm thể trạng không ở mức bình thường; nên được chuyên gia "
+            "kiểm tra trước khi áp dụng mục tiêu."
+        )
+    if request.sex == "other":
+        warnings.append(
+            "Bảng vi chất tham chiếu hiện chỉ có dữ liệu nam/nữ; cần chuyên gia "
+            "xác nhận trước khi áp dụng."
+        )
+
     bmr = _calculate_bmr(request)
     maintenance = round(bmr * _ACTIVITY_FACTORS[request.activity_level])
     raw_delta = _raw_goal_delta(request)
@@ -71,22 +92,49 @@ def calculate_nutrition_goal(
         )
 
     safety_status = "normal"
-    if request.pregnancy_status != "none" or request.medical_conditions:
+    if (
+        request.pregnancy_status != "none"
+        or request.medical_conditions
+        or bmi_category != "normal"
+        or nutrition_group != "normal"
+        or request.sex == "other"
+    ):
         safety_status = "review_required"
-        warnings.append(
-            "Hồ sơ có tình trạng sinh lý hoặc bệnh nền; cần chuyên gia dinh dưỡng "
-            "kiểm tra trước khi áp dụng."
-        )
+        if request.pregnancy_status != "none" or request.medical_conditions:
+            warnings.append(
+                "Hồ sơ có tình trạng sinh lý hoặc bệnh nền; cần chuyên gia dinh dưỡng "
+                "kiểm tra trước khi áp dụng."
+            )
     # Cả hai lần cắt đều nghĩa là mục tiêu người dùng yêu cầu vượt ngưỡng an toàn.
     # Chỉ thêm warning là chưa đủ: client gate giao diện theo safety_status.
     if target_calories != requested_target or delta_was_capped:
         safety_status = "review_required"
 
     macros = _calculate_macros(target_calories, request.weight_kg)
+    metadata = reference_snapshot_metadata()
     return NutritionGoalResponse(
         maintenance_calories=maintenance,
         target_calories=target_calories,
         goal_delta_calories=target_calories - maintenance,
+        profile=NutritionProfile(
+            age=request.age,
+            sex=request.sex,
+            height_cm=request.height_cm,
+            weight_kg=request.weight_kg,
+            bmi=bmi,
+            bmi_category=bmi_category,
+            nutrition_group=nutrition_group,
+        ),
+        daily_targets=build_daily_targets(
+            request,
+            target_calories,
+            macros,
+            lookup_nutrition_reference_targets(
+                age=request.age,
+                sex=request.sex,
+                activity_level=request.activity_level,
+            ),
+        ),
         protein_g=macros[0],
         carbohydrate_g=macros[1],
         fat_g=macros[2],
@@ -101,6 +149,8 @@ def calculate_nutrition_goal(
             standard_usage=STANDARD_USAGE,
             algorithm_version=ALGORITHM_VERSION,
             scope=SCOPE,
+            reference_source_endpoint=str(metadata["source_endpoint"]),
+            reference_age_group=adult_age_group(request.age),
         ),
     )
 
@@ -114,6 +164,34 @@ def _calculate_bmr(request: NutritionGoalRequest) -> float:
         - 5 * request.age
         + sex_offset
     )
+
+
+def _calculate_bmi(request: NutritionGoalRequest) -> float:
+    height_m = request.height_cm / 100
+    return round(request.weight_kg / (height_m * height_m), 1)
+
+
+def _bmi_category(bmi: float) -> str:
+    if bmi < 18.5:
+        return "underweight"
+    if bmi < 25:
+        return "normal"
+    if bmi < 30:
+        return "overweight"
+    return "obesity"
+
+
+def _resolve_nutrition_group(
+    request: NutritionGoalRequest,
+    bmi_category: str,
+) -> str:
+    if request.nutrition_group != "auto":
+        return request.nutrition_group
+    if bmi_category == "underweight":
+        return "underweight"
+    if bmi_category in {"overweight", "obesity"}:
+        return "overweight_obesity"
+    return "normal"
 
 
 def _validate_goal_direction(request: NutritionGoalRequest) -> None:

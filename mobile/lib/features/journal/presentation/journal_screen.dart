@@ -2,6 +2,7 @@ import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/core/widgets/graph_paper_background.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
+import 'package:balance/features/journal/data/sticker_store.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
 import 'package:balance/features/journal/domain/month_grid.dart';
 import 'package:balance/features/journal/domain/month_stats.dart';
@@ -42,6 +43,7 @@ class _JournalScreenState extends State<JournalScreen> {
     final month = _visibleMonth ?? DateTime(today.year, today.month);
     final all = state?.journalEntries ?? const <JournalEntry>[];
     final monthEntries = entriesInMonth(all, month);
+    final yearEntries = entriesInYear(all, month.year);
     final entries =
         entriesByDay(all)[DayKey.from(selected)] ?? const <JournalEntry>[];
     final isToday = DayKey.from(selected) == DayKey.from(today);
@@ -79,6 +81,13 @@ class _JournalScreenState extends State<JournalScreen> {
                   (entry) => (entry.stickerPath ?? '').isNotEmpty,
                 ))
                   const SizedBox(height: 16),
+                Text(
+                  'Tổng kết cả năm ${month.year}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 10),
+                YearStatsSection(year: month.year, entries: yearEntries),
+                const SizedBox(height: 16),
                 StickerCalendar(
                   month: month,
                   entries: all,
@@ -112,7 +121,8 @@ class _JournalScreenState extends State<JournalScreen> {
                   ),
                 const SizedBox(height: 10),
                 Text(
-                  'Tổng kết tháng ${month.month}',
+                  'Tổng kết tháng ${month.month}, ${month.year} • '
+                  'Năm: ${yearEntries.length} món',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 10),
@@ -202,6 +212,11 @@ class _JournalEntryCard extends StatelessWidget {
                 Text(
                   '${entry.mealType.label} • ${_format(entry.totalGrams)} g',
                 ),
+                if (StickerPaths.fileFor(entry.stickerPath) == null)
+                  const Text(
+                    'Chưa có sticker — món đã lưu trước khi tách nền',
+                    style: TextStyle(color: BalanceColors.muted, fontSize: 11),
+                  ),
               ],
             ),
           ),

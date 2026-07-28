@@ -56,25 +56,32 @@ void main() {
       }
     });
 
-    test('đi chậm thì bước chậm — nhịp chân bám quãng đường, không bám đồng hồ', () {
-      const step = 0.004;
-      double moved(double from) =>
-          (mascotPoseAt(from + step).travel - mascotPoseAt(from).travel).abs();
-      double stepped(double from) =>
-          (mascotPoseAt(from + step).leftLeg.swing -
-                  mascotPoseAt(from).leftLeg.swing)
-              .abs();
+    test(
+      'đi chậm thì bước chậm — nhịp chân bám quãng đường, không bám đồng hồ',
+      () {
+        const step = 0.004;
+        double moved(double from) =>
+            (mascotPoseAt(from + step).travel - mascotPoseAt(from).travel)
+                .abs();
+        double stepped(double from) =>
+            (mascotPoseAt(from + step).leftLeg.swing -
+                    mascotPoseAt(from).leftLeg.swing)
+                .abs();
 
-      // Lúc vừa cất bước, người gần như chưa nhích khỏi chỗ cũ.
-      expect(moved(0), lessThan(moved(0.2) / 5));
-      // Thì chân cũng phải gần như chưa nhấc. Nếu nhịp chân bám đồng hồ, hai
-      // con số này xấp xỉ nhau — nghĩa là đang guồng chân tại chỗ, bàn chân
-      // trượt trên đất như đi trên băng.
-      expect(stepped(0), lessThan(stepped(0.2) / 3));
-    });
+        // Lúc vừa cất bước, người gần như chưa nhích khỏi chỗ cũ.
+        expect(moved(0), lessThan(moved(0.2) / 5));
+        // Thì chân cũng phải gần như chưa nhấc. Nếu nhịp chân bám đồng hồ, hai
+        // con số này xấp xỉ nhau — nghĩa là đang guồng chân tại chỗ, bàn chân
+        // trượt trên đất như đi trên băng.
+        expect(stepped(0), lessThan(stepped(0.2) / 3));
+      },
+    );
 
     test('trong lúc quay đầu thì đứng nguyên một chỗ', () {
-      expect(mascotPoseAt(0.43).travel, closeTo(mascotPoseAt(0.46).travel, 1e-9));
+      expect(
+        mascotPoseAt(0.43).travel,
+        closeTo(mascotPoseAt(0.46).travel, 1e-9),
+      );
     });
   });
 
@@ -118,13 +125,16 @@ void main() {
       expect(closed / poses.length, lessThan(0.1), reason: 'chớp quá nhiều');
     });
 
-    test('thân luôn nhún trong biên độ hợp lý, không bẹp dí cũng không kéo dài', () {
-      for (final pose in _lap()) {
-        expect(pose.squash, inInclusiveRange(0.9, 1.12));
-        expect(pose.bob, inInclusiveRange(0, 0.05));
-        expect(pose.lean.abs(), lessThan(0.2));
-      }
-    });
+    test(
+      'thân luôn nhún trong biên độ hợp lý, không bẹp dí cũng không kéo dài',
+      () {
+        for (final pose in _lap()) {
+          expect(pose.squash, inInclusiveRange(0.9, 1.12));
+          expect(pose.bob, inInclusiveRange(0, 0.05));
+          expect(pose.lean.abs(), lessThan(0.2));
+        }
+      },
+    );
 
     test('không có cú giật nào giữa hai khung hình liền nhau', () {
       // Mỗi bước lấy mẫu ở đây tương đương chưa tới một khung hình 60fps của

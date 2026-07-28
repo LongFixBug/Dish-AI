@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     # LLM + Embedding (local with llama.cpp)
     llm_url: str = "http://localhost:8080"
     embedding_url: str = "http://localhost:8081"
+    chat_enabled: bool = True
+    llm_max_concurrency: int = Field(default=2, ge=1, le=32)
+    chat_request_timeout_seconds: float = Field(default=90, ge=5, le=300)
+
     # Model names (as reported by llama-server)
     llm_model: str = "qwen2.5-7b-instruct-q4_k_m.gguf"
     embedding_model: str = "qwen3-embedding-0.6b-q8_0.gguf"

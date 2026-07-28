@@ -173,8 +173,7 @@ class MascotPainter extends CustomPainter {
       canvas.rotate(-side * pose.earFlap);
 
       final centre = Offset(side * _headRx * 0.36, -6);
-      final ear = Path()
-        ..addOval(Rect.fromCircle(center: centre, radius: 7.2));
+      final ear = Path()..addOval(Rect.fromCircle(center: centre, radius: 7.2));
       _outlined(canvas, ear, _Fur.coat);
       canvas.drawOval(
         Rect.fromCenter(
@@ -206,22 +205,8 @@ class MascotPainter extends CustomPainter {
       );
     final tuft = Path()
       ..moveTo(41, 14 + _headOffset)
-      ..cubicTo(
-        40,
-        3 + _headOffset,
-        52,
-        -1 + _headOffset,
-        58,
-        4 + _headOffset,
-      )
-      ..cubicTo(
-        53,
-        4 + _headOffset,
-        48,
-        8 + _headOffset,
-        47,
-        15 + _headOffset,
-      )
+      ..cubicTo(40, 3 + _headOffset, 52, -1 + _headOffset, 58, 4 + _headOffset)
+      ..cubicTo(53, 4 + _headOffset, 48, 8 + _headOffset, 47, 15 + _headOffset)
       ..close();
     final body = Path()
       ..addOval(
@@ -459,16 +444,10 @@ class MascotPainter extends CustomPainter {
     // theo thì thân cũng giật lên, hỏng luôn nhịp nhún.
     final length = _legLength - leg.lift * 7;
     final shin = Path()
-      ..addRRect(
-        RRect.fromRectXY(Rect.fromLTWH(-5, -7, 10, length + 7), 5, 5),
-      );
+      ..addRRect(RRect.fromRectXY(Rect.fromLTWH(-5, -7, 10, length + 7), 5, 5));
     final foot = Path()
       ..addOval(
-        Rect.fromCenter(
-          center: Offset(2, length),
-          width: 17,
-          height: 10.4,
-        ),
+        Rect.fromCenter(center: Offset(2, length), width: 17, height: 10.4),
       );
     _outlined(canvas, Path.combine(PathOperation.union, shin, foot), colour);
     canvas.restore();

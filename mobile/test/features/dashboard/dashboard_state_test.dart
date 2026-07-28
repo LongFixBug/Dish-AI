@@ -33,10 +33,7 @@ void main() {
     await tester.pumpWidget(
       AppScope(
         notifier: state,
-        child: MaterialApp(
-          theme: BalanceTheme.light,
-          home: const MainShell(),
-        ),
+        child: MaterialApp(theme: BalanceTheme.light, home: const MainShell()),
       ),
     );
     await tester.pumpAndSettle();

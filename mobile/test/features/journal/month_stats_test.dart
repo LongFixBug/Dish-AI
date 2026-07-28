@@ -55,6 +55,20 @@ void main() {
     });
   });
 
+  group('entriesInYear and yearTotals', () {
+    test('lọc đúng năm và cộng cả các tháng khác nhau', () {
+      final entries = [
+        _entry(id: 'a', loggedAt: DateTime(2026, 1, 2), calories: 600),
+        _entry(id: 'b', loggedAt: DateTime(2026, 12, 31), calories: 400),
+        _entry(id: 'c', loggedAt: DateTime(2025, 12, 31), calories: 900),
+      ];
+
+      expect(entriesInYear(entries, 2026).map((entry) => entry.id), ['a', 'b']);
+      expect(yearTotals(entriesInYear(entries, 2026)).totalMeals, 2);
+      expect(yearTotals(entriesInYear(entries, 2026)).totalCalories, 1000);
+    });
+  });
+
   group('weeklyMealCounts', () {
     test('ngày 1-7 vào tuần 1, ngày 8 sang tuần 2, ngày 29+ vào tuần 5', () {
       final counts = weeklyMealCounts(DateTime(2026, 7), [
@@ -121,12 +135,7 @@ void main() {
     });
 
     test('không sticker nào tràn ra ngoài hai mép ngang', () {
-      final dropped = dropStickers(
-        count: 40,
-        seed: 9,
-        width: 320,
-        height: 180,
-      );
+      final dropped = dropStickers(count: 40, seed: 9, width: 320, height: 180);
 
       for (final item in dropped) {
         expect(item.left, greaterThanOrEqualTo(0));
@@ -135,19 +144,24 @@ void main() {
     });
 
     test('đống cao quá khung vẫn bị ghim trong tầm nhìn', () {
-      final dropped = dropStickers(
-        count: 60,
-        seed: 5,
-        width: 100,
-        height: 120,
-      );
+      final dropped = dropStickers(count: 60, seed: 5, width: 100, height: 120);
 
       expect(dropped.every((item) => item.top >= 0), isTrue);
     });
 
     test('cùng seed cho đúng một đống — vào lại trang không xáo trộn', () {
-      final first = dropStickers(count: 15, seed: 202607, width: 300, height: 180);
-      final second = dropStickers(count: 15, seed: 202607, width: 300, height: 180);
+      final first = dropStickers(
+        count: 15,
+        seed: 202607,
+        width: 300,
+        height: 180,
+      );
+      final second = dropStickers(
+        count: 15,
+        seed: 202607,
+        width: 300,
+        height: 180,
+      );
 
       for (var i = 0; i < first.length; i++) {
         expect(first[i].left, second[i].left);

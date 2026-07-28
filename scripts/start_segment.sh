@@ -7,16 +7,23 @@
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG_DIR="$PROJECT_ROOT/logs"
+RUN_DIR="$LOG_DIR/run"
 
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$RUN_DIR"
+
+if nc -z 127.0.0.1 8083 >/dev/null 2>&1; then
+    echo "✅ Segmentation server đã chạy sẵn trên :8083"
+    exit 0
+fi
 
 echo "🚀 Starting subject segmentation server..."
 
 cd "$PROJECT_ROOT" || exit 1
-uv run uvicorn ml.serving.segment_server:app \
+nohup uv run uvicorn ml.serving.segment_server:app \
     --host 0.0.0.0 \
     --port 8083 \
-    > "$LOG_DIR/segment.log" 2>&1 &
+    > "$LOG_DIR/segment.log" 2>&1 < /dev/null &
+echo $! > "$RUN_DIR/segment.pid"
 echo "   Segmentation server starting on :8083"
 
 echo ""

@@ -4,11 +4,13 @@ import 'package:balance/core/widgets/graph_paper_background.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
 import 'package:balance/features/analyze/presentation/analyze_screen.dart';
+import 'package:balance/features/chat/presentation/chat_screen.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
 import 'package:balance/features/mascot/domain/mascot_shape.dart';
 import 'package:balance/features/profile/domain/user_profile.dart';
 import 'package:balance/features/mascot/presentation/walking_mascot.dart';
 import 'package:balance/features/journal/presentation/sticker_thumb.dart';
+import 'package:balance/features/nutrition/presentation/nutrition_goal_screen.dart';
 import 'package:flutter/material.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -55,13 +57,25 @@ class DashboardScreen extends StatelessWidget {
                     useLegacyGreeting: !hasAppState,
                   ),
                   const SizedBox(height: 16),
-                  _TodayCard(
-                    totals: totals,
-                    calorieTarget: calorieTarget,
-                    entries: entries,
+                  Semantics(
+                    button: profile != null,
+                    label: 'Xem nhu cầu dinh dưỡng',
+                    child: GestureDetector(
+                      onTap: profile == null
+                          ? null
+                          : () => _open(context, const NutritionGoalScreen()),
+                      child: _TodayCard(
+                        totals: totals,
+                        calorieTarget: calorieTarget,
+                        entries: entries,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
-                  _MascotCard(profile: profile),
+                  _MascotCard(
+                    profile: profile,
+                    onTap: () => _open(context, const ChatScreen()),
+                  ),
                   const SizedBox(height: 16),
                   _MealList(entries: entries, useDemo: !hasAppState),
                   const SizedBox(height: 16),
@@ -82,9 +96,10 @@ class DashboardScreen extends StatelessWidget {
 
 /// Khoảnh sân cho linh vật đi qua đi lại.
 class _MascotCard extends StatelessWidget {
-  const _MascotCard({required this.profile});
+  const _MascotCard({required this.profile, required this.onTap});
 
   final UserProfile? profile;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -94,10 +109,30 @@ class _MascotCard extends StatelessWidget {
             heightCm: profile!.heightCm,
             weightKg: profile!.weightKg,
           );
-    return SketchCard(
-      color: BalanceColors.paperBlue,
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-      child: WalkingMascot(shape: shape),
+    return Semantics(
+      button: true,
+      label: 'Hỏi Balance',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: SketchCard(
+          color: BalanceColors.paperBlue,
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+          child: Column(
+            children: [
+              WalkingMascot(shape: shape),
+              const SizedBox(height: 2),
+              const Text(
+                'Hỏi Balance',
+                style: TextStyle(
+                  color: BalanceColors.blueDark,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

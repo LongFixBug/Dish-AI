@@ -52,10 +52,12 @@ async def _probe_components() -> dict[str, object]:
         checks["vision"] = _check_vision_config
     if settings.cv_enabled:
         checks["cv_model"] = _check_cv_model
+    if settings.chat_enabled:
+        checks["llm"] = _check_chat_llm
 
     names = list(checks)
     results = await asyncio.gather(
-        *( _run_check(checks[name]) for name in names ),
+        *(_run_check(checks[name]) for name in names),
     )
     components = dict(zip(names, results, strict=True))
     ready = all(component["ready"] for component in components.values())
@@ -105,3 +107,9 @@ async def _check_cv_model() -> None:
 
     if not cv_model.is_loaded:
         raise RuntimeError("CV model is not loaded")
+
+
+async def _check_chat_llm() -> None:
+    from backend.services.chat_llm import check_chat_health
+
+    await check_chat_health()

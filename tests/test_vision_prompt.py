@@ -41,15 +41,18 @@ def test_prompt_groups_com_tam_at_menu_item_level() -> None:
     assert "chỉ trả món phụ khi confidence >= 0.80" in prompt.casefold()
 
 
-def test_prompt_can_constrain_vision_to_catalog_candidates() -> None:
+def test_prompt_treats_catalog_candidates_as_hints_not_closed_answers() -> None:
     prompt = _build_food_identification_prompt(
-        candidate_names=["Bánh mì thập cẩm", "Bánh mì chảo"]
+        candidate_names=["Phở gà", "Phở gà trộn"]
     )
 
     assert "DANH SÁCH ỨNG VIÊN TỪ CATALOG" in prompt
-    assert "Bánh mì thập cẩm" in prompt
-    assert "Bánh mì chảo" in prompt
-    assert "CHỈ được chọn tên trong danh sách" in prompt
+    assert "Phở gà" in prompt
+    assert "Phở gà trộn" in prompt
+    assert "chỉ là gợi ý" in prompt.casefold()
+    assert "ngoài danh sách" in prompt.casefold()
+    assert "Phở bò" in prompt
+    assert "CHỈ được chọn tên trong danh sách" not in prompt
 
 
 def test_prompt_requests_a_separate_portion_confidence() -> None:

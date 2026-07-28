@@ -4,7 +4,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.config import Settings
-from backend.middleware.rate_limit import RateLimitMiddleware, _request_identity
+from backend.middleware.rate_limit import (
+    POLICIES,
+    RateLimitMiddleware,
+    _request_identity,
+)
 from backend.services.auth import TokenManager
 from backend.services.rate_limit import MemoryRateLimitStore
 
@@ -118,3 +122,10 @@ def test_memory_store_drops_expired_windows() -> None:
     store._drop_expired(now)
 
     assert store._windows == {}
+
+
+def test_chat_has_its_own_ten_requests_per_minute_quota() -> None:
+    policy = POLICIES[("POST", "/api/v1/chat/stream")]
+
+    assert policy.limit == 10
+    assert policy.window_seconds == 60

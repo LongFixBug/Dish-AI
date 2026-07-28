@@ -492,7 +492,8 @@ async def analyze_food(
                 break
 
         # CV is a family prior, not the final visual decision. Vision sees the
-        # image and chooses among the reviewed candidates returned by Qdrant.
+        # image and uses the reviewed candidates as hints, but may override a
+        # wrong/partial shortlist when visual evidence points to another dish.
         # Tên từ album ảnh (dù chưa đủ điểm để resolve) đứng trước tên từ
         # CV-family/Qdrant text; khử trùng lặp không phân biệt dấu.
         prompt_candidates = merge_candidate_names(

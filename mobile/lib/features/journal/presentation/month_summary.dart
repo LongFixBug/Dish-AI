@@ -256,6 +256,44 @@ class MonthStatsSection extends StatelessWidget {
   }
 }
 
+/// Tổng kết cả năm đang chứa tháng được chọn.
+class YearStatsSection extends StatelessWidget {
+  const YearStatsSection({
+    required this.year,
+    required this.entries,
+    super.key,
+  });
+
+  final int year;
+  final List<JournalEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final totals = yearTotals(entries);
+    return SketchCard(
+      color: BalanceColors.paperBlue,
+      shadow: false,
+      child: Row(
+        children: [
+          Expanded(
+            child: _StatTile(
+              label: 'Tổng món năm $year',
+              value: '${totals.totalMeals}',
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _StatTile(
+              label: 'Tổng kcal năm',
+              value: _formatKcal(totals.totalCalories),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 String _formatKcal(double value) {
   if (value >= 10000) return '${(value / 1000).toStringAsFixed(1)}k';
   return value.round().toString();

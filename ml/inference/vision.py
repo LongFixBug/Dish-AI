@@ -121,10 +121,13 @@ def _build_food_identification_prompt(
         f"{prompt}\n\n"
         "DANH SÁCH ỨNG VIÊN TỪ CATALOG:\n"
         f"{candidate_block}\n"
-        "Đây là các món cùng nhóm do CV local và Qdrant gợi ý. "
-        "CHỈ được chọn tên trong danh sách trên cho món chính nếu có món phù hợp "
-        "với ảnh. Không tự bịa một tên khác; nếu không món nào phù hợp thì trả "
-        "dishes=[] để hệ thống không gán nhầm dữ liệu catalog."
+        "Danh sách này chỉ là gợi ý ưu tiên do CV local, album ảnh và Qdrant "
+        "đưa ra; nó có thể thiếu hoặc sai. Không được chọn một ứng viên chỉ vì "
+        "nó có trong danh sách. Nếu dấu hiệu nhìn thấy trong ảnh mâu thuẫn với "
+        "các ứng viên, hãy trả tên món đúng bằng tiếng Việt kể cả khi tên đó "
+        "nằm ngoài danh sách. Ví dụ: danh sách chỉ có 'Phở gà' nhưng ảnh thấy "
+        "rõ thịt bò thì phải trả 'Phở bò'. Chỉ trả dishes=[] khi ảnh không có "
+        "món ăn hoặc không đủ dấu hiệu để nhận diện."
     )
 
 

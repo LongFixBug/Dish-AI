@@ -102,3 +102,69 @@ def test_capping_the_daily_rate_also_requires_review() -> None:
 
     assert result.safety_status == "review_required"
     assert result.warnings
+
+
+def test_response_contains_clear_profile_and_daily_nutrient_table() -> None:
+    result = calculate_nutrition_goal(
+        _request(
+            age=25,
+            height_cm=165,
+            weight_kg=75,
+            goal="maintain",
+            target_weight_kg=75,
+        )
+    )
+
+    assert result.profile.age == 25
+    assert result.profile.bmi == pytest.approx(27.5, abs=0.1)
+    assert result.profile.bmi_category == "overweight"
+    assert result.daily_targets
+    assert result.daily_targets[0].code == "energy"
+    assert result.daily_targets[0].unit == "kcal/day"
+    protein = next(row for row in result.daily_targets if row.code == "protein")
+    assert protein.minimum > 0
+    assert protein.maximum > protein.minimum
+    assert protein.display_value
+    assert result.reference.standard == "VN_NCDD_2016"
+
+
+def test_reference_snapshot_supplies_micronutrients_and_comparators() -> None:
+    result = calculate_nutrition_goal(
+        _request(age=36, sex="male", goal="maintain", target_weight_kg=70)
+    )
+
+    codes = {row.code for row in result.daily_targets}
+    assert {"water", "fiber", "calcium", "iron", "vitamin_c"}.issubset(codes)
+    sodium = next(row for row in result.daily_targets if row.code == "sodium")
+    assert sodium.comparator == "<"
+    assert sodium.maximum == 2000
+    assert sodium.minimum is None
+
+
+def test_explicit_nutrition_group_is_exposed_and_requires_review_for_non_normal() -> None:
+    result = calculate_nutrition_goal(
+        _request(
+            nutrition_group="overweight_obesity",
+            goal="lose",
+            target_weight_kg=65,
+        )
+    )
+
+    assert result.profile.nutrition_group == "overweight_obesity"
+    assert result.safety_status == "review_required"
+    assert any("nhóm thể trạng" in warning.lower() for warning in result.warnings)
+
+
+def test_other_sex_does_not_silently_use_male_micronutrient_rows() -> None:
+    result = calculate_nutrition_goal(
+        _request(sex="other", goal="maintain", target_weight_kg=70)
+    )
+
+    reference_rows = [
+        row
+        for row in result.daily_targets
+        if row.source.startswith("https://viendinhduong.vn")
+    ]
+    assert reference_rows == []
+    assert result.safety_status == "review_required"
+    assert any("nam/nữ" in warning for warning in result.warnings)

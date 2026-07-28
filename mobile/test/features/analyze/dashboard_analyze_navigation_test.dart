@@ -24,7 +24,7 @@ void main() {
 
     expect(find.byType(AnalyzeScreen), findsOneWidget);
     expect(find.text('Chụp món ăn'), findsOneWidget);
-    expect(find.text('Chọn ảnh từ thư viện'), findsOneWidget);
+    expect(find.text('Thư viện'), findsOneWidget);
   });
 
   testWidgets('dashboard matches the complete home information hierarchy', (

@@ -5,10 +5,7 @@ void main() {
   group('bodyMassIndex', () {
     test('tính đúng công thức kg trên mét bình phương', () {
       // 65 kg, 1,70 m → 65 / 2,89 ≈ 22,49
-      expect(
-        bodyMassIndex(heightCm: 170, weightKg: 65),
-        closeTo(22.49, 0.01),
-      );
+      expect(bodyMassIndex(heightCm: 170, weightKg: 65), closeTo(22.49, 0.01));
     });
 
     test('số liệu vô lý thì trả null thay vì chia bừa', () {
@@ -21,10 +18,7 @@ void main() {
   group('mascotShapeFor', () {
     test('dưới 18,5 là dáng gầy', () {
       // 50 kg, 1,75 m → BMI ≈ 16,3
-      expect(
-        mascotShapeFor(heightCm: 175, weightKg: 50),
-        MascotShape.slim,
-      );
+      expect(mascotShapeFor(heightCm: 175, weightKg: 50), MascotShape.slim);
     });
 
     test('từ 18,5 đến dưới 23 là dáng cân đối', () {

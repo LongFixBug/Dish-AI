@@ -21,6 +21,12 @@ List<JournalEntry> entriesInMonth(
     )
     .toList(growable: false);
 
+/// Bữa ăn thuộc đúng năm đang xem.
+List<JournalEntry> entriesInYear(Iterable<JournalEntry> entries, int year) =>
+    entries
+        .where((entry) => entry.loggedAt.year == year)
+        .toList(growable: false);
+
 /// Tổng món, tổng kcal và trung bình kcal mỗi món của một danh sách bữa ăn.
 ({int totalMeals, double totalCalories, double averageCalories}) monthTotals(
   Iterable<JournalEntry> entries,
@@ -37,6 +43,11 @@ List<JournalEntry> entriesInMonth(
     averageCalories: count == 0 ? 0 : calories / count,
   );
 }
+
+/// Tổng món và kcal của cả năm; dùng chung cho nhật ký và chatbot cá nhân.
+({int totalMeals, double totalCalories, double averageCalories}) yearTotals(
+  Iterable<JournalEntry> entries,
+) => monthTotals(entries);
 
 /// Số món theo từng "tuần" của tháng: ngày 1–7 là tuần 1, 8–14 là tuần 2...
 ///
