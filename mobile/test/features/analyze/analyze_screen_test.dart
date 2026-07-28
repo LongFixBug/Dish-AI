@@ -47,11 +47,16 @@ void main() {
     );
 
     expect(find.text('Chụp món ăn'), findsOneWidget);
-    expect(find.text('Chọn ảnh từ thư viện'), findsOneWidget);
+    expect(find.byKey(const ValueKey('camera-preview')), findsOneWidget);
+    expect(find.text('Đặt món ở giữa vùng quét'), findsOneWidget);
+    expect(find.text('Chụp rõ món ăn • nơi đủ sáng'), findsOneWidget);
+    expect(find.text('Thư viện'), findsOneWidget);
+    expect(find.text('Mẹo chụp'), findsOneWidget);
 
-    await tester.tap(find.text('Chọn ảnh từ thư viện'));
+    await tester.tap(find.text('Thư viện'));
     await tester.pump();
-    expect(find.text('Balance đang xem món ăn...'), findsOneWidget);
+    expect(find.text('Đang quét món ăn'), findsOneWidget);
+    expect(find.text('Vạch quét cong khi chạm tới món ăn'), findsOneWidget);
 
     analysis.complete(result);
     await tester.pumpAndSettle();
@@ -89,5 +94,88 @@ void main() {
     expect(find.text('Chưa phân tích được ảnh'), findsOneWidget);
     expect(find.textContaining('Không kết nối được backend'), findsOneWidget);
     expect(find.text('Thử lại'), findsOneWidget);
+  });
+
+  testWidgets('camera tips are available without leaving the capture screen', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalyzeScreen(pickImage: (_) async => null),
+      ),
+    );
+
+    await tester.tap(find.text('Mẹo chụp'));
+    await tester.pump();
+
+    expect(
+      find.text('Chụp từ trên xuống, đủ sáng và lấy trọn phần ăn.'),
+      findsOneWidget,
+    );
+    expect(find.byType(AnalyzeScreen), findsOneWidget);
+  });
+
+  testWidgets('gallery photo stays smaller inside the restored capture frame', (
+    tester,
+  ) async {
+    final analysis = Completer<AnalyzeResult>();
+    final image = XFile.fromData(
+      Uint8List.fromList([0xff, 0xd8, 0xff]),
+      name: 'pho-bo.jpg',
+      mimeType: 'image/jpeg',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalyzeScreen(
+          pickImage: (_) async => image,
+          analyzeImage: ({required bytes, required filename}) =>
+              analysis.future,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Thư viện'));
+    await tester.pump();
+
+    final canvas = tester.getSize(find.byKey(const ValueKey('camera-preview')));
+    final photo = tester.getSize(
+      find.byKey(const ValueKey('gallery-photo-preview')),
+    );
+    expect(photo.width, lessThan(canvas.width));
+    expect(photo.height, lessThan(canvas.height));
+    expect(find.byKey(const ValueKey('camera-preview-frame')), findsOneWidget);
+    expect(find.byKey(const ValueKey('capture-focus-corners')), findsOneWidget);
+    final photoImages = tester.widgetList<Image>(
+      find.descendant(
+        of: find.byKey(const ValueKey('gallery-photo-preview')),
+        matching: find.byType(Image),
+      ),
+    );
+    expect(photoImages, isNotEmpty);
+    expect(photoImages.every((image) => image.fit == BoxFit.contain), isTrue);
+    expect(find.text('Đặt món ở giữa vùng quét'), findsNothing);
+  });
+
+  testWidgets('camera layout fits a compact phone without overflowing', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 568));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalyzeScreen(pickImage: (_) async => null),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('camera-preview')), findsOneWidget);
+    expect(find.text('Chụp ảnh'), findsOneWidget);
+    expect(find.text('Thư viện'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
