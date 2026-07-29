@@ -1,4 +1,7 @@
+--find-links https://download.pytorch.org/whl/cpu/torch/
+--find-links https://download.pytorch.org/whl/cpu/torchvision/
 -r requirements.api.lock
-torch==2.13.0
-torchvision==0.28.0
+# The CV image is CPU-only; PyPI's Linux Torch wheel pulls CUDA packages.
+torch==2.13.0+cpu
+torchvision==0.28.0+cpu
 timm==1.0.28

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -97,6 +98,25 @@ def test_dependency_and_toolchain_versions_are_reproducible() -> None:
     assert "python:3.12-slim@sha256:" in dockerfile
     # Image CV cũng chạy production nên phải pin digest như image API.
     assert "python:3.12-slim@sha256:" in (ROOT / "Dockerfile.cv").read_text()
+
+
+def test_cv_image_installs_a_complete_hashed_lockfile() -> None:
+    dockerfile = (ROOT / "Dockerfile.cv").read_text()
+    lockfile = (ROOT / "requirements.cv.lock").read_text()
+    requirements = (ROOT / "requirements.cv.txt").read_text()
+
+    assert "COPY requirements.cv.lock" in dockerfile
+    assert "-r requirements.cv.lock" in dockerfile
+    for package in ("torch==2.13.0+cpu", "torchvision==0.28.0+cpu", "timm=="):
+        assert package in lockfile
+    assert "--hash=sha256:" in lockfile
+    assert "--find-links https://download.pytorch.org/whl/cpu/torch/" in requirements
+    assert "--find-links https://download.pytorch.org/whl/cpu/torchvision/" in requirements
+    assert "--find-links https://download.pytorch.org/whl/cpu/torch/" in lockfile
+    assert "--find-links https://download.pytorch.org/whl/cpu/torchvision/" in lockfile
+    for package in (r"torch==2\.13\.0\+cpu", r"torchvision==0\.28\.0\+cpu"):
+        assert re.search(rf"{package} \\\n(?:    --hash=sha256:[a-f0-9]{{64}}\n)+", lockfile)
+    assert "cuda-toolkit" not in lockfile
 
 
 def test_container_healthchecks_probe_liveness_not_readiness() -> None:
