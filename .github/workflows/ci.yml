@@ -110,7 +110,7 @@ jobs:
           done
           docker logs foodai-api
           exit 1
-      - uses: aquasecurity/trivy-action@v0.32.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: foodai-api:ci
           format: table
@@ -126,7 +126,7 @@ jobs:
           : > checkpoints/best_model.pth
           echo '{}' > checkpoints/best_model.manifest.json
           docker build --file Dockerfile.cv --tag foodai-cv:ci .
-      - uses: aquasecurity/trivy-action@v0.32.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: foodai-cv:ci
           format: table
