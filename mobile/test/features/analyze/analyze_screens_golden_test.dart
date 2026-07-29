@@ -1,3 +1,6 @@
+@Tags(['golden'])
+library;
+
 import 'dart:async';
 
 import 'package:balance/core/theme/balance_theme.dart';

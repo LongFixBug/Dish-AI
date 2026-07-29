@@ -1,3 +1,6 @@
+@Tags(['golden'])
+library;
+
 import 'package:balance/app.dart';
 import 'package:balance/features/auth/presentation/welcome_screen.dart';
 import 'package:flutter/widgets.dart';

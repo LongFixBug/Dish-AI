@@ -1,0 +1,3 @@
+tags:
+  # Pixel baselines are renderer-specific and are approved on macOS.
+  golden:

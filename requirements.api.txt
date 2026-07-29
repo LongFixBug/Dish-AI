@@ -17,3 +17,6 @@ Pillow>=12.0.0,<13
 redis>=6.4.0,<7
 boto3>=1.40.0,<2
 prometheus-client>=0.23.0,<1
+google-auth>=2.56.2
+# google.auth.transport.requests is imported during FastAPI startup.
+requests>=2.32.5,<3

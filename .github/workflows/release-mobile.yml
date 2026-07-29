@@ -48,7 +48,8 @@ jobs:
           esac
       - run: flutter pub get
       - run: flutter analyze
-      - run: flutter test
+      # Golden files use macOS-approved pixels; run behavior tests on Linux.
+      - run: flutter test --exclude-tags=golden
       - run: >-
           flutter build appbundle --release
           --dart-define=API_BASE_URL=$API_BASE_URL

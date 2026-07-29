@@ -10,7 +10,7 @@ void main() {
   final entry = JournalEntry(
     id: 'entry-1',
     dishName: 'Phở bò',
-    loggedAt: DateTime(2026, 7, 27, 12, 30),
+    loggedAt: DateTime.utc(2026, 7, 27, 5, 30),
     mealType: MealType.lunch,
     calories: 480,
     proteinGrams: 28,

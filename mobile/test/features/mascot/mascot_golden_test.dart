@@ -1,3 +1,6 @@
+@Tags(['golden'])
+library;
+
 import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/features/mascot/domain/mascot_pose.dart';
 import 'package:balance/features/mascot/domain/mascot_shape.dart';

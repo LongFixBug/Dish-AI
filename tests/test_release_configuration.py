@@ -50,6 +50,18 @@ def test_api_image_can_run_database_migrations() -> None:
     assert "alembic" in requirements
 
 
+def test_api_image_includes_google_auth_used_during_startup() -> None:
+    requirements = (ROOT / "requirements.api.txt").read_text()
+    lockfile = (ROOT / "requirements.api.lock").read_text()
+    project = (ROOT / "pyproject.toml").read_text()
+
+    assert "google-auth" in requirements
+    assert "google-auth==" in lockfile
+    assert "requests" in requirements
+    assert "requests==" in lockfile
+    assert '"requests>=' in project
+
+
 def test_release_build_passes_every_compile_time_secret() -> None:
     """Client ID là hằng số compile-time: thiếu nó thì nút Google hỏng vĩnh viễn.
 

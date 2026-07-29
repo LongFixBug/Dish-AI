@@ -1,3 +1,6 @@
+@Tags(['golden'])
+library;
+
 import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/state/app_state.dart';
