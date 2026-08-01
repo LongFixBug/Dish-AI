@@ -10,8 +10,6 @@ import pytest
     [
         "scripts.seed_nutrition",
         "scripts.reindex_qdrant",
-        "scripts.seed_conversion_rates",
-        "scripts.create_tables",
         "scripts.recreate_vn_dishes",
         "scripts.review_dish_candidates",
         "scripts.rebuild_dish_servings",

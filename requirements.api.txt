@@ -1,5 +1,5 @@
 # Runtime dependencies for the FastAPI image only.
-# Training, Streamlit UI, and RAGAS evaluation run outside the API container.
+# Training and RAGAS evaluation run outside the API container.
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 pydantic-settings>=2.0.0

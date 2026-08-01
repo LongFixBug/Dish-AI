@@ -20,13 +20,6 @@ uv run alembic stamp 0001_existing_schema
 uv run alembic upgrade head
 ```
 
-The compatibility command below detects these two cases automatically and
-refuses to stamp a partial legacy schema:
-
-```bash
-uv run python scripts/create_tables.py
-```
-
 ## Development checks
 
 ```bash

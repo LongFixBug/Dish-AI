@@ -13,7 +13,8 @@ RUN pip install --no-cache-dir -r requirements.api.lock \
 
 COPY backend ./backend
 COPY schemas ./schemas
-COPY ml ./ml
+COPY ml/__init__.py ml/model_registry.py ./ml/
+COPY ml/inference ./ml/inference
 COPY alembic.ini ./alembic.ini
 COPY alembic ./alembic
 RUN mkdir -p /app/data/uploads /app/data/feedback_objects \

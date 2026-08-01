@@ -20,32 +20,31 @@ Quy trình DB/seed: `alembic upgrade head` → `parse_*.py` → `data/*.json` �
 
 ## Cấu trúc code
 
-- `backend/main.py` — FastAPI app + `include_router`. Router: chat, analyze, **dishes**.
-- `backend/api/` — endpoint (analyzer pattern). `dishes.py` có 4 endpoint 2-tier, dùng `Depends(get_session)`.
-- `backend/services/` — business logic: `embeddings`, `vector_catalog` (Qdrant), `conversions`, `dishes`, `dish_candidates`.
-- `backend/db/models.py` — ORM cho catalog dinh dưỡng, món đã duyệt, candidate chờ duyệt và conversion rate; không lưu vector trong PostgreSQL.
+- `backend/main.py` — FastAPI app + router: auth, chat, analyze, dishes, feedback, meals, nutrition goals, suggestions.
+- `backend/api/` — endpoint mỏng, dùng `Depends(get_session)` và chuyển business logic xuống service.
+- `backend/services/` — business logic cho auth, catalog/Qdrant, image cascade, chat, meal log, nutrition goal và suggestion.
+- `backend/db/models.py` — ORM cho user/auth, catalog dinh dưỡng, candidate chờ duyệt, feedback, nutrition goal và meal log; không lưu vector trong PostgreSQL.
 - `backend/db/postgres.py` — `get_session()` async, `async_session`.
-- `schemas/` — Pydantic ở ROOT (không trong backend/). `nutrition.py` có `calculate_*()` (toán, tái dùng), `dish.py` cho 2-tier.
-- `ml/inference/` — `cv.py` (ResNet50 local, output dish_name), `vision.py` (Qwen3.7 cloud, output dish_name + ingredients + gram).
-- `alembic/` — migration schema chính thức. `scripts/legacy/` chỉ lưu migration lịch sử, không chạy trên schema hiện tại.
+- `schemas/` — Pydantic ở ROOT (không trong backend/). `nutrition.py` giữ các hàm toán dùng chung; `analyze.py` là contract nhận diện ảnh.
+- `ml/inference/` — `cv.py` (EfficientNet-B0 local), `vision.py` (Qwen3.7 cloud, output tối đa 3 món + gram + nutrition estimate).
+- `alembic/` — nơi duy nhất chứa migration schema chính thức; lịch sử cũ xem qua Git.
 - `data/` — `usda_ingredients.json` (8060), `vn_foods.json` (2088: 838 `vnfood` + 1250 `vnmeal`).
   - `vnfood` là per-gram; `vnmeal` là **tổng dinh dưỡng cho một khẩu phần**. Không đổi tổng `vnmeal` thành per-100g khi chưa có khối lượng đo thực tế.
 
-## 2-tier dish lookup (kiến trúc chính)
+## Luồng nhận diện và tra catalog hiện tại
 
-- Tier 1 `GET /dishes/lookup`: institute (`source=vnmeal`) ưu tiên → fallback user-recipe (`dishes` JOIN `dish_ingredients`). `exists=false` → Tier 2.
-- Tier 2 `POST /dishes` (contribute) + `POST /dishes/compute` (preview không lưu).
-- `GET /ingredients/search`: exact/ILIKE PostgreSQL trước, Qdrant semantic fallback sau; kết quả Qdrant luôn được resolve lại qua UUID PostgreSQL.
-- Tái dùng `calculate_ingredient_nutrition()` + `calculate_totals()` từ `schemas/nutrition.py`, KHÔNG viết lại toán.
+- `POST /api/v1/analyze`: image-kNN có thể tự chốt; nếu chưa đủ chắc thì local CV tạo prior/candidate và Qwen Vision quyết định fallback.
+- Mỗi tên món được resolve qua PostgreSQL exact trước, Qdrant semantic sau; mọi hit Qdrant phải quay lại PostgreSQL bằng UUID.
+- Món chưa có catalog chỉ dùng estimate trong response hiện tại và được đưa vào `dish_candidates`; không tự ghi thành dữ liệu tin cậy.
+- `GET /api/v1/dishes/lookup` là endpoint read-only cho catalog món đã duyệt.
+- Tái dùng `calculate_item_nutrition()` + `calculate_totals()` từ `schemas/nutrition.py`, KHÔNG viết lại toán.
 
 ## Lưu ý quan trọng
 
-- `dish_name` UNIQUE → contribute trùng → HTTP 409.
-- ILIKE phân biệt dấu tiếng Việt: user gõ "suon" KHÔNG móc "sườn" (chỉ vector giúp). Pha 2 cần normalize dấu.
-- `conversion_assumed` flag gần như không bao giờ báo vì có fallback nước (rate NULL=1.0).
+- Qdrant chỉ là index dẫn đường; kết quả cuối và dinh dưỡng luôn lấy từ PostgreSQL.
+- Output Vision là input không tin cậy: luôn normalize confidence/gram/nutrition và fallback có kiểm soát.
 - `typical_grams` của `vnmeal` là ước lượng có provenance (`source`, `confidence`, `rule`), không phải số đo từ Viện Dinh dưỡng. Chạy `scripts/rebuild_dish_servings.py` chỉ khi chủ động muốn tái tạo toàn bộ các ước lượng này.
-- Pha 2 chưa làm: trust-score + versioning (`dish_recipes`), tăng `usage_count` khi lookup, admin verify recipe.
-- Plan đầy đủ 2-tier: `/Users/nguyenhailong/.Codex/plans/frolicking-waddling-journal.md`.
+- `plan.md` là nhật ký quyết định lịch sử; ưu tiên code, migration và test hiện tại khi nội dung cũ mâu thuẫn.
 
 ## Conventions
 

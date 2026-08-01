@@ -108,14 +108,73 @@ DEBUG=false uv run python -m ml.evaluation.rag_eval
 
 ## Deploy
 
-Image API chỉ đóng gói dependency runtime; training, Streamlit UI và RAGAS evaluation không làm phình production image:
+Image API chỉ đóng gói dependency runtime; training và RAGAS evaluation không làm phình production image:
 
 ```bash
 docker build -t foodai-api .
 docker run --rm -p 8000:8000 --env-file .env foodai-api
 ```
 
-Khi deploy lên Render, Railway hay Fly.io, cần cung cấp `DATABASE_URL`, `QDRANT_URL`, `VISION_API_KEY`, `VISION_API_BASE`, `EMBEDDING_URL` và chạy `alembic upgrade head` trong release command. PostgreSQL giữ dữ liệu chuẩn; Qdrant chỉ giữ vector dẫn về UUID PostgreSQL. Nếu Qdrant hoặc embedding service tạm dừng, exact lookup vẫn hoạt động còn semantic fallback được bỏ qua an toàn. Image API cố ý không đóng gói Torch/checkpoint; local CV là accelerator tùy chọn cho môi trường có model, còn production image dùng Vision fallback.
+Khi deploy lên Render, Railway hay Fly.io, dùng `.env.production.example` làm checklist biến môi trường, cung cấp `DATABASE_URL`, `QDRANT_URL`, `VISION_API_KEY`, `VISION_API_BASE`, `REDIS_URL`, thông tin S3 và chạy `alembic upgrade head` trong release command. PostgreSQL giữ dữ liệu chuẩn; Qdrant chỉ giữ vector dẫn về UUID PostgreSQL. Nếu Qdrant hoặc embedding service tạm dừng, exact lookup vẫn hoạt động còn semantic fallback được bỏ qua an toàn. Image API cố ý không đóng gói Torch/checkpoint; local CV là accelerator tùy chọn cho môi trường có model, còn production image dùng Vision fallback.
+
+### Production layout
+
+Repo chỉ nên chứa code, migration, schema, seed catalog nhỏ và script vận hành. Các thư mục nặng hoặc có dữ liệu người dùng phải nằm ngoài Git:
+
+```text
+Git repo
+  backend/
+  schemas/
+  ml/inference/
+  ml/evaluation/
+  ml/training/
+  alembic/
+  scripts/
+  data/*.json
+  data/eval/*.json
+
+Local/training only, không commit
+  data/images/train/
+  data/images/val/
+  data/images/test/
+  data/images/references/
+  checkpoints/experiments/
+  models/*.gguf
+
+Production runtime
+  PostgreSQL       dữ liệu chuẩn
+  Qdrant           semantic index dựng lại được
+  S3               ảnh upload/feedback/object
+  Redis            rate limit/session runtime
+  best_model.pth   chỉ khi dùng Dockerfile.cv
+  best_model.manifest.json
+```
+
+`.gitignore` đã loại `data/images/`, `checkpoints/`, `models/*.gguf` và `.dockerignore` cũng chặn toàn bộ `data/`, chỉ cho `Dockerfile.cv` lấy đúng cặp serving model `checkpoints/best_model.pth` + `checkpoints/best_model.manifest.json`. Vì vậy ảnh train có thể nằm trong project khi học local, nhưng không đi vào Git hoặc production image.
+
+### Dataset sync
+
+Ảnh train nên sống ở S3 hoặc MinIO dưới một prefix riêng, rồi sync về máy train khi cần:
+
+```bash
+# push local train set lên S3/MinIO
+DATASET_S3_BUCKET=foodai-datasets \
+DATASET_S3_PREFIX=datasets/train \
+DATASET_S3_ENDPOINT_URL=http://localhost:9000 \
+DATASET_S3_ACCESS_KEY_ID=foodai_local \
+DATASET_S3_SECRET_ACCESS_KEY=change-this-local-password \
+uv run python scripts/sync_image_dataset.py push --root data/images/train --create-bucket
+
+# pull lại về máy train
+DATASET_S3_BUCKET=foodai-datasets \
+DATASET_S3_PREFIX=datasets/train \
+DATASET_S3_ENDPOINT_URL=http://localhost:9000 \
+DATASET_S3_ACCESS_KEY_ID=foodai_local \
+DATASET_S3_SECRET_ACCESS_KEY=change-this-local-password \
+uv run python scripts/sync_image_dataset.py pull --root data/images/train
+```
+
+Mặc định script giữ nguyên cây thư mục dưới root, nên `data/images/train/pho_bo/a.jpg` sẽ thành `s3://bucket/datasets/train/pho_bo/a.jpg`. Nếu muốn tách version dataset, đổi prefix thành `datasets/v1/train`, `datasets/v2/train`... là xong.
 
 ## Giới hạn hiện tại
 

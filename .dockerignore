@@ -5,13 +5,18 @@
 __pycache__
 *.pyc
 backups
+
+# Training datasets and raw local assets do not belong in the API image.
+data
+uploads
+models
+
+# Keep production CV image small: include only the promoted serving pair.
 checkpoints
 !checkpoints/
 checkpoints/*
 !checkpoints/best_model.pth
 !checkpoints/best_model.manifest.json
-data
-models
-uploads
+
 ml/evaluation/reports
 .Codex
