@@ -40,3 +40,6 @@ reports/
 
 # Dart defines (chứa client ID thật — dùng dart_defines.example.json làm mẫu)
 mobile/dart_defines.json
+
+backups/
+generated_sprites/
