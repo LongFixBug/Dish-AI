@@ -36,11 +36,19 @@ class AnalyzeDish(BaseModel):
         default="unknown",
         description="Nguồn gram hiển thị cho item.",
     )
+    serving_label: str | None = Field(
+        default=None,
+        max_length=30,
+        description="Đơn vị khẩu phần Vision nhìn thấy, ví dụ '1 tô' hoặc '1 ly'.",
+    )
 
 
 class AnalyzeResponse(BaseModel):
     """Response cho POST /api/v1/analyze.
 
+    - source='local_consensus': EfficientNet + album cùng resolve về một UUID
+      catalog, không cần gọi Vision.
+    - source='cv_local': EfficientNet qua solo gate đã calibration, album yếu.
     - source='image_knn': ảnh match album ảnh tham chiếu (SigLIP + Qdrant),
       không cần gọi Vision.
     - source='cv_local_not_found_vision': CV family prior + Qdrant shortlist +
@@ -53,7 +61,13 @@ class AnalyzeResponse(BaseModel):
     """
 
     dish_name: str | None = Field(default=None, description="Tên món chính / bữa ăn")
-    source: Literal["cv_local", "vision", "cv_local_not_found_vision", "image_knn"]
+    source: Literal[
+        "local_consensus",
+        "cv_local",
+        "vision",
+        "cv_local_not_found_vision",
+        "image_knn",
+    ]
     model_version: str | None = Field(
         default=None,
         description="Version của CV checkpoint hoặc tên cloud Vision model.",
@@ -76,10 +90,6 @@ class AnalyzeResponse(BaseModel):
         default=None,
         description="Giải thích ngắn do Vision API cung cấp, nếu có",
     )
-    auto_added_dishes: list[str] = Field(
-        default_factory=list,
-        description="Deprecated compatibility field; always empty",
-    )
     staged_dishes: list[str] = Field(
         default_factory=list,
         description="Món Vision mới đã được lưu vào dish_candidates để chờ duyệt",
@@ -89,3 +99,7 @@ class AnalyzeResponse(BaseModel):
         description="Item không có trong cả vn_dishes + vn_ingredients",
     )
     error: str | None = None
+    recognition_event_id: str | None = Field(
+        default=None,
+        description="ID metadata-only để feedback liên kết với lượt nhận diện của chính user.",
+    )

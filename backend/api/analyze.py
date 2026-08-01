@@ -39,9 +39,13 @@ from backend.services.dishes import (
 )
 from backend.services.dish_candidates import stage_dish_candidate
 from backend.services.image_segmentation import cut_out_subject
+from backend.services.recognition_events import record_recognition_event
 from backend.services.recognition_cascade import (
     CascadeDecision,
+    LocalEvidence,
+    LocalFusionDecision,
     decide_cascade,
+    decide_local_fusion,
     image_candidates,
     is_name_refinement,
     merge_candidate_names,
@@ -112,6 +116,19 @@ def _is_cv_high_conf(cv_conf: float | None, cv_dish: str | None) -> bool:
     )
 
 
+def _is_cv_fusion_high_conf(cv_conf: float | None, cv_dish: str | None) -> bool:
+    """Use a stricter threshold when CV can affect a local fusion decision."""
+    threshold = settings.local_fusion_cv_threshold
+    if threshold is None:
+        threshold = cv_model.serving_threshold
+    return (
+        cv_model.is_loaded
+        and cv_conf is not None
+        and cv_conf >= threshold
+        and cv_dish is not None
+    )
+
+
 def _cv_family_queries(
     cv_dish: str | None,
     predictions: list[dict] | None,
@@ -154,6 +171,15 @@ def _gram_confidence(dish: dict) -> float:
         return min(1.0, max(0.0, float(dish.get("gram_confidence", 0) or 0)))
     except (TypeError, ValueError):
         return 0.0
+
+
+def _serving_label(dish: dict) -> str | None:
+    """Return a compact serving label supplied by Vision, when available."""
+    value = dish.get("serving_label")
+    if not isinstance(value, str):
+        return None
+    label = " ".join(value.strip().lstrip("/").split())
+    return label[:30] or None
 
 
 def _has_usable_vision_nutrition(item: NutritionPerIngredient) -> bool:
@@ -285,6 +311,7 @@ async def _analyze_vision_dishes(
                     found_in_db=True,
                     recognition_confidence=_recognition_confidence(d),
                     portion_source=portion_source,
+                    serving_label=_serving_label(d),
                 )
             )
             continue
@@ -309,6 +336,7 @@ async def _analyze_vision_dishes(
                 found_in_db=False,
                 recognition_confidence=_recognition_confidence(d),
                 portion_source="vision" if gram > 0 else "unknown",
+                serving_label=_serving_label(d),
             )
         )
         if not _has_usable_vision_nutrition(vision_item):
@@ -347,6 +375,8 @@ async def _analyze_vision_dishes(
 async def _image_knn_response(
     session: AsyncSession,
     decision: CascadeDecision,
+    *,
+    cv_confidence: float | None = None,
 ) -> AnalyzeResponse | None:
     """Build the answer for a photo the reference album resolved on its own.
 
@@ -356,27 +386,51 @@ async def _image_knn_response(
     """
     if not decision.dish_name:
         return None
-    item, resolved_name, portion_source = await _resolve_dish_item(
+    return await _local_catalog_response(
         session,
         decision.dish_name,
+        source="image_knn",
+        confidence=decision.score,
+        model_version=settings.image_embed_model,
+        cv_confidence=cv_confidence,
+        log_detail=f"score={decision.score:.4f}, margin={decision.margin:.4f}",
+    )
+
+
+async def _local_catalog_response(
+    session: AsyncSession,
+    dish_name: str,
+    *,
+    source: str,
+    confidence: float,
+    model_version: str,
+    cv_confidence: float | None,
+    log_detail: str,
+) -> AnalyzeResponse | None:
+    """Build one local answer, while keeping PostgreSQL as nutrition truth."""
+    item, resolved_name, portion_source = await _resolve_dish_item(
+        session,
+        dish_name,
         gram=0.0,
         is_side=False,
     )
     if item is None:
         logger.info(
-            "Image cascade matched %r but catalog lookup missed; using Vision",
-            decision.dish_name,
+            "%s matched %r but catalog lookup missed; using Vision",
+            source,
+            dish_name,
         )
         return None
-    if not is_name_refinement(decision.dish_name, resolved_name):
+    if not is_name_refinement(dish_name, resolved_name):
         logger.info(
-            "Image cascade matched %r but catalog morphed it to %r; using Vision",
-            decision.dish_name,
+            "%s matched %r but catalog morphed it to %r; using Vision",
+            source,
+            dish_name,
             resolved_name,
         )
         return None
 
-    confidence = min(1.0, max(0.0, decision.score))
+    confidence = min(1.0, max(0.0, confidence))
     response_dish = AnalyzeDish(
         dish_name=resolved_name,
         grams=item.grams,
@@ -386,19 +440,135 @@ async def _image_knn_response(
         portion_source=portion_source,
     )
     logger.info(
-        "Image cascade resolved %r (score=%.4f, margin=%.4f) without Vision",
+        "%s resolved %r (%s) without Vision",
+        source,
         resolved_name,
-        decision.score,
-        decision.margin,
+        log_detail,
     )
     return _analysis_response(
         dish_name=resolved_name,
-        source="image_knn",
-        model_version=settings.image_embed_model,
+        source=source,
+        model_version=model_version,
+        cv_confidence=cv_confidence,
         recognition_confidence=confidence,
         nutrition=calculate_totals(resolved_name, [item]),
         dishes=[response_dish],
     )
+
+
+async def _run_local_recognition(
+    image_bytes: bytes,
+    image_path: Path,
+) -> tuple[list, dict]:
+    """Start album retrieval and blocking EfficientNet inference together."""
+
+    async def cv_prediction() -> dict:
+        if not cv_model.is_loaded:
+            return {
+                "dish_name": None,
+                "confidence": 0.0,
+                "all_predictions": [],
+                "source": "fallback_required",
+            }
+        try:
+            return await asyncio.to_thread(cv_model.predict, image_path)
+        except Exception:
+            logger.warning(
+                "Local CV inference unavailable; continuing with album/Vision",
+                exc_info=True,
+            )
+            return {
+                "dish_name": None,
+                "confidence": 0.0,
+                "all_predictions": [],
+                "source": "fallback_required",
+            }
+
+    album_result, cv_result = await asyncio.gather(
+        image_candidates(image_bytes),
+        cv_prediction(),
+    )
+    return album_result, cv_result
+
+
+def _bounded_confidence(value: object) -> float:
+    try:
+        return min(1.0, max(0.0, float(value or 0.0)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+async def _catalog_evidence(
+    session: AsyncSession,
+    *,
+    dish_name: str | None,
+    confidence: float,
+    strong: bool,
+    solo_strong: bool,
+) -> LocalEvidence:
+    """Resolve a local label to one authoritative catalog identity."""
+    if not dish_name or not strong:
+        return LocalEvidence(dish_name, None, confidence, False, False)
+
+    row = await lookup_dish(session, dish_name)
+    if row is None or not is_name_refinement(dish_name, row.dish_name):
+        return LocalEvidence(dish_name, None, confidence, False, False)
+
+    # Real VnDish rows always have UUID ``id``. The canonical-name fallback
+    # keeps isolated service tests usable without weakening production identity.
+    canonical_id = str(getattr(row, "id", "") or row.dish_name.casefold())
+    return LocalEvidence(
+        dish_name=row.dish_name,
+        canonical_id=canonical_id,
+        confidence=confidence,
+        strong=True,
+        solo_strong=solo_strong,
+    )
+
+
+async def _fusion_decision(
+    session: AsyncSession,
+    *,
+    cv_dish: str | None,
+    cv_confidence: float,
+    album_decision: CascadeDecision,
+) -> tuple[LocalFusionDecision, LocalEvidence, LocalEvidence]:
+    cv_strong = _is_cv_fusion_high_conf(cv_confidence, cv_dish)
+    solo_threshold = settings.cv_solo_confidence_threshold
+    cv_evidence = await _catalog_evidence(
+        session,
+        dish_name=cv_dish,
+        confidence=cv_confidence,
+        strong=cv_strong,
+        solo_strong=(
+            cv_strong
+            and solo_threshold is not None
+            and cv_confidence >= solo_threshold
+        ),
+    )
+    album_evidence = await _catalog_evidence(
+        session,
+        dish_name=album_decision.dish_name,
+        confidence=album_decision.score,
+        strong=album_decision.resolved,
+        solo_strong=(
+            album_decision.resolved and settings.local_fusion_album_solo_enabled
+        ),
+    )
+    fusion = decide_local_fusion(cv_evidence, album_evidence)
+    logger.info(
+        "Local fusion action=%s reason=%s cv=%r/%.4f/%s album=%r/%.4f/%.4f/%s",
+        fusion.action,
+        fusion.reason,
+        cv_dish,
+        cv_confidence,
+        cv_evidence.canonical_id,
+        album_decision.dish_name,
+        album_decision.score,
+        album_decision.margin,
+        album_evidence.canonical_id,
+    )
+    return fusion, cv_evidence, album_evidence
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────
@@ -450,31 +620,114 @@ async def analyze_food(
     await asyncio.to_thread(temp_path.write_bytes, image.content)
 
     try:
-        # Album ảnh tham chiếu biểu quyết trước: match đủ tự tin thì trả lời
-        # ngay, khỏi tốn cả lượt CV local lẫn cloud Vision. Sidecar/Qdrant sập
-        # thì image_candidates trả [] và flow bên dưới chạy y như trước.
-        cascade_candidates = await image_candidates(image.content)
+        # Hai local recognizer cùng bắt đầu: SigLIP/Qdrant là async I/O,
+        # EfficientNet chạy trong worker thread để không chặn event loop.
+        cascade_candidates, cv_result = await _run_local_recognition(
+            image.content,
+            temp_path,
+        )
         decision = decide_cascade(
             cascade_candidates,
             settings.image_match_threshold,
             settings.image_match_margin,
             settings.image_candidates_limit,
         )
-        if decision.resolved:
-            resolved_response = await _image_knn_response(session, decision)
-            if resolved_response is not None:
-                return resolved_response
+        cv_conf = _bounded_confidence(cv_result.get("confidence"))
+        cv_dish_value = cv_result.get("dish_name")
+        cv_dish = cv_dish_value if isinstance(cv_dish_value, str) else None
+        predictions_value = cv_result.get("all_predictions", [])
+        cv_predictions = (
+            predictions_value if isinstance(predictions_value, list) else []
+        )
 
-        # Use local inference first to avoid a cloud call for reliable classes.
-        cv_conf: float | None = None
-        cv_dish: str | None = None
-        cv_predictions: list[dict] = []
+        fusion_decision: LocalFusionDecision | None = None
+        cv_evidence = LocalEvidence(cv_dish, None, cv_conf, False, False)
+        album_evidence = LocalEvidence(
+            decision.dish_name,
+            None,
+            decision.score,
+            False,
+            False,
+        )
+        if settings.local_fusion_enabled or settings.local_fusion_shadow_enabled:
+            fusion_decision, cv_evidence, album_evidence = await _fusion_decision(
+                session,
+                cv_dish=cv_dish,
+                cv_confidence=cv_conf,
+                album_decision=decision,
+            )
+
+        async def finish(response: AnalyzeResponse) -> AnalyzeResponse:
+            user_id = getattr(_current_user, "id", None)
+            if not isinstance(user_id, str) or not user_id:
+                return response
+            event_id = await record_recognition_event(
+                session,
+                user_id=user_id,
+                response=response,
+                cv_dish_name=cv_dish,
+                cv_confidence=cv_conf,
+                album_dish_name=decision.dish_name,
+                album_score=decision.score,
+                album_margin=decision.margin,
+            )
+            if event_id is not None:
+                response.recognition_event_id = event_id
+            return response
+
+        if settings.local_fusion_enabled and fusion_decision is not None:
+            if fusion_decision.action == "local_consensus":
+                consensus_confidence = min(cv_evidence.confidence, album_evidence.confidence)
+                response = await _local_catalog_response(
+                    session,
+                    fusion_decision.dish_name or "",
+                    source="local_consensus",
+                    confidence=consensus_confidence,
+                    model_version=(
+                        f"{cv_model.model_version}+{settings.image_embed_model}"
+                    ),
+                    cv_confidence=cv_conf,
+                    log_detail="CV and album resolved to the same catalog UUID",
+                )
+                if response is not None:
+                    return await finish(response)
+            elif fusion_decision.action == "cv_local":
+                response = await _local_catalog_response(
+                    session,
+                    fusion_decision.dish_name or "",
+                    source="cv_local",
+                    confidence=cv_evidence.confidence,
+                    model_version=cv_model.model_version,
+                    cv_confidence=cv_conf,
+                    log_detail="CV passed calibrated solo gate",
+                )
+                if response is not None:
+                    return await finish(response)
+            elif fusion_decision.action == "image_knn":
+                response = await _local_catalog_response(
+                    session,
+                    fusion_decision.dish_name or "",
+                    source="image_knn",
+                    confidence=album_evidence.confidence,
+                    model_version=settings.image_embed_model,
+                    cv_confidence=cv_conf if cv_model.is_loaded else None,
+                    log_detail=(
+                        f"score={decision.score:.4f}, margin={decision.margin:.4f}"
+                    ),
+                )
+                if response is not None:
+                    return await finish(response)
+        elif decision.resolved:
+            # Kill switch / shadow: preserve the pre-fusion album-first response.
+            resolved_response = await _image_knn_response(
+                session,
+                decision,
+                cv_confidence=cv_conf if cv_model.is_loaded else None,
+            )
+            if resolved_response is not None:
+                return await finish(resolved_response)
+
         catalog_candidates: list[str] = []
-        if cv_model.is_loaded:
-            cv_result = await asyncio.to_thread(cv_model.predict, temp_path)
-            cv_conf = cv_result["confidence"]
-            cv_dish = cv_result["dish_name"]
-            cv_predictions = cv_result.get("all_predictions", [])
 
         family_queries = _cv_family_queries(cv_dish, cv_predictions)
         for family in family_queries:
@@ -498,7 +751,14 @@ async def analyze_food(
         # CV-family/Qdrant text; khử trùng lặp không phân biệt dấu.
         prompt_candidates = merge_candidate_names(
             decision.candidate_names,
-            catalog_candidates,
+            [
+                (
+                    cv_evidence.dish_name
+                    if settings.local_fusion_enabled and cv_evidence.canonical_id
+                    else ""
+                ),
+                *catalog_candidates,
+            ],
             VISION_PROMPT_CANDIDATE_LIMIT,
         )
         vision_kwargs = (
@@ -511,30 +771,56 @@ async def analyze_food(
         except VisionError as e:
             logger.warning("Vision analysis failed: %s", e)
             cv_high = _is_cv_high_conf(cv_conf, cv_dish)
-            return _analysis_response(
-                dish_name=cv_dish if cv_model.is_loaded and cv_dish else None,
-                source="cv_local_not_found_vision" if cv_high else "vision",
+            fusion_requires_vision = bool(
+                settings.local_fusion_enabled
+                and fusion_decision is not None
+                and fusion_decision.action == "vision"
+            )
+            return await finish(_analysis_response(
+                dish_name=(
+                    cv_dish
+                    if not fusion_requires_vision and cv_model.is_loaded and cv_dish
+                    else None
+                ),
+                source=(
+                    "cv_local_not_found_vision"
+                    if cv_high and not fusion_requires_vision
+                    else "vision"
+                ),
                 cv_confidence=cv_conf if cv_model.is_loaded else None,
                 error="Dịch vụ nhận diện đang tạm gián đoạn. Vui lòng thử lại sau.",
-            )
+            ))
         except (httpx.ConnectError, httpx.TimeoutException, OSError):
             logger.exception("Vision analysis connection failed")
             cv_high = _is_cv_high_conf(cv_conf, cv_dish)
-            return _analysis_response(
-                dish_name=cv_dish if cv_model.is_loaded and cv_dish else None,
-                source="cv_local_not_found_vision" if cv_high else "vision",
+            fusion_requires_vision = bool(
+                settings.local_fusion_enabled
+                and fusion_decision is not None
+                and fusion_decision.action == "vision"
+            )
+            return await finish(_analysis_response(
+                dish_name=(
+                    cv_dish
+                    if not fusion_requires_vision and cv_model.is_loaded and cv_dish
+                    else None
+                ),
+                source=(
+                    "cv_local_not_found_vision"
+                    if cv_high and not fusion_requires_vision
+                    else "vision"
+                ),
                 cv_confidence=cv_conf if cv_model.is_loaded else None,
                 error="Dịch vụ nhận diện đang tạm gián đoạn. Vui lòng thử lại sau.",
-            )
+            ))
 
         vision_dishes = vision.get("dishes", [])
         if not vision_dishes:
-            return _analysis_response(
+            return await finish(_analysis_response(
                 source="vision",
                 cv_confidence=cv_conf if cv_model.is_loaded else None,
                 error="Vision không nhận diện được món ăn trong ảnh. "
                        "Hãy thử ảnh rõ hơn hoặc chụp cận cảnh món ăn.",
-            )
+            ))
 
         # Resolve nutrition and stage unknown labels for explicit review.
         items, response_dishes, staged, missing = await _analyze_vision_dishes(
@@ -542,13 +828,13 @@ async def analyze_food(
         )
 
         if not items:
-            return _analysis_response(
+            return await finish(_analysis_response(
                 dish_name=vision.get("dish_name"),
                 source="vision",
                 cv_confidence=cv_conf if cv_model.is_loaded else None,
                 dishes=response_dishes,
                 error="Không tính được nutrition cho món nào trong ảnh.",
-            )
+            ))
 
         # Tên bữa ăn = các món ghép (VD "Phở bò + Quẩy")
         all_names = [d.dish_name for d in response_dishes if d.dish_name]
@@ -563,7 +849,7 @@ async def analyze_food(
             combined_name, items, missing if missing else None
         )
 
-        return _analysis_response(
+        return await finish(_analysis_response(
             dish_name=combined_name,
             source=source,
             cv_confidence=cv_conf if cv_model.is_loaded else None,
@@ -573,7 +859,7 @@ async def analyze_food(
             vision_reasoning=vision.get("reasoning"),
             staged_dishes=staged,
             missing_items=missing,
-        )
+        ))
     finally:
         await asyncio.to_thread(temp_path.unlink, missing_ok=True)
 

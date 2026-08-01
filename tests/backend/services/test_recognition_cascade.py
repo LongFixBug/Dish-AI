@@ -6,7 +6,9 @@ import pytest
 from backend.services import recognition_cascade
 from backend.services.dish_image_index import DishCandidateScore
 from backend.services.recognition_cascade import (
+    LocalEvidence,
     decide_cascade,
+    decide_local_fusion,
     image_candidates,
     merge_candidate_names,
 )
@@ -18,6 +20,108 @@ LIMIT = 8
 
 def _candidate(name: str, score: float, votes: int = 1) -> DishCandidateScore:
     return DishCandidateScore(dish_name=name, best_score=score, votes=votes)
+
+
+def _evidence(
+    name: str | None,
+    canonical_id: str | None,
+    *,
+    strong: bool,
+    solo_strong: bool = False,
+    confidence: float = 0.0,
+) -> LocalEvidence:
+    return LocalEvidence(
+        dish_name=name,
+        canonical_id=canonical_id,
+        confidence=confidence,
+        strong=strong,
+        solo_strong=solo_strong,
+    )
+
+
+# ─── decide_local_fusion ───────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("cv", "album", "expected_action", "expected_reason"),
+    [
+        (
+            _evidence("Phở bò", "dish-pho", strong=True, confidence=0.91),
+            _evidence("Pho bo", "dish-pho", strong=True, confidence=0.88),
+            "local_consensus",
+            "same_catalog_dish",
+        ),
+        (
+            _evidence(
+                "Cơm tấm",
+                "dish-com-tam",
+                strong=True,
+                solo_strong=True,
+                confidence=0.97,
+            ),
+            _evidence("Cơm tấm", None, strong=False, confidence=0.71),
+            "cv_local",
+            "cv_solo_gate",
+        ),
+        (
+            _evidence("Phở bò", None, strong=False, confidence=0.35),
+            _evidence(
+                "Cao lầu",
+                "dish-cao-lau",
+                strong=True,
+                solo_strong=True,
+                confidence=0.90,
+            ),
+            "image_knn",
+            "album_standalone_gate",
+        ),
+        (
+            _evidence("Bún riêu", "dish-bun-rieu", strong=True, confidence=0.91),
+            _evidence(
+                "Bún bò Huế", "dish-bun-bo-hue", strong=True, confidence=0.89
+            ),
+            "vision",
+            "strong_disagreement",
+        ),
+        (
+            _evidence("Phở bò", None, strong=False, confidence=0.35),
+            _evidence("Hủ tiếu", None, strong=False, confidence=0.70),
+            "vision",
+            "no_strong_local_evidence",
+        ),
+        (
+            # CV qua strong gate nhưng chưa qua solo gate thì album yếu
+            # không đủ để biến CV thành một quyết định local.
+            _evidence("Phở bò", "dish-pho", strong=True, confidence=0.90),
+            _evidence(None, None, strong=False),
+            "vision",
+            "no_strong_local_evidence",
+        ),
+    ],
+)
+def test_local_fusion_decision_matrix(
+    cv: LocalEvidence,
+    album: LocalEvidence,
+    expected_action: str,
+    expected_reason: str,
+) -> None:
+    decision = decide_local_fusion(cv, album)
+
+    assert decision.action == expected_action
+    assert decision.reason == expected_reason
+
+
+def test_strong_evidence_without_catalog_identity_cannot_auto_resolve() -> None:
+    cv = _evidence(
+        "Món ma",
+        None,
+        strong=True,
+        solo_strong=True,
+        confidence=0.99,
+    )
+    album = _evidence(None, None, strong=False)
+
+    assert decide_local_fusion(cv, album).action == "vision"
 
 
 # ─── decide_cascade ──────────────────────────────────────────────────────────

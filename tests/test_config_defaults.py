@@ -20,6 +20,15 @@ def test_qdrant_default_matches_local_compose() -> None:
     assert Settings.model_fields["qdrant_url"].default == "http://localhost:6333"
 
 
+def test_image_album_defaults_match_the_sealed_precision_gate() -> None:
+    assert Settings.model_fields["image_match_threshold"].default == 0.75
+    assert Settings.model_fields["image_match_margin"].default == 0.04
+    assert Settings.model_fields["local_fusion_cv_threshold"].default == 0.999
+    assert Settings.model_fields["local_fusion_enabled"].default is True
+    assert Settings.model_fields["local_fusion_album_solo_enabled"].default is False
+    assert Settings.model_fields["local_fusion_shadow_enabled"].default is False
+
+
 def test_production_rejects_demo_auth_and_process_local_rate_limit() -> None:
     with pytest.raises(ValueError):
         Settings(environment="production", _env_file=None)

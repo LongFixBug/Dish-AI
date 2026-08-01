@@ -506,6 +506,50 @@ class RefreshToken(Base):
     )
 
 
+class RecognitionEvent(Base):
+    """Privacy-preserving metadata for one completed image-recognition decision."""
+
+    __tablename__ = "recognition_events"
+    __table_args__ = (
+        CheckConstraint(
+            "cv_confidence IS NULL OR (cv_confidence >= 0 AND cv_confidence <= 1)",
+            name="ck_recognition_events_cv_confidence",
+        ),
+        CheckConstraint(
+            "album_score IS NULL OR (album_score >= 0 AND album_score <= 1)",
+            name="ck_recognition_events_album_score",
+        ),
+        CheckConstraint(
+            "album_margin IS NULL OR album_margin >= 0",
+            name="ck_recognition_events_album_margin",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+        server_default=text("gen_random_uuid()"),
+    )
+    submitted_by: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    final_dish_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    cv_dish_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    cv_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    album_dish_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    album_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    album_margin: Mapped[float | None] = mapped_column(Float, nullable=True)
+    model_version: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
 class FeedbackSubmission(Base):
     """Consent-backed, reviewable training feedback metadata."""
 
@@ -531,6 +575,12 @@ class FeedbackSubmission(Base):
         UUID(as_uuid=False),
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
+        index=True,
+    )
+    recognition_event_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("recognition_events.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     dish_name_slug: Mapped[str] = mapped_column(String(300), nullable=False, index=True)
@@ -565,6 +615,11 @@ Index(
     _canonical_name_expression(VnIngredient.ingredient_name),
     VnIngredient.source,
     unique=True,
+)
+Index(
+    "ix_recognition_events_source_created",
+    RecognitionEvent.source,
+    RecognitionEvent.created_at,
 )
 Index(
     "uq_vn_dishes_name_ci",

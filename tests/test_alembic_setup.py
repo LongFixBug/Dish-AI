@@ -15,18 +15,14 @@ def test_alembic_has_linear_baseline_and_schema_revision() -> None:
     revision = scripts.get_revision(head)
 
     assert revision is not None
-    assert head == "0016_meal_logs"
+    assert head == "0017_recognition_events"
     assert len(head) <= 32
-    assert revision.down_revision == "0015_google_identities"
+    assert revision.down_revision == "0016_meal_logs"
     assert scripts.get_revision("0004_dish_nutrition_basis").down_revision == (
         "0003_schema_contract"
     )
     assert scripts.get_revision("0001_existing_schema").down_revision is None
 
 
-def test_legacy_migrations_are_isolated_from_active_scripts() -> None:
-    legacy_dir = PROJECT_ROOT / "scripts" / "legacy"
-
-    assert (legacy_dir / "README.md").exists()
-    assert not list((PROJECT_ROOT / "scripts").glob("migrate_*.py"))
-    assert len(list(legacy_dir.glob("migrate_*.py"))) == 5
+def test_schema_changes_only_use_alembic_revisions() -> None:
+    assert not list((PROJECT_ROOT / "scripts").rglob("migrate_*.py"))

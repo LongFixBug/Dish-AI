@@ -8,7 +8,14 @@ from starlette.datastructures import Headers, UploadFile
 
 from backend.api import analyze
 from ml.inference.vision import UNKNOWN_CONFIDENCE, _normalize_dishes
+from schemas.analyze import AnalyzeResponse
 from schemas.nutrition import calculate_totals
+
+
+def test_analyze_response_does_not_expose_retired_auto_add_field() -> None:
+    response = AnalyzeResponse(source="vision")
+
+    assert "auto_added_dishes" not in response.model_dump()
 
 
 class FakeSession:

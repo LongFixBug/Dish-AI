@@ -100,11 +100,23 @@ class Settings(BaseSettings):
     segment_max_side: int = Field(default=512, ge=64, le=2048)
     segment_outline_width: int = Field(default=10, ge=0, le=40)
     # Ngưỡng đo bằng ml/evaluation/tune_cascade.py trên data/images/golden
-    # (26/7, album 34 món, 427 ảnh golden: coverage 53.6%, precision 95.2%).
-    # Tune lại mỗi khi album đổi lớn.
-    image_match_threshold: float = Field(default=0.82, ge=0, le=1)
-    image_match_margin: float = Field(default=0.02, ge=0, le=1)
+    # Ngưỡng album tham gia consensus; album không được tự chốt ở rollout hiện
+    # tại vì runtime evaluation chưa đạt precision gate khi đứng một mình.
+    image_match_threshold: float = Field(default=0.75, ge=0, le=1)
+    image_match_margin: float = Field(default=0.04, ge=0, le=1)
     image_candidates_limit: int = Field(default=8, ge=1, le=20)
+
+    # EfficientNet + album fusion rollout. Shadow computes/logs the new
+    # decision while preserving the legacy response. Active rollout is a
+    # separate kill switch. CV solo remains disabled until eval writes an
+    # explicitly calibrated threshold into the environment.
+    local_fusion_enabled: bool = True
+    local_fusion_shadow_enabled: bool = False
+    # Stricter than the calibrated CV serving threshold: used only when CV
+    # participates in fusion consensus/disagreement, never for CV-only answers.
+    local_fusion_cv_threshold: float | None = Field(default=0.999, ge=0, le=1)
+    local_fusion_album_solo_enabled: bool = False
+    cv_solo_confidence_threshold: float | None = Field(default=None, ge=0, le=1)
 
     @property
     def is_production(self) -> bool:

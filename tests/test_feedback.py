@@ -1,4 +1,4 @@
-"""Regression tests cho chức năng lưu ảnh training từ Streamlit."""
+"""Regression tests cho chức năng lưu ảnh training từ client."""
 
 import uuid
 from io import BytesIO
@@ -11,7 +11,7 @@ from sqlalchemy import delete
 import backend.services.dish_image_index as dish_image_index
 import backend.services.image_embeddings as image_embeddings
 from backend.api import feedback
-from backend.db.models import FeedbackSubmission, User
+from backend.db.models import FeedbackSubmission, RecognitionEvent, User
 from backend.services.object_storage import FilesystemObjectStorage
 
 
@@ -39,6 +39,13 @@ async def test_feedback_accepts_label_as_multipart_form(
             )
         )
         await db_session.commit()
+    event = RecognitionEvent(
+        submitted_by=test_user_id,
+        source="vision",
+        final_dish_name="Cơm sườn",
+    )
+    db_session.add(event)
+    await db_session.commit()
     feedback_dir = tmp_path / "feedback"
     monkeypatch.setattr(
         feedback,
@@ -55,6 +62,7 @@ async def test_feedback_accepts_label_as_multipart_form(
                 "file": ("com_suon.webp", _webp_bytes(), "image/webp"),
                 "correct_dish_name": (None, original_name),
                 "consent_to_training": (None, "true"),
+                "recognition_event_id": (None, event.id),
             },
         )
 
@@ -65,6 +73,9 @@ async def test_feedback_accepts_label_as_multipart_form(
         assert data["submission_id"]
         assert "Cảm ơn" in data["message"]
         assert "scripts/" not in data["message"]
+        submission = await db_session.get(FeedbackSubmission, data["submission_id"])
+        assert submission is not None
+        assert submission.recognition_event_id == event.id
         stored_path = feedback_dir / Path(data["saved_path"])
         assert stored_path.exists()
 
@@ -79,6 +90,7 @@ async def test_feedback_accepts_label_as_multipart_form(
                 FeedbackSubmission.dish_name_slug == normalized
             )
         )
+        await db_session.execute(delete(RecognitionEvent).where(RecognitionEvent.id == event.id))
         if created_test_user:
             await db_session.execute(delete(User).where(User.id == test_user_id))
         await db_session.commit()

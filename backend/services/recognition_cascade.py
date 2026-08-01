@@ -8,6 +8,7 @@ chưa đủ thì các tên ứng viên chỉ được nối thêm vào prompt c�
 
 import logging
 from dataclasses import dataclass
+from typing import Literal
 
 from backend.config import settings
 from backend.services.dish_image_index import DishCandidateScore, top_dish_candidates
@@ -35,6 +36,83 @@ class CascadeDecision:
     score: float
     margin: float
     candidate_names: list[str]
+
+
+@dataclass(frozen=True)
+class LocalEvidence:
+    """Một bằng chứng local sau khi đã resolve về catalog PostgreSQL.
+
+    ``strong`` là gate để tham gia consensus/phản biện. ``solo_strong`` là
+    gate chặt hơn để một nguồn được tự chốt khi nguồn kia yếu. Album hiện dùng
+    cùng score+margin gate cho cả hai; CV chỉ bật solo sau khi có threshold đã
+    calibration.
+    """
+
+    dish_name: str | None
+    canonical_id: str | None
+    confidence: float
+    strong: bool
+    solo_strong: bool = False
+
+
+FusionAction = Literal["local_consensus", "cv_local", "image_knn", "vision"]
+
+
+@dataclass(frozen=True)
+class LocalFusionDecision:
+    """Kết quả pure của bộ quyết định EfficientNet + album reference."""
+
+    action: FusionAction
+    dish_name: str | None
+    canonical_id: str | None
+    reason: str
+
+
+def decide_local_fusion(
+    cv: LocalEvidence,
+    album: LocalEvidence,
+) -> LocalFusionDecision:
+    """PURE: kết hợp hai nguồn chỉ sau khi chúng có catalog identity an toàn."""
+    cv_strong = bool(cv.strong and cv.dish_name and cv.canonical_id)
+    album_strong = bool(album.strong and album.dish_name and album.canonical_id)
+
+    if cv_strong and album_strong:
+        if cv.canonical_id == album.canonical_id:
+            return LocalFusionDecision(
+                action="local_consensus",
+                dish_name=album.dish_name,
+                canonical_id=album.canonical_id,
+                reason="same_catalog_dish",
+            )
+        return LocalFusionDecision(
+            action="vision",
+            dish_name=None,
+            canonical_id=None,
+            reason="strong_disagreement",
+        )
+
+    if cv_strong and cv.solo_strong:
+        return LocalFusionDecision(
+            action="cv_local",
+            dish_name=cv.dish_name,
+            canonical_id=cv.canonical_id,
+            reason="cv_solo_gate",
+        )
+
+    if album_strong and album.solo_strong:
+        return LocalFusionDecision(
+            action="image_knn",
+            dish_name=album.dish_name,
+            canonical_id=album.canonical_id,
+            reason="album_standalone_gate",
+        )
+
+    return LocalFusionDecision(
+        action="vision",
+        dish_name=None,
+        canonical_id=None,
+        reason="no_strong_local_evidence",
+    )
 
 
 def decide_cascade(

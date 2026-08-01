@@ -29,7 +29,7 @@ from backend.api.upload_utils import (
 )
 from backend.api.dependencies import CurrentUser, require_user
 from backend.config import settings
-from backend.db.models import FeedbackSubmission
+from backend.db.models import FeedbackSubmission, RecognitionEvent
 from backend.db.postgres import get_session
 from backend.services.object_storage import create_object_storage
 
@@ -108,6 +108,7 @@ class TrainingDataResponse(BaseModel):
 async def save_training_data(
     correct_dish_name: str = Form(...),
     consent_to_training: bool = Form(...),
+    recognition_event_id: uuid.UUID | None = Form(default=None),
     file: UploadFile = File(...),
     current_user: CurrentUser = Depends(require_user),
     session: AsyncSession = Depends(get_session),
@@ -131,6 +132,18 @@ async def save_training_data(
     if not normalized:
         raise HTTPException(status_code=400, detail="Tên món không hợp lệ.")
 
+    event_id: str | None = None
+    if recognition_event_id is not None:
+        event = await session.scalar(
+            select(RecognitionEvent).where(
+                RecognitionEvent.id == str(recognition_event_id),
+                RecognitionEvent.submitted_by == current_user.id,
+            )
+        )
+        if event is None:
+            raise HTTPException(status_code=404, detail="Không tìm thấy lượt nhận diện.")
+        event_id = str(event.id)
+
     content = await read_upload_limited(file, max_bytes=MAX_UPLOAD_BYTES)
     image = await asyncio.to_thread(
         validate_and_sanitize_image,
@@ -151,6 +164,7 @@ async def save_training_data(
         )
         submission = FeedbackSubmission(
             submitted_by=current_user.id,
+            recognition_event_id=event_id,
             dish_name_slug=normalized,
             original_name=correct_dish_name.strip(),
             object_key=object_key,
