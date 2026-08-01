@@ -31,6 +31,9 @@ data/images/
 # Logs
 logs/
 
+# Personal learning notes; intentionally kept local and not versioned.
+docs/
+
 # RAG eval reports (output, không commit — chạy lại sinh mới)
 ml/evaluation/reports/
 reports/
