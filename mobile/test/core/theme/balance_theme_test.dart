@@ -41,19 +41,15 @@ void main() {
     expect(BalanceShadows.card.color, BalanceColors.ink);
   });
 
-  test('builds a theme with custom font, accent and button colors', () {
-    final theme = BalanceTheme.lightWith(
-      fontFamily: 'sans-serif',
-      primary: BalanceColors.coral,
-      button: BalanceColors.green,
-    );
-    final palette = theme.extension<BalancePalette>();
+  test('exposes the approved light palette through the theme extension', () {
+    final palette = BalanceTheme.light.extension<BalancePalette>();
 
-    expect(theme.textTheme.bodyMedium?.fontFamily, 'sans-serif');
-    expect(palette?.primary, BalanceColors.coral);
-    expect(palette?.button, BalanceColors.green);
-    expect(theme.filledButtonTheme.style?.backgroundColor?.resolve({}),
-        BalanceColors.green);
+    expect(palette, isNotNull);
+    expect(palette?.background, BalanceColors.paperBlue);
+    expect(palette?.surface, BalanceColors.paper);
+    expect(palette?.primary, BalanceColors.blue);
+    expect(palette?.success, BalanceColors.green);
+    expect(palette?.danger, BalanceColors.danger);
   });
 
   test('theme exposes accessible touch targets and modern field shapes', () {

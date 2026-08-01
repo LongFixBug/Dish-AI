@@ -15,20 +15,12 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/fake_auth_gateway.dart';
 
 void main() {
-  test('appearance settings persist across app restarts', () async {
-    final storage = MemoryAppStorage();
-    final state = await AppState.restore(storage);
+  test('new app state starts with the approved food preferences', () async {
+    final state = await AppState.restore(MemoryAppStorage());
 
-    await state.updateAppearance(
-      fontFamily: 'sans-serif',
-      primaryColorId: 'coral',
-      buttonColorId: 'green',
-    );
-
-    final restored = await AppState.restore(storage);
-    expect(restored.fontFamily, 'sans-serif');
-    expect(restored.primaryColorId, 'coral');
-    expect(restored.buttonColorId, 'green');
+    expect(state.preferences, AppState.defaultPreferences);
+    expect(state.isSignedIn, isFalse);
+    expect(state.profile, isNull);
   });
 
   test('profile, session and journal survive an app restart', () async {

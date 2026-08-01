@@ -90,6 +90,20 @@ void main() {
     expect(find.text('Nội dung trên line'), findsOneWidget);
   });
 
+  testWidgets('static screens show a deterministic ribbon preview', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: GraphPaperBackground(child: SizedBox.expand()),
+      ),
+    );
+
+    final painter = _backgroundPainter(tester);
+    expect(painter.progress, BlueRibbonPainter.staticPreviewProgress);
+    expect(painter.motionSeed, BlueRibbonPainter.fixedTestSeed);
+  });
+
   testWidgets('snake line advances while the app motion scope is enabled', (
     tester,
   ) async {

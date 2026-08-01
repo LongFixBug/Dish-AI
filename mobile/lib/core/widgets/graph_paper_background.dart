@@ -121,7 +121,9 @@ class _NotebookAnimatedBackgroundState extends State<NotebookAnimatedBackground>
                   animation: _controller,
                   builder: (context, _) => CustomPaint(
                     painter: BlueRibbonPainter(
-                      progress: _controller.value,
+                      progress: _animationAllowed == true
+                          ? _controller.value
+                          : BlueRibbonPainter.staticPreviewProgress,
                       ribbonColor: palette.primary,
                       inkColor: palette.ink,
                       secondaryColor: palette.secondary,
@@ -191,6 +193,9 @@ class BlueRibbonPainter extends CustomPainter {
   });
 
   static const fixedTestSeed = 0xBA1AACE;
+  /// A composed, non-empty frame for screens that deliberately disable
+  /// animation (including golden tests and reduced-motion users).
+  static const staticPreviewProgress = 0.56;
   static const cycleDuration = Duration(seconds: 11);
   static const _appleReturnsAt = 0.9;
   final double progress;
