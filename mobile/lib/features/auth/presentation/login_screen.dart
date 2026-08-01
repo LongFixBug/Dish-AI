@@ -1,4 +1,5 @@
 import 'package:balance/core/state/app_scope.dart';
+import 'package:balance/core/widgets/balance_page_route.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/features/auth/presentation/auth_components.dart';
 import 'package:balance/features/auth/presentation/sign_up_screen.dart';
@@ -41,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ? const ProfileSetupScreen()
           : const MainShell();
       await Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => nextPage),
+        BalancePageRoute<void>(builder: (_) => nextPage),
         (_) => false,
       );
     } on Object catch (error) {
@@ -65,7 +66,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ? const ProfileSetupScreen()
           : const MainShell();
       await Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => nextPage),
+        BalancePageRoute<void>(builder: (_) => nextPage),
         (_) => false,
       );
     } on Object catch (error) {
@@ -86,18 +87,18 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Đăng nhập',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.displaySmall,
+            const AuthEyebrow(
+              label: 'CHÀO MỪNG TRỞ LẠI',
+              icon: Icons.waving_hand_rounded,
             ),
+            const SizedBox(height: 18),
+            Text('Đăng nhập', style: Theme.of(context).textTheme.displaySmall),
             const SizedBox(height: 12),
             Text(
               'Chào mừng bạn quay lại với Balance.',
-              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 28),
             LabeledTextField(
               key: const ValueKey('login-email'),
               controller: _emailController,
@@ -139,17 +140,14 @@ class _LoginScreenState extends State<LoginScreen> {
               ],
             ),
             const SizedBox(height: 18),
-            OutlinedButton.icon(
+            AuthGoogleButton(
               key: const ValueKey('login-google'),
               onPressed: _submitting || _googleSubmitting
                   ? null
                   : _submitGoogle,
-              icon: const Icon(Icons.account_circle_outlined),
-              label: Text(
-                _googleSubmitting
-                    ? 'Đang kết nối Google...'
-                    : 'Tiếp tục với Google',
-              ),
+              label: _googleSubmitting
+                  ? 'Đang kết nối Google...'
+                  : 'Tiếp tục với Google',
             ),
             const SizedBox(height: 24),
             Row(
@@ -158,7 +156,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Text('Chưa có tài khoản?'),
                 TextButton(
                   onPressed: () => Navigator.of(context).pushReplacement(
-                    MaterialPageRoute<void>(
+                    BalancePageRoute<void>(
                       builder: (_) => const SignUpScreen(),
                     ),
                   ),

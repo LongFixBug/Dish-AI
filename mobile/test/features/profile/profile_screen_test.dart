@@ -1,6 +1,7 @@
 import 'package:balance/app.dart';
 import 'package:balance/core/state/app_state.dart';
 import 'package:balance/core/storage/app_storage.dart';
+import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/features/profile/domain/user_profile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,6 +30,8 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -80));
     await tester.pumpAndSettle();
     expect(find.text('Đăng xuất'), findsOneWidget);
+    expect(find.byType(PressableButton), findsNWidgets(2));
+    expect(find.byType(OutlinedButton), findsNothing);
 
     await tester.tap(find.text('Đăng xuất'));
     await tester.pumpAndSettle();

@@ -265,20 +265,9 @@ class _CurvedScanPainter extends CustomPainter {
       ..lineTo(size.width, line.centerY)
       ..quadraticBezierTo(size.width / 2, line.controlY, 0, line.centerY)
       ..close();
-    final bounds = Rect.fromLTWH(
-      0,
-      line.centerY - planeDepth - line.curveDepth,
-      size.width,
-      planeDepth + line.curveDepth,
-    );
     canvas.drawPath(
       plane,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0x001CD8FF), Color(0x514F91F7), Color(0xB323D8FF)],
-        ).createShader(bounds),
+      Paint()..color = BalanceColors.cyan.withValues(alpha: 0.42),
     );
   }
 

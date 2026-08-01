@@ -1,6 +1,8 @@
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/state/app_state.dart';
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/balance_app_bar.dart';
+import 'package:balance/core/widgets/balance_screen_motion.dart';
 import 'package:balance/core/widgets/graph_paper_background.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
@@ -10,25 +12,25 @@ import 'package:balance/features/suggestions/domain/suggested_dish.dart';
 import 'package:flutter/material.dart';
 
 class SuggestionsScreen extends StatelessWidget {
-  const SuggestionsScreen({this.gateway, super.key});
+  const SuggestionsScreen({this.gateway, this.animationSeed = 0, super.key});
 
   /// Bỏ trống thì gọi backend thật; test tiêm bản giả.
   final SuggestionsGateway? gateway;
+  final int animationSeed;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Gợi ý cho bạn'),
-        centerTitle: true,
-        backgroundColor: BalanceColors.paperBlue,
-      ),
-      body: GraphPaperBackground(
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
-            child: _SuggestionsContent(gateway: gateway),
+    return BalanceScreenMotion(
+      seed: animationSeed,
+      child: Scaffold(
+        appBar: const BalanceAppBar(title: 'Gợi ý cho bạn'),
+        body: GraphPaperBackground(
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+              child: _SuggestionsContent(gateway: gateway),
+            ),
           ),
         ),
       ),
@@ -102,7 +104,41 @@ class _SuggestionsContentState extends State<_SuggestionsContent> {
     await state.syncJournalEntry(entry, source: 'suggestion');
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Đã thêm ${dish.dishName} vào nhật ký')),
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        elevation: 0,
+        backgroundColor: BalanceColors.paper,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: BalanceColors.ink, width: 2),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        content: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: BalanceColors.green.withValues(alpha: 0.28),
+                border: Border.all(color: BalanceColors.ink, width: 1.4),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Icon(Icons.check_rounded, size: 19),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Đã thêm ${dish.dishName} vào nhật ký',
+                style: const TextStyle(
+                  color: BalanceColors.ink,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
     // Ăn xong thì khoảng trống đổi, gợi ý cũ không còn đúng nữa.
     setState(() {
@@ -118,30 +154,41 @@ class _SuggestionsContentState extends State<_SuggestionsContent> {
     return FutureBuilder<SuggestionResult>(
       future: _request,
       builder: (context, snapshot) {
+        final results = _results(snapshot);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _RemainingCaloriesCard(
-              calories: (snapshot.data?.remaining.calories ?? 0).round(),
-              loading: snapshot.connectionState == ConnectionState.waiting,
+            BalanceReveal(
+              index: 0,
+              child: _RemainingCaloriesCard(
+                calories: (snapshot.data?.remaining.calories ?? 0).round(),
+                loading: snapshot.connectionState == ConnectionState.waiting,
+              ),
             ),
             const SizedBox(height: 12),
-            _SuggestionDisclaimer(hasSafetyFlags: hasSafetyFlags),
+            BalanceReveal(
+              index: 1,
+              child: _SuggestionDisclaimer(hasSafetyFlags: hasSafetyFlags),
+            ),
             const SizedBox(height: 18),
-            ..._results(snapshot),
+            for (var i = 0; i < results.length; i++)
+              BalanceReveal(index: 2 + i.clamp(0, 3), child: results[i]),
             const SizedBox(height: 22),
-            _PreferenceSection(
-              preferences: preferences,
-              onEdit: state == null
-                  ? null
-                  : () async {
-                      await _editPreferences(context);
-                      if (mounted) {
-                        setState(() {
-                          _request = _load();
-                        });
-                      }
-                    },
+            BalanceReveal(
+              index: 5,
+              child: _PreferenceSection(
+                preferences: preferences,
+                onEdit: state == null
+                    ? null
+                    : () async {
+                        await _editPreferences(context);
+                        if (mounted) {
+                          setState(() {
+                            _request = _load();
+                          });
+                        }
+                      },
+              ),
             ),
           ],
         );
@@ -151,18 +198,13 @@ class _SuggestionsContentState extends State<_SuggestionsContent> {
 
   List<Widget> _results(AsyncSnapshot<SuggestionResult> snapshot) {
     if (snapshot.connectionState == ConnectionState.waiting) {
-      return const [
-        Padding(
-          padding: EdgeInsets.symmetric(vertical: 28),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      ];
+      return const [_LoadingSuggestions()];
     }
     if (snapshot.hasError) {
       return [
         _SuggestionNotice(
           icon: Icons.cloud_off_rounded,
-          message: '${snapshot.error}',
+          message: 'Không tải được gợi ý lúc này. Kiểm tra mạng rồi thử lại.',
           onRetry: () => setState(() {
             _request = _load();
           }),
@@ -247,25 +289,60 @@ class _SuggestionDisclaimer extends StatelessWidget {
               'bạn. Hãy xác nhận thành phần trước khi dùng.'
         : 'Các món chỉ để tham khảo và chưa kiểm tra dị ứng. Hãy xác nhận '
               'thành phần trước khi dùng.';
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
+    return Semantics(
+      label: 'Lưu ý về gợi ý dinh dưỡng',
+      child: SketchCard(
         color: const Color(0xFFFFF3CD),
-        border: Border.all(color: BalanceColors.ink, width: 1.4),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.warning_amber_rounded, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        shadow: false,
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.warning_amber_rounded, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadingSuggestions extends StatelessWidget {
+  const _LoadingSuggestions();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 8),
+      child: SketchCard(
+        shadow: false,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                color: BalanceColors.blueDark,
+                strokeWidth: 3,
+              ),
+            ),
+            SizedBox(width: 12),
+            Text(
+              'Đang tìm món hợp với bạn…',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -290,23 +367,29 @@ class _RemainingCaloriesCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Bạn còn', style: TextStyle(fontWeight: FontWeight.w800)),
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '$calories ',
-                        style: const TextStyle(
-                          fontSize: 34,
-                          fontWeight: FontWeight.w900,
+                if (loading)
+                  const Text(
+                    'Đang tính…',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                  )
+                else
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '$calories ',
+                          style: const TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      ),
-                      const TextSpan(
-                        text: 'kcal hôm nay',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ],
+                        const TextSpan(
+                          text: 'kcal hôm nay',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -334,7 +417,7 @@ class _PreferenceSection extends StatelessWidget {
               'Sở thích của bạn',
               style: Theme.of(context).textTheme.titleMedium,
             ),
-            TextButton(onPressed: onEdit, child: const Text('Chỉnh sửa')),
+            _CompactInkAction(label: 'Chỉnh sửa', onPressed: onEdit),
           ],
         ),
         Wrap(
@@ -394,29 +477,7 @@ class _SuggestionCard extends StatelessWidget {
             const SizedBox(height: 8),
             // Gợi ý nói được lý do thì người dùng tin và bấm; gợi ý im lặng
             // thì bị lướt qua.
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: BalanceColors.paperBlue,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.tips_and_updates_outlined, size: 17),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      dish.reason,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _SuggestionReasonNote(message: dish.reason),
           ],
           const SizedBox(height: 10),
           PressableButton(
@@ -437,37 +498,82 @@ Future<void> _editPreferences(BuildContext context) async {
   final saved = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    elevation: 0,
+    barrierColor: BalanceColors.ink.withValues(alpha: 0.36),
     builder: (sheetContext) => StatefulBuilder(
       builder: (context, setModalState) => SafeArea(
+        top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Sở thích ăn uống',
-                style: Theme.of(context).textTheme.headlineSmall,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+          child: GraphPaperBackground(
+            child: SketchCard(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: BalanceColors.yellow,
+                          border: Border.all(
+                            color: BalanceColors.ink,
+                            width: 1.8,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.tune_rounded, size: 23),
+                      ),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Text(
+                          'Sở thích ăn uống',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                      ),
+                      _SheetCloseButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Chọn những điều bạn muốn ưu tiên',
+                    style: TextStyle(
+                      color: BalanceColors.muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  for (final option in options) ...[
+                    _PreferenceOption(
+                      key: ValueKey('preference-option-$option'),
+                      label: option,
+                      selected: selected.contains(option),
+                      onPressed: () {
+                        setModalState(() {
+                          selected.contains(option)
+                              ? selected.remove(option)
+                              : selected.add(option);
+                        });
+                      },
+                    ),
+                    if (option != options.last) const SizedBox(height: 8),
+                  ],
+                  const SizedBox(height: 14),
+                  PressableButton(
+                    label: 'Lưu sở thích',
+                    icon: Icons.check_rounded,
+                    onPressed: () => Navigator.of(sheetContext).pop(true),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              for (final option in options)
-                CheckboxListTile(
-                  value: selected.contains(option),
-                  title: Text(option),
-                  onChanged: (checked) {
-                    setModalState(() {
-                      checked == true
-                          ? selected.add(option)
-                          : selected.remove(option);
-                    });
-                  },
-                ),
-              const SizedBox(height: 10),
-              PressableButton(
-                label: 'Lưu sở thích',
-                onPressed: () => Navigator.of(sheetContext).pop(true),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -475,6 +581,163 @@ Future<void> _editPreferences(BuildContext context) async {
   );
   if (saved != true || !context.mounted) return;
   await state.updatePreferences(selected);
+}
+
+class _CompactInkAction extends StatelessWidget {
+  const _CompactInkAction({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: GestureDetector(
+        onTap: onPressed,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: enabled ? BalanceColors.paper : BalanceColors.paperBlue,
+            border: Border.all(color: BalanceColors.ink, width: 1.6),
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: enabled
+                ? const [
+                    BoxShadow(color: BalanceColors.ink, offset: Offset(2, 3)),
+                  ]
+                : null,
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: enabled ? BalanceColors.blueDark : BalanceColors.muted,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SuggestionReasonNote extends StatelessWidget {
+  const _SuggestionReasonNote({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: BalanceColors.paperBlue,
+        border: Border.all(color: BalanceColors.ink, width: 1.4),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.tips_and_updates_outlined, size: 17),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SheetCloseButton extends StatelessWidget {
+  const _SheetCloseButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Đóng chỉnh sửa sở thích',
+      child: GestureDetector(
+        onTap: onPressed,
+        child: Container(
+          width: 38,
+          height: 38,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: BalanceColors.paper,
+            border: Border.all(color: BalanceColors.ink, width: 1.7),
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: const Icon(Icons.close_rounded, size: 21),
+        ),
+      ),
+    );
+  }
+}
+
+class _PreferenceOption extends StatelessWidget {
+  const _PreferenceOption({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+    super.key,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      checked: selected,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: selected ? _preferenceColor(label) : BalanceColors.paper,
+            border: Border.all(color: BalanceColors.ink, width: 1.8),
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: selected
+                ? const [
+                    BoxShadow(color: BalanceColors.ink, offset: Offset(2, 3)),
+                  ]
+                : null,
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected ? BalanceColors.green : BalanceColors.paper,
+                  border: Border.all(color: BalanceColors.ink, width: 1.5),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: selected
+                    ? const Icon(Icons.check_rounded, size: 16)
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _PreferenceChip extends StatelessWidget {

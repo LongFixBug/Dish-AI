@@ -41,6 +41,7 @@ void main() {
           'found_in_db': true,
           'recognition_confidence': 0.86,
           'portion_source': 'vision',
+          'serving_label': '1 tô',
         },
         {
           'dish_name': 'Quẩy',
@@ -66,6 +67,7 @@ void main() {
     expect(result.dishes.last.foundInDatabase, isFalse);
     expect(result.dishes.first.recognitionConfidence, 0.86);
     expect(result.dishes.first.portionSource, 'vision');
+    expect(result.dishes.first.servingLabel, '1 tô');
     expect(result.missingItems, ['Quẩy']);
   });
 

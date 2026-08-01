@@ -1,5 +1,6 @@
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/balance_page_route.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/features/auth/presentation/auth_components.dart';
 import 'package:balance/features/auth/presentation/login_screen.dart';
@@ -42,7 +43,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
       if (!mounted) return;
       await Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => const ProfileSetupScreen()),
+        BalancePageRoute<void>(builder: (_) => const ProfileSetupScreen()),
         (_) => false,
       );
     } on Object catch (error) {
@@ -63,18 +64,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const AuthEyebrow(
+              label: 'BẮT ĐẦU HÔM NAY',
+              icon: Icons.auto_awesome_rounded,
+            ),
+            const SizedBox(height: 18),
             Text(
               'Tạo tài khoản',
-              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.displaySmall,
             ),
             const SizedBox(height: 12),
             Text(
               'Bắt đầu hành trình cân bằng theo cách của bạn.',
-              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 28),
             LabeledTextField(
               key: const ValueKey('signup-name'),
               controller: _nameController,
@@ -142,9 +146,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 const Text('Đã có tài khoản?'),
                 TextButton(
                   onPressed: () => Navigator.of(context).pushReplacement(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const LoginScreen(),
-                    ),
+                    BalancePageRoute<void>(builder: (_) => const LoginScreen()),
                   ),
                   child: const Text('Đăng nhập'),
                 ),

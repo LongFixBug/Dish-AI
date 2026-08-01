@@ -34,7 +34,7 @@ void main() {
         .transform;
 
     expect(restingTransform?.storage[13], 0);
-    expect(pressedTransform?.storage[13], closeTo(6, 0.1));
+    expect(pressedTransform?.storage[13], closeTo(4, 0.1));
 
     await gesture.up();
     await tester.pumpAndSettle();

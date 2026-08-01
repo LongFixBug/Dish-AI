@@ -15,6 +15,22 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/fake_auth_gateway.dart';
 
 void main() {
+  test('appearance settings persist across app restarts', () async {
+    final storage = MemoryAppStorage();
+    final state = await AppState.restore(storage);
+
+    await state.updateAppearance(
+      fontFamily: 'sans-serif',
+      primaryColorId: 'coral',
+      buttonColorId: 'green',
+    );
+
+    final restored = await AppState.restore(storage);
+    expect(restored.fontFamily, 'sans-serif');
+    expect(restored.primaryColorId, 'coral');
+    expect(restored.buttonColorId, 'green');
+  });
+
   test('profile, session and journal survive an app restart', () async {
     final storage = MemoryAppStorage();
     final auth = FakeAuthGateway();
@@ -282,6 +298,37 @@ void main() {
     await state.removeJournalEntry('entry-2');
 
     expect(store.saved, isEmpty);
+    expect(store.deleted, isEmpty);
+  });
+
+  test('bữa ăn vừa xoá có thể hoàn tác trước khi dọn sticker', () async {
+    final store = _RecordingStickerStore();
+    final state = await AppState.restore(
+      MemoryAppStorage(),
+      authGateway: FakeAuthGateway(),
+      stickerStore: store,
+    );
+    final entry = JournalEntry(
+      id: 'undo-entry',
+      dishName: 'Bún chả',
+      loggedAt: DateTime(2026, 7, 27, 12),
+      mealType: MealType.lunch,
+      calories: 550,
+      proteinGrams: 25,
+      fatGrams: 20,
+      carbsGrams: 65,
+      fiberGrams: 3,
+      totalGrams: 400,
+    );
+    await state.addJournalEntry(entry, stickerBytes: Uint8List.fromList([1]));
+
+    final removed = await state.removeJournalEntry(
+      entry.id,
+      deleteSticker: false,
+    );
+    await state.restoreJournalEntry(removed!);
+
+    expect(state.journalEntries.single.id, entry.id);
     expect(store.deleted, isEmpty);
   });
 

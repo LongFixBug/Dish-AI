@@ -139,7 +139,11 @@ void main() {
     await tester.pumpWidget(_app(await _signedInState(), gateway));
     await tester.pumpAndSettle();
 
-    expect(find.text('Không kết nối được máy chủ.'), findsOneWidget);
+    expect(
+      find.text('Không tải được gợi ý lúc này. Kiểm tra mạng rồi thử lại.'),
+      findsOneWidget,
+    );
+    expect(find.text('Không kết nối được máy chủ.'), findsNothing);
     expect(find.text('Thử lại'), findsOneWidget);
   });
 
@@ -178,7 +182,9 @@ void main() {
     await tester.ensureVisible(find.text('Chỉnh sửa'));
     await tester.tap(find.text('Chỉnh sửa'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(CheckboxListTile, 'Ít dầu'));
+    expect(find.text('Chọn những điều bạn muốn ưu tiên'), findsOneWidget);
+    expect(find.byType(CheckboxListTile), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('preference-option-Ít dầu')));
     await tester.tap(find.text('Lưu sở thích'));
     await tester.pumpAndSettle();
 

@@ -2,6 +2,7 @@ import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/state/app_state.dart';
 import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/core/widgets/balance_bottom_bar.dart';
+import 'package:balance/core/widgets/fade_indexed_stack.dart';
 import 'package:balance/core/widgets/main_shell.dart';
 import 'package:balance/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:balance/features/profile/presentation/profile_screen.dart';
@@ -31,12 +32,23 @@ void main() {
   ) async {
     await tester.pumpWidget(_testApp());
 
-    // Tab không được chọn vẫn nằm trong cây widget (offstage) chứ không bị
-    // huỷ — đó chính là điều giữ nguyên vị trí cuộn khi quay lại tab cũ.
+    // Tab không được chọn vẫn nằm trong cây widget để giữ vị trí cuộn, nhưng
+    // phải Offstage sau khi fade xong để nội dung ẩn không chồng lên UI.
     expect(find.byType(DashboardScreen), findsOneWidget);
+    expect(find.byType(FadeIndexedStack), findsOneWidget);
     expect(find.byType(SuggestionsScreen, skipOffstage: false), findsOneWidget);
     expect(find.byType(ProfileScreen, skipOffstage: false), findsOneWidget);
-    expect(find.byType(SuggestionsScreen), findsNothing, reason: 'chưa mở');
+    expect(
+      tester
+          .widget<Offstage>(
+            find.descendant(
+              of: find.byKey(const ValueKey('fade-stack-child-2')),
+              matching: find.byType(Offstage),
+            ),
+          )
+          .offstage,
+      isTrue,
+    );
   });
 
   testWidgets('tab đang mở được tô đậm trên thanh điều hướng', (tester) async {

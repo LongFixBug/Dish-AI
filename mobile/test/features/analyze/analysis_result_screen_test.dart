@@ -1,4 +1,5 @@
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/sketch_card.dart';
 import 'package:balance/features/analyze/domain/analyze_result.dart';
 import 'package:balance/features/analyze/presentation/analysis_result_screen.dart';
 import 'package:flutter/material.dart';
@@ -68,6 +69,36 @@ void main() {
     await tester.tap(find.text('Thêm vào nhật ký'));
     await tester.pump();
     expect(find.text('Đã thêm bữa ăn vào nhật ký'), findsOneWidget);
+  });
+
+  testWidgets('result summary keeps the raised inked paper-card treatment', (
+    tester,
+  ) async {
+    final result = AnalyzeResult.fromJson({
+      'dish_name': 'Phở bò',
+      'source': 'vision',
+      'nutrition': {'total_calories': 450, 'total_grams': 500},
+      'dishes': <Object>[],
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalysisResultScreen(result: result),
+      ),
+    );
+
+    final card = tester.widget<SketchCard>(
+      find.byKey(const ValueKey('result-summary-card')),
+    );
+    expect(card.color, isNull);
+    expect(
+      BalanceTheme.paletteOf(
+        tester.element(find.byKey(const ValueKey('result-summary-card'))),
+      ).surface,
+      BalanceColors.paper,
+    );
+    expect(card.shadow, isTrue);
   });
 
   testWidgets('editing portion scales nutrition before saving', (tester) async {
@@ -288,5 +319,54 @@ void main() {
     expect(find.text('40 g  •  — kcal'), findsOneWidget);
     expect(find.text('— kcal'), findsOneWidget);
     expect(find.text('0 kcal'), findsNothing);
+  });
+
+  testWidgets('shows the Vision serving label beside catalog nutrition', (
+    tester,
+  ) async {
+    final result = AnalyzeResult.fromJson({
+      'dish_name': 'Phở bò',
+      'source': 'vision',
+      'nutrition': {
+        'total_calories': 450,
+        'total_protein_g': 25,
+        'total_fat_g': 10,
+        'total_carbs_g': 60,
+        'total_fiber_g': 2,
+        'total_grams': 500,
+        'confidence_score': 1,
+        'catalog_coverage_score': 1,
+        'items': [
+          {
+            'item_name': 'Phở bò',
+            'grams': 500,
+            'calories': 450,
+            'protein_g': 25,
+            'fat_g': 10,
+            'carbs_g': 60,
+            'fiber_g': 2,
+            'found_in_db': true,
+          },
+        ],
+      },
+      'dishes': [
+        {
+          'dish_name': 'Phở bò',
+          'grams': 500,
+          'found_in_db': true,
+          'serving_label': '1 tô',
+        },
+      ],
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalysisResultScreen(result: result),
+      ),
+    );
+
+    expect(find.text('450 kcal / 1 tô'), findsOneWidget);
+    expect(find.text('500 g  •  450 kcal / 1 tô'), findsOneWidget);
   });
 }

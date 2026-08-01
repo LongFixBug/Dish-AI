@@ -335,19 +335,37 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Xoá bữa ăn kèm file sticker của nó.
+  /// Xoá bữa ăn và trả lại bản ghi để UI có thể hiển thị thao tác hoàn tác.
   ///
   /// Bỏ bước xoá file thì thư mục tài liệu phình dần bằng ảnh mồ côi mà người
   /// dùng không có cách nào thấy hay dọn.
-  Future<void> removeJournalEntry(String id) async {
+  Future<JournalEntry?> removeJournalEntry(
+    String id, {
+    bool deleteSticker = true,
+  }) async {
     final removed = _journalEntries
         .where((entry) => entry.id == id)
         .toList(growable: false);
     _journalEntries.removeWhere((entry) => entry.id == id);
-    for (final entry in removed) {
-      await _stickerStore.delete(entry.stickerPath);
+    if (deleteSticker) {
+      for (final entry in removed) {
+        await _stickerStore.delete(entry.stickerPath);
+      }
     }
     await _saveAndNotify();
+    return removed.isEmpty ? null : removed.first;
+  }
+
+  /// Đưa lại bản ghi vừa xoá mà không ghi đè file sticker còn giữ tạm.
+  Future<void> restoreJournalEntry(JournalEntry entry) async {
+    if (_journalEntries.any((item) => item.id == entry.id)) return;
+    _journalEntries.insert(0, entry);
+    await _saveAndNotify();
+  }
+
+  /// Dọn sticker sau khi cửa sổ hoàn tác đã đóng mà user không chọn Undo.
+  Future<void> deleteJournalEntrySticker(JournalEntry entry) {
+    return _stickerStore.delete(entry.stickerPath);
   }
 
   /// Dò lại dữ liệu nằm ngoài bộ nhớ rồi báo cho UI vẽ lại.

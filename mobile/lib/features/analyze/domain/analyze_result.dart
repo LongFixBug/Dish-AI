@@ -69,6 +69,7 @@ class AnalyzeResult {
               foundInDatabase: dish.foundInDatabase,
               recognitionConfidence: dish.recognitionConfidence,
               portionSource: dish.portionSource,
+              servingLabel: safeFactor == 1 ? dish.servingLabel : null,
             ),
           )
           .toList(growable: false),
@@ -105,6 +106,9 @@ class AnalyzeResult {
                     foundInDatabase: dish.foundInDatabase,
                     recognitionConfidence: dish.recognitionConfidence,
                     portionSource: dish.portionSource,
+                    servingLabel: safeGrams == dish.grams
+                        ? dish.servingLabel
+                        : null,
                   )
                 : dish,
           )
@@ -144,6 +148,7 @@ class AnalyzedDish {
     required this.foundInDatabase,
     this.recognitionConfidence,
     this.portionSource = 'unknown',
+    this.servingLabel,
   });
 
   factory AnalyzedDish.fromJson(Map<String, dynamic> json) {
@@ -154,6 +159,7 @@ class AnalyzedDish {
       foundInDatabase: json['found_in_db'] as bool? ?? false,
       recognitionConfidence: _toDoubleOrNull(json['recognition_confidence']),
       portionSource: json['portion_source'] as String? ?? 'unknown',
+      servingLabel: _toStringOrNull(json['serving_label']),
     );
   }
 
@@ -163,6 +169,7 @@ class AnalyzedDish {
   final bool foundInDatabase;
   final double? recognitionConfidence;
   final String portionSource;
+  final String? servingLabel;
 }
 
 class NutritionSummary {
@@ -335,5 +342,10 @@ double _toDouble(Object? value) => switch (value) {
 
 double? _toDoubleOrNull(Object? value) => switch (value) {
   final num number => number.toDouble(),
+  _ => null,
+};
+
+String? _toStringOrNull(Object? value) => switch (value) {
+  final String text when text.trim().isNotEmpty => text.trim(),
   _ => null,
 };

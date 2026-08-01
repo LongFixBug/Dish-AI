@@ -15,12 +15,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../helpers/load_test_fonts.dart';
+
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
-    final font = FontLoader('Baloo 2')
-      ..addFont(rootBundle.load('assets/fonts/Baloo2-Variable.ttf'));
-    await font.load();
+    await loadBalanceTestFonts();
   });
 
   testWidgets('camera screen matches the approved visual', (tester) async {
@@ -80,10 +80,10 @@ void main() {
       ),
     );
     final context = tester.element(find.byType(AnalyzeScreen));
-    await tester.runAsync(
-      () => precacheImage(MemoryImage(bytes), context),
-    );
+    await tester.runAsync(() => precacheImage(MemoryImage(bytes), context));
     await tester.tap(find.text('Thư viện'));
+    await tester.pump();
+    await tester.tap(find.text('Dùng ảnh này'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1300));
 

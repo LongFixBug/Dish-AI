@@ -16,7 +16,10 @@ Future<void> main() async {
   await FileStickerStore().prepare();
   const secureStorage = FlutterSecureStorage();
   runApp(
-    BalanceApp(appState: await _restoreState(SecureAppStorage(secureStorage))),
+    BalanceApp(
+      appState: await _restoreState(SecureAppStorage(secureStorage)),
+      animateBackground: true,
+    ),
   );
 }
 

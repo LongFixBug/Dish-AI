@@ -16,6 +16,15 @@ Future<BalanceApp> authenticatedTestApp() async {
 }
 
 void main() {
+  testWidgets('welcome makes the food-recognition value clear before sign up', (
+    tester,
+  ) async {
+    await tester.pumpWidget(await authenticatedTestApp());
+
+    expect(find.text('AI nhận diện món Việt'), findsOneWidget);
+    expect(find.text('Từ ảnh món ăn đến nhật ký của bạn'), findsOneWidget);
+  });
+
   testWidgets('existing user can open the login screen', (tester) async {
     await tester.pumpWidget(await authenticatedTestApp());
 
@@ -45,6 +54,9 @@ void main() {
     expect(find.text('Họ và tên'), findsOneWidget);
     expect(find.text('Tôi đồng ý với Chính sách bảo mật'), findsOneWidget);
 
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('privacy-policy-link')),
+    );
     await tester.tap(find.byKey(const ValueKey('privacy-policy-link')));
     await tester.pumpAndSettle();
     expect(find.text('Chính sách bảo mật'), findsOneWidget);
@@ -99,6 +111,7 @@ void main() {
     expect(find.text('Bạn vận động thế nào?'), findsOneWidget);
     expect(find.text('3 / 4'), findsOneWidget);
 
+    await tester.ensureVisible(find.text('Vừa phải'));
     await tester.tap(find.text('Vừa phải'));
     await tester.ensureVisible(find.text('Tiếp tục'));
     await tester.tap(find.text('Tiếp tục'));
@@ -119,7 +132,7 @@ void main() {
     await tester.tap(find.text('Hoàn tất'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Hôm nay'), findsOneWidget);
+    expect(find.text('Cân bằng hôm nay'), findsOneWidget);
     expect(find.text('0'), findsOneWidget);
     expect(find.text('Trang chủ'), findsOneWidget);
     expect(find.text('Nhật ký'), findsOneWidget);
@@ -146,6 +159,7 @@ void main() {
       find.byKey(const ValueKey('signup-password')),
       'matkhau123',
     );
+    await tester.ensureVisible(find.byType(Checkbox));
     await tester.tap(find.byType(Checkbox));
     await tester.pump();
     await tester.ensureVisible(

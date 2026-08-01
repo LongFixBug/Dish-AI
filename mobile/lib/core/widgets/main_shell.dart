@@ -1,4 +1,6 @@
 import 'package:balance/core/widgets/balance_bottom_bar.dart';
+import 'package:balance/core/widgets/balance_page_route.dart';
+import 'package:balance/core/widgets/fade_indexed_stack.dart';
 import 'package:balance/features/analyze/presentation/analyze_screen.dart';
 import 'package:balance/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:balance/features/journal/presentation/journal_screen.dart';
@@ -43,28 +45,43 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   late ShellTab _tab = widget.initialTab;
+  int _homeAnimationSeed = 0;
+  int _journalAnimationSeed = 0;
+  int _suggestionsAnimationSeed = 0;
+  int _profileAnimationSeed = 0;
 
   void _select(ShellTab tab) {
     if (_tab == tab) return;
-    setState(() => _tab = tab);
+    setState(() {
+      if (tab == ShellTab.home) {
+        _homeAnimationSeed += 1;
+      } else if (tab == ShellTab.journal) {
+        _journalAnimationSeed += 1;
+      } else if (tab == ShellTab.suggestions) {
+        _suggestionsAnimationSeed += 1;
+      } else if (tab == ShellTab.profile) {
+        _profileAnimationSeed += 1;
+      }
+      _tab = tab;
+    });
   }
 
   Future<void> _openCamera() async {
     await Navigator.of(
       context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const AnalyzeScreen()));
+    ).push(BalancePageRoute<void>(builder: (_) => const AnalyzeScreen()));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
+      body: FadeIndexedStack(
         index: ShellTab.values.indexOf(_tab),
         children: [
-          DashboardScreen(now: widget.now),
-          const JournalScreen(),
-          const SuggestionsScreen(),
-          const ProfileScreen(),
+          DashboardScreen(now: widget.now, animationSeed: _homeAnimationSeed),
+          JournalScreen(animationSeed: _journalAnimationSeed),
+          SuggestionsScreen(animationSeed: _suggestionsAnimationSeed),
+          ProfileScreen(animationSeed: _profileAnimationSeed),
         ],
       ),
       bottomNavigationBar: BalanceBottomBar(

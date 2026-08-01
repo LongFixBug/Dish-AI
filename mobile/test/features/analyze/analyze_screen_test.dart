@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/sketch_card.dart';
 import 'package:balance/features/analyze/domain/analyze_result.dart';
 import 'package:balance/features/analyze/presentation/analyze_screen.dart';
 import 'package:balance/features/analyze/presentation/analysis_result_screen.dart';
@@ -10,10 +11,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 
 void main() {
-  testWidgets('selecting a photo shows loading and then nutrition', (
+  testWidgets('selected photos require confirmation before AI analysis', (
     tester,
   ) async {
     final analysis = Completer<AnalyzeResult>();
+    var analysisCalls = 0;
     final result = AnalyzeResult.fromJson({
       'dish_name': 'Bún bò Huế',
       'source': 'vision',
@@ -40,23 +42,39 @@ void main() {
         theme: BalanceTheme.light,
         home: AnalyzeScreen(
           pickImage: (_) async => image,
-          analyzeImage: ({required bytes, required filename}) =>
-              analysis.future,
+          analyzeImage: ({required bytes, required filename}) {
+            analysisCalls++;
+            return analysis.future;
+          },
         ),
       ),
     );
 
     expect(find.text('Chụp món ăn'), findsOneWidget);
     expect(find.byKey(const ValueKey('camera-preview')), findsOneWidget);
-    expect(find.text('Đặt món ở giữa vùng quét'), findsOneWidget);
-    expect(find.text('Chụp rõ món ăn • nơi đủ sáng'), findsOneWidget);
+    expect(find.text('Bắt đầu quét món ăn'), findsOneWidget);
+    expect(
+      find.text('Đưa món vào khung, chụp từ trên xuống, đủ sáng.'),
+      findsOneWidget,
+    );
     expect(find.text('Thư viện'), findsOneWidget);
     expect(find.text('Mẹo chụp'), findsOneWidget);
 
     await tester.tap(find.text('Thư viện'));
     await tester.pump();
-    expect(find.text('Đang quét món ăn'), findsOneWidget);
-    expect(find.text('Vạch quét cong khi chạm tới món ăn'), findsOneWidget);
+    expect(analysisCalls, 0);
+    expect(find.text('Ảnh đã sẵn sàng'), findsOneWidget);
+    expect(find.text('Chụp lại'), findsOneWidget);
+    expect(find.text('Dùng ảnh này'), findsOneWidget);
+
+    await tester.tap(find.text('Dùng ảnh này'));
+    await tester.pump();
+    expect(analysisCalls, 1);
+    expect(find.text('Balance đang đọc ảnh'), findsOneWidget);
+    expect(
+      find.text('Đợi một lát để AI đối chiếu món và khẩu phần.'),
+      findsOneWidget,
+    );
 
     analysis.complete(result);
     await tester.pumpAndSettle();
@@ -91,8 +109,17 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('camera-shutter')));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Dùng ảnh này'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Chưa phân tích được ảnh'), findsOneWidget);
-    expect(find.textContaining('Không kết nối được backend'), findsOneWidget);
+    expect(
+      find.text(
+        'Chưa kết nối được để phân tích ảnh. Kiểm tra mạng rồi thử lại.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Không kết nối được backend'), findsNothing);
     expect(find.text('Thử lại'), findsOneWidget);
   });
 
@@ -114,6 +141,46 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(AnalyzeScreen), findsOneWidget);
+  });
+
+  testWidgets('capture entry uses a clear camera-first action sheet', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalyzeScreen(pickImage: (_) async => null),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('capture-action-sheet')), findsOneWidget);
+    expect(find.text('Bắt đầu quét món ăn'), findsOneWidget);
+    expect(find.text('Mở camera'), findsOneWidget);
+    expect(find.text('Thư viện'), findsOneWidget);
+    expect(find.text('Mẹo chụp'), findsOneWidget);
+  });
+
+  testWidgets('capture controls use the inked paper-card treatment', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalyzeScreen(pickImage: (_) async => null),
+      ),
+    );
+
+    final card = tester.widget<SketchCard>(
+      find.byKey(const ValueKey('capture-action-sheet')),
+    );
+    expect(card.color, isNull);
+    expect(
+      BalanceTheme.paletteOf(
+        tester.element(find.byKey(const ValueKey('capture-action-sheet'))),
+      ).surface,
+      BalanceColors.paper,
+    );
+    expect(card.shadow, isTrue);
   });
 
   testWidgets('gallery photo stays smaller inside the restored capture frame', (
@@ -174,7 +241,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('camera-preview')), findsOneWidget);
-    expect(find.text('Chụp ảnh'), findsOneWidget);
+    expect(find.text('Mở camera'), findsOneWidget);
     expect(find.text('Thư viện'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

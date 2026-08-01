@@ -5,7 +5,7 @@ class PressableButton extends StatefulWidget {
   const PressableButton({
     required this.label,
     required this.onPressed,
-    this.backgroundColor = BalanceColors.blue,
+    this.backgroundColor,
     this.foregroundColor = Colors.white,
     this.icon,
     super.key,
@@ -13,7 +13,7 @@ class PressableButton extends StatefulWidget {
 
   final String label;
   final VoidCallback? onPressed;
-  final Color backgroundColor;
+  final Color? backgroundColor;
   final Color foregroundColor;
   final IconData? icon;
 
@@ -22,7 +22,7 @@ class PressableButton extends StatefulWidget {
 }
 
 class _PressableButtonState extends State<PressableButton> {
-  static const _travel = 6.0;
+  static const _travel = 4.0;
   bool _isPressed = false;
 
   void _setPressed(bool value) {
@@ -33,6 +33,8 @@ class _PressableButtonState extends State<PressableButton> {
   @override
   Widget build(BuildContext context) {
     final enabled = widget.onPressed != null;
+    final palette = BalanceTheme.paletteOf(context);
+    final backgroundColor = widget.backgroundColor ?? palette.primary;
 
     return Semantics(
       button: true,
@@ -45,8 +47,10 @@ class _PressableButtonState extends State<PressableButton> {
           behavior: HitTestBehavior.opaque,
           onTap: widget.onPressed,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 90),
-            curve: Curves.easeOut,
+            duration: const Duration(milliseconds: 100),
+            // BoxShadow không chấp nhận blur âm; các curve overshoot như
+            // easeOutBack có thể nội suy qua 0 khi nút nhả, nên giữ cubic.
+            curve: Curves.easeOutCubic,
             transform: Matrix4.translationValues(
               0,
               _isPressed ? _travel : 0,
@@ -57,15 +61,20 @@ class _PressableButtonState extends State<PressableButton> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: enabled
-                  ? widget.backgroundColor
-                  : widget.backgroundColor.withValues(alpha: 0.45),
-              border: Border.all(color: BalanceColors.ink, width: 2.5),
-              borderRadius: BorderRadius.circular(12),
+                  ? backgroundColor
+                  : backgroundColor.withValues(alpha: 0.45),
+              border: Border.all(
+                color: palette.ink,
+                width: BalanceStrokes.strong,
+              ),
+              borderRadius: BorderRadius.circular(BalanceRadii.control),
               boxShadow: [
-                BoxShadow(
-                  color: BalanceColors.ink,
-                  offset: _isPressed ? const Offset(1, 1) : const Offset(5, 6),
-                ),
+                if (!_isPressed)
+                  BoxShadow(
+                    color: palette.shadow,
+                    offset: const Offset(4, 5),
+                    blurRadius: 0,
+                  ),
               ],
             ),
             child: Padding(

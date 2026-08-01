@@ -2,10 +2,14 @@ import 'dart:typed_data';
 
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/balance_app_bar.dart';
+import 'package:balance/core/widgets/balance_page_route.dart';
+import 'package:balance/core/widgets/balance_screen_motion.dart';
 import 'package:balance/core/widgets/graph_paper_background.dart';
 import 'package:balance/features/analyze/data/analyze_api.dart';
 import 'package:balance/features/analyze/data/sticker_api.dart';
 import 'package:balance/features/analyze/domain/analyze_result.dart';
+import 'package:balance/features/analyze/domain/capture_stage.dart';
 import 'package:balance/features/analyze/presentation/analyze_capture_view.dart';
 import 'package:balance/features/analyze/presentation/analysis_result_screen.dart';
 import 'package:flutter/material.dart';
@@ -49,10 +53,9 @@ class _AnalyzeScreenState extends State<AnalyzeScreen> {
   StickerApi? _stickerApi;
   Uint8List? _imageBytes;
   String? _error;
-  bool _loading = false;
+  CaptureStage _stage = CaptureStage.ready;
 
-  /// Khoá chống bấm hai lần, bật ngay khi bắt đầu — kể cả trong lúc chờ picker,
-  /// giai đoạn mà [_loading] còn false nên nút vẫn bấm được.
+  /// Khoá chống bấm hai lần ngay khi chờ native picker mở ảnh.
   bool _busy = false;
 
   @override
@@ -88,10 +91,10 @@ class _AnalyzeScreenState extends State<AnalyzeScreen> {
     }
   }
 
-  Future<void> _pickAndAnalyze(ImageSource source) async {
+  Future<void> _pickImage(ImageSource source) async {
     // Khoá NGAY, trước khi await picker. Nếu chỉ khoá sau đó, hai lần bấm nhanh
     // sẽ chạy hai lượt phân tích song song = hai lần gọi Vision tính phí.
-    if (_busy) return;
+    if (_busy || _stage.isAnalyzing) return;
     _busy = true;
     try {
       final image = await widget.pickImage(source);
@@ -101,19 +104,40 @@ class _AnalyzeScreenState extends State<AnalyzeScreen> {
       setState(() {
         _imageBytes = bytes;
         _error = null;
-        _loading = true;
+        _stage = CaptureStage.review;
       });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Không thể mở ảnh. Hãy thử lại nhé.';
+        _stage = CaptureStage.ready;
+      });
+      debugPrint('Could not choose image: $error');
+    } finally {
+      _busy = false;
+    }
+  }
 
+  Future<void> _analyzeSelectedImage() async {
+    final bytes = _imageBytes;
+    if (bytes == null || _stage.isAnalyzing) return;
+    final filename = 'food-photo.jpg';
+    setState(() {
+      _error = null;
+      _stage = CaptureStage.analyzing;
+    });
+
+    try {
       final analyze = widget.analyzeImage ?? _api!.analyzeImage;
       // Hai việc chạy song song: người dùng chỉ chờ bằng việc lâu hơn, chứ
       // không phải chờ cộng dồn cả hai.
-      final analysis = analyze(bytes: bytes, filename: image.name);
-      final sticker = _cutOutSticker(bytes, image.name);
+      final analysis = analyze(bytes: bytes, filename: filename);
+      final sticker = _cutOutSticker(bytes, filename);
       final result = await analysis;
       final stickerBytes = await sticker;
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
+        BalancePageRoute<void>(
           builder: (_) => AnalysisResultScreen(
             result: result,
             imageBytes: bytes,
@@ -123,11 +147,26 @@ class _AnalyzeScreenState extends State<AnalyzeScreen> {
       );
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.toString());
+      setState(() {
+        _error =
+            'Chưa kết nối được để phân tích ảnh. Kiểm tra mạng rồi thử lại.';
+        _stage = CaptureStage.review;
+      });
+      debugPrint('Could not analyze image: $error');
     } finally {
-      _busy = false;
-      if (mounted) setState(() => _loading = false);
+      if (mounted && _stage.isAnalyzing) {
+        setState(() => _stage = CaptureStage.review);
+      }
     }
+  }
+
+  void _retakePhoto() {
+    setState(() {
+      _imageBytes = null;
+      _error = null;
+      _stage = CaptureStage.ready;
+    });
+    _pickImage(ImageSource.camera);
   }
 
   void _showCaptureTips() {
@@ -142,69 +181,74 @@ class _AnalyzeScreenState extends State<AnalyzeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: BalanceColors.paperBlue,
-      appBar: AppBar(
-        toolbarHeight: 72,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        title: const Column(
-          children: [
-            Text('Chụp món ăn'),
-            Text(
-              'AI nhận diện & tạo sticker',
-              style: TextStyle(
-                color: BalanceColors.muted,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+    return BalanceScreenMotion(
+      child: Scaffold(
+        backgroundColor: BalanceColors.paperBlue,
+        appBar: BalanceAppBar(
+          title: 'Chụp món ăn',
+          subtitle: 'Chọn ảnh rõ món ăn để Balance phân tích',
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: BalanceIconButton(
+                tooltip: 'Mẹo chụp',
+                icon: Icons.info_outline_rounded,
+                onPressed: _showCaptureTips,
               ),
             ),
           ],
         ),
-        centerTitle: true,
-        backgroundColor: BalanceColors.paperBlue,
-        leadingWidth: 68,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 12),
-          child: CaptureIconButton(
-            tooltip: 'Quay lại',
-            icon: Icons.chevron_left_rounded,
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: CaptureIconButton(
-              tooltip: 'Mẹo chụp',
-              icon: Icons.info_outline_rounded,
-              onPressed: _showCaptureTips,
+        body: GraphPaperBackground(
+          child: SafeArea(
+            top: false,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final previewHeight = (constraints.maxHeight * 0.48).clamp(
+                  250.0,
+                  420.0,
+                );
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 18),
+                  children: [
+                    Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 520),
+                        child: Column(
+                          children: [
+                            BalanceReveal(
+                              index: 0,
+                              child: SizedBox(
+                                height: previewHeight,
+                                child: AnalyzeCameraPreview(
+                                  imageBytes: _imageBytes,
+                                  stage: _stage,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            BalanceReveal(
+                              index: 2,
+                              child: AnalyzeCaptureControls(
+                                stage: _stage,
+                                pickingImage: _busy,
+                                error: _error,
+                                onCamera: () => _pickImage(ImageSource.camera),
+                                onGallery: () =>
+                                    _pickImage(ImageSource.gallery),
+                                onRetake: _retakePhoto,
+                                onUsePhoto: _analyzeSelectedImage,
+                                onTips: _showCaptureTips,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
-          ),
-        ],
-      ),
-      body: GraphPaperBackground(
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-                  child: AnalyzeCameraPreview(
-                    imageBytes: _imageBytes,
-                    loading: _loading,
-                  ),
-                ),
-              ),
-              AnalyzeCaptureControls(
-                loading: _loading,
-                error: _error,
-                onCamera: () => _pickAndAnalyze(ImageSource.camera),
-                onGallery: () => _pickAndAnalyze(ImageSource.gallery),
-                onTips: _showCaptureTips,
-              ),
-            ],
           ),
         ),
       ),

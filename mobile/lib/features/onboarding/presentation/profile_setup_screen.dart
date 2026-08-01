@@ -1,7 +1,10 @@
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/balance_screen_motion.dart';
+import 'package:balance/core/widgets/graph_paper_background.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/core/widgets/main_shell.dart';
+import 'package:balance/core/widgets/balance_page_route.dart';
 import 'package:balance/features/onboarding/domain/goal_target_rules.dart';
 import 'package:balance/features/onboarding/presentation/onboarding_widgets.dart';
 import 'package:balance/features/profile/domain/user_profile.dart';
@@ -120,7 +123,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       }
       if (!mounted) return;
       await Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute<void>(builder: (_) => const MainShell()),
+        BalancePageRoute<void>(builder: (_) => const MainShell()),
         (_) => false,
       );
     } on Object {
@@ -135,42 +138,83 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: BalanceColors.paper,
-      body: SafeArea(
-        child: Column(
-          children: [
-            OnboardingProgressHeader(
-              step: _step,
-              totalSteps: 4,
-              onBack: _goBack,
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                key: ValueKey(_step),
-                padding: const EdgeInsets.fromLTRB(24, 14, 24, 24),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 180),
-                  child: _buildStep(),
+    return BalanceScreenMotion(
+      child: Scaffold(
+        body: GraphPaperBackground(
+          child: SafeArea(
+            child: Column(
+              children: [
+                BalanceReveal(
+                  index: 0,
+                  child: OnboardingProgressHeader(
+                    step: _step,
+                    totalSteps: 4,
+                    onBack: _goBack,
+                  ),
                 ),
-              ),
+                Expanded(
+                  child: BalanceReveal(
+                    index: 1,
+                    child: SingleChildScrollView(
+                      key: ValueKey(_step),
+                      padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 520),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            reverseDuration: const Duration(milliseconds: 160),
+                            transitionBuilder: (child, animation) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position:
+                                      Tween<Offset>(
+                                        begin: const Offset(0.02, 0),
+                                        end: Offset.zero,
+                                      ).animate(
+                                        CurvedAnimation(
+                                          parent: animation,
+                                          curve: Curves.easeOutCubic,
+                                        ),
+                                      ),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: _buildStep(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                BalanceReveal(
+                  index: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 22),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: PressableButton(
+                        label: _saving
+                            ? 'Đang lưu...'
+                            : _step == 3
+                            ? 'Hoàn tất'
+                            : 'Tiếp tục',
+                        backgroundColor: _step == 3
+                            ? BalanceColors.yellow
+                            : BalanceColors.blue,
+                        foregroundColor: _step == 3
+                            ? BalanceColors.ink
+                            : Colors.white,
+                        onPressed: _saving || !_canContinue ? null : _continue,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 22),
-              child: PressableButton(
-                label: _saving
-                    ? 'Đang lưu...'
-                    : _step == 3
-                    ? 'Hoàn tất'
-                    : 'Tiếp tục',
-                backgroundColor: _step == 3
-                    ? BalanceColors.yellow
-                    : BalanceColors.blue,
-                foregroundColor: _step == 3 ? BalanceColors.ink : Colors.white,
-                onPressed: _saving || !_canContinue ? null : _continue,
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

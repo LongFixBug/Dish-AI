@@ -13,6 +13,9 @@ void main() {
     await tester.tap(find.text('Tôi đã có tài khoản'));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(
+      find.widgetWithText(PressableButton, 'Đăng nhập'),
+    );
     await tester.tap(find.widgetWithText(PressableButton, 'Đăng nhập'));
     await tester.pump();
     expect(find.text('Vui lòng nhập email'), findsOneWidget);
@@ -20,6 +23,9 @@ void main() {
 
     await tester.enterText(find.byKey(const ValueKey('login-email')), 'abc');
     await tester.enterText(find.byKey(const ValueKey('login-password')), '123');
+    await tester.ensureVisible(
+      find.widgetWithText(PressableButton, 'Đăng nhập'),
+    );
     await tester.tap(find.widgetWithText(PressableButton, 'Đăng nhập'));
     await tester.pump();
     expect(find.text('Email chưa đúng định dạng'), findsOneWidget);

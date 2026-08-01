@@ -1,6 +1,10 @@
 import 'dart:typed_data';
 
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/balance_notice.dart';
+import 'package:balance/core/widgets/pressable_button.dart';
+import 'package:balance/core/widgets/sketch_card.dart';
+import 'package:balance/features/analyze/domain/capture_stage.dart';
 import 'package:balance/core/widgets/food_photo.dart';
 import 'package:balance/features/analyze/presentation/scan_beam.dart';
 import 'package:flutter/material.dart';
@@ -8,49 +12,48 @@ import 'package:flutter/material.dart';
 class AnalyzeCameraPreview extends StatelessWidget {
   const AnalyzeCameraPreview({
     required this.imageBytes,
-    required this.loading,
+    required this.stage,
     super.key,
   });
 
   final Uint8List? imageBytes;
-  final bool loading;
+  final CaptureStage stage;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       image: true,
-      label: loading ? 'Ảnh món ăn đang được nhận diện' : 'Vùng quét món ăn',
+      label: stage.isAnalyzing
+          ? 'Ảnh món ăn đang được nhận diện'
+          : 'Vùng chọn ảnh món ăn',
       child: Container(
         key: const ValueKey('camera-preview-frame'),
         decoration: BoxDecoration(
           color: BalanceColors.ink,
-          border: Border.all(color: BalanceColors.ink, width: 2.5),
-          borderRadius: BorderRadius.circular(26),
-          boxShadow: const [
-            BoxShadow(color: BalanceColors.ink, offset: Offset(5, 7)),
-          ],
+          border: Border.all(
+            color: BalanceColors.ink.withValues(alpha: 0.86),
+            width: BalanceStrokes.strong,
+          ),
+          borderRadius: BorderRadius.circular(BalanceRadii.sheet),
+          boxShadow: const [BalanceShadows.floating],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(23),
+          borderRadius: BorderRadius.circular(BalanceRadii.sheet - 3),
           child: Stack(
             key: const ValueKey('camera-preview'),
             fit: StackFit.expand,
             children: [
               const _PreviewBackdrop(),
-              _PreviewImage(imageBytes: imageBytes, loading: loading),
-              const _PreviewVignette(),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: _PreviewImage(
+                  key: ValueKey('preview-${stage.name}-${imageBytes != null}'),
+                  imageBytes: imageBytes,
+                  stage: stage,
+                ),
+              ),
               const _FocusCorners(),
-              Positioned(
-                top: 18,
-                left: 18,
-                child: _ScanStatus(loading: loading),
-              ),
-              Positioned(
-                left: 18,
-                right: 18,
-                bottom: 18,
-                child: _CameraGuidance(loading: loading),
-              ),
+              Positioned(top: 18, left: 18, child: _ScanStatus(stage: stage)),
             ],
           ),
         ),
@@ -65,22 +68,20 @@ class _PreviewBackdrop extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: RadialGradient(
-          center: Alignment(0, -0.2),
-          radius: 1.05,
-          colors: [Color(0x33FFFFFF), Color(0x006B9FDB)],
-        ),
-      ),
+      decoration: BoxDecoration(color: Color(0xFF243142)),
     );
   }
 }
 
 class _PreviewImage extends StatelessWidget {
-  const _PreviewImage({required this.imageBytes, required this.loading});
+  const _PreviewImage({
+    required this.imageBytes,
+    required this.stage,
+    super.key,
+  });
 
   final Uint8List? imageBytes;
-  final bool loading;
+  final CaptureStage stage;
 
   @override
   Widget build(BuildContext context) {
@@ -89,12 +90,12 @@ class _PreviewImage extends StatelessWidget {
         builder: (context, constraints) => Center(
           child: SizedBox(
             key: const ValueKey('gallery-photo-preview'),
-            width: constraints.maxWidth * 0.78,
-            height: constraints.maxHeight * 0.58,
+            width: constraints.maxWidth * 0.74,
+            height: constraints.maxHeight * 0.54,
             child: ScanBeam(
               imageBytes: bytes,
-              running: loading,
-              borderRadius: 28,
+              running: stage.isAnalyzing,
+              borderRadius: 18,
               fit: BoxFit.contain,
               fallback: const FoodPhoto(
                 meal: FoodPhotoMeal.comTam,
@@ -115,63 +116,45 @@ class _EmptyPlate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 126,
-      height: 126,
+      key: const ValueKey('capture-empty-state'),
+      width: 116,
+      height: 116,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: BalanceColors.paper.withValues(alpha: 0.94),
+        color: BalanceColors.paper,
         shape: BoxShape.circle,
-        border: Border.all(color: BalanceColors.ink, width: 2.5),
-        boxShadow: const [
-          BoxShadow(color: BalanceColors.ink, offset: Offset(5, 6)),
-        ],
+        border: Border.all(
+          color: BalanceColors.ink.withValues(alpha: 0.82),
+          width: BalanceStrokes.strong,
+        ),
+        boxShadow: const [BalanceShadows.floating],
       ),
       child: const Icon(
         Icons.ramen_dining_rounded,
         color: BalanceColors.blueDark,
-        size: 62,
-      ),
-    );
-  }
-}
-
-class _PreviewVignette extends StatelessWidget {
-  const _PreviewVignette();
-
-  @override
-  Widget build(BuildContext context) {
-    return const IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0x33000000),
-              Color(0x00000000),
-              Color(0x00000000),
-              Color(0x55000000),
-            ],
-            stops: [0, 0.24, 0.62, 1],
-          ),
-        ),
+        size: 58,
       ),
     );
   }
 }
 
 class _ScanStatus extends StatelessWidget {
-  const _ScanStatus({required this.loading});
+  const _ScanStatus({required this.stage});
 
-  final bool loading;
+  final CaptureStage stage;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: loading ? BalanceColors.yellow : BalanceColors.paper,
-        border: Border.all(color: BalanceColors.ink, width: 2),
-        borderRadius: BorderRadius.circular(999),
+        color: stage.isAnalyzing ? BalanceColors.yellow : BalanceColors.paper,
+        border: Border.all(
+          color: BalanceColors.ink.withValues(alpha: 0.6),
+          width: BalanceStrokes.regular,
+        ),
+        borderRadius: BorderRadius.circular(BalanceRadii.pill),
+        boxShadow: const [BalanceShadows.card],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -180,79 +163,24 @@ class _ScanStatus extends StatelessWidget {
             width: 9,
             height: 9,
             decoration: BoxDecoration(
-              color: loading ? BalanceColors.orange : BalanceColors.green,
+              color: stage.isAnalyzing
+                  ? BalanceColors.orange
+                  : BalanceColors.green,
               shape: BoxShape.circle,
             ),
           ),
           const SizedBox(width: 7),
           Text(
-            loading ? 'AI ĐANG QUÉT' : 'SẴN SÀNG',
+            switch (stage) {
+              CaptureStage.ready => 'CHỌN ẢNH',
+              CaptureStage.review => 'SẴN SÀNG',
+              CaptureStage.analyzing => 'AI ĐANG QUÉT',
+            },
             style: const TextStyle(
               color: BalanceColors.ink,
-              fontSize: 12,
+              fontSize: 11.5,
               fontWeight: FontWeight.w900,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CameraGuidance extends StatelessWidget {
-  const _CameraGuidance({required this.loading});
-
-  final bool loading;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: BalanceColors.paper.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (loading) ...[
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    color: BalanceColors.blueDark,
-                    strokeWidth: 2.4,
-                  ),
-                ),
-                const SizedBox(width: 9),
-              ],
-              Flexible(
-                child: Text(
-                  loading ? 'Đang quét món ăn' : 'Đặt món ở giữa vùng quét',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: BalanceColors.ink,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Text(
-            loading
-                ? 'Vạch quét cong khi chạm tới món ăn'
-                : 'Chụp rõ món ăn • nơi đủ sáng',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: BalanceColors.muted,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
             ),
           ),
         ],
@@ -263,74 +191,199 @@ class _CameraGuidance extends StatelessWidget {
 
 class AnalyzeCaptureControls extends StatelessWidget {
   const AnalyzeCaptureControls({
-    required this.loading,
+    required this.stage,
+    required this.pickingImage,
     required this.error,
+    required this.onCamera,
+    required this.onGallery,
+    required this.onRetake,
+    required this.onUsePhoto,
+    required this.onTips,
+    super.key,
+  });
+
+  final CaptureStage stage;
+  final bool pickingImage;
+  final String? error;
+  final VoidCallback onCamera;
+  final VoidCallback onGallery;
+  final VoidCallback onRetake;
+  final VoidCallback onUsePhoto;
+  final VoidCallback onTips;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (error case final message?) ...[
+          _CaptureError(message: message, onRetry: onGallery),
+          const SizedBox(height: 10),
+        ],
+        SketchCard(
+          key: const ValueKey('capture-action-sheet'),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          radius: BalanceRadii.card,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: switch (stage) {
+              CaptureStage.review => _ReviewControls(
+                key: const ValueKey('review-controls'),
+                onRetake: onRetake,
+                onUsePhoto: onUsePhoto,
+              ),
+              CaptureStage.analyzing => const _AnalyzingControls(
+                key: ValueKey('analyzing-controls'),
+              ),
+              CaptureStage.ready => _PickControls(
+                key: const ValueKey('pick-controls'),
+                disabled: pickingImage,
+                onCamera: onCamera,
+                onGallery: onGallery,
+                onTips: onTips,
+              ),
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PickControls extends StatelessWidget {
+  const _PickControls({
+    required this.disabled,
     required this.onCamera,
     required this.onGallery,
     required this.onTips,
     super.key,
   });
 
-  final bool loading;
-  final String? error;
+  final bool disabled;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
   final VoidCallback onTips;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (error case final message?) ...[
-            _CaptureError(message: message, onRetry: onGallery),
-            const SizedBox(height: 10),
-          ],
-          Container(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
-            decoration: BoxDecoration(
-              color: BalanceColors.paper,
-              border: Border.all(color: BalanceColors.ink, width: 2.5),
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: const [
-                BoxShadow(color: BalanceColors.ink, offset: Offset(4, 5)),
-              ],
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: _ControlAction(
-                    key: const ValueKey('gallery-action'),
-                    icon: Icons.photo_library_rounded,
-                    label: 'Thư viện',
-                    onPressed: loading ? null : onGallery,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _ShutterButton(loading: loading, onPressed: onCamera),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _ControlAction(
-                    key: const ValueKey('tips-action'),
-                    icon: Icons.auto_awesome_rounded,
-                    label: 'Mẹo chụp',
-                    onPressed: loading ? null : onTips,
-                  ),
-                ),
-              ],
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _ActionHeader(
+          icon: Icons.document_scanner_outlined,
+          title: 'Bắt đầu quét món ăn',
+          subtitle: 'Đưa món vào khung, chụp từ trên xuống, đủ sáng.',
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          key: const ValueKey('camera-shutter'),
+          child: PressableButton(
+            onPressed: disabled ? null : onCamera,
+            icon: Icons.camera_alt_rounded,
+            label: 'Mở camera',
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _SecondaryCaptureAction(
+                key: const ValueKey('gallery-action'),
+                icon: Icons.photo_library_outlined,
+                label: 'Thư viện',
+                onPressed: disabled ? null : onGallery,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _SecondaryCaptureAction(
+                key: const ValueKey('tips-action'),
+                icon: Icons.lightbulb_outline_rounded,
+                label: 'Mẹo chụp',
+                onPressed: disabled ? null : onTips,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
 
-class _ControlAction extends StatelessWidget {
-  const _ControlAction({
+class _ActionHeader extends StatelessWidget {
+  const _ActionHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _SheetIcon(icon: icon),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: BalanceColors.ink,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: BalanceColors.muted,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SheetIcon extends StatelessWidget {
+  const _SheetIcon({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: BalanceColors.paperBlue,
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: BalanceColors.ink.withValues(alpha: 0.64),
+          width: BalanceStrokes.regular,
+        ),
+        boxShadow: const [BalanceShadows.card],
+      ),
+      child: Icon(icon, color: BalanceColors.blueDark, size: 19),
+    );
+  }
+}
+
+class _SecondaryCaptureAction extends StatefulWidget {
+  const _SecondaryCaptureAction({
     required this.icon,
     required this.label,
     required this.onPressed,
@@ -342,52 +395,77 @@ class _ControlAction extends StatelessWidget {
   final VoidCallback? onPressed;
 
   @override
+  State<_SecondaryCaptureAction> createState() =>
+      _SecondaryCaptureActionState();
+}
+
+class _SecondaryCaptureActionState extends State<_SecondaryCaptureAction> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (widget.onPressed == null || _pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final enabled = onPressed != null;
+    final enabled = widget.onPressed != null;
     return Semantics(
       button: true,
       enabled: enabled,
-      label: label,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 48,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: enabled
-                      ? BalanceColors.paperBlue
-                      : BalanceColors.paperBlue.withValues(alpha: 0.45),
-                  border: Border.all(
-                    color: BalanceColors.ink.withValues(
-                      alpha: enabled ? 1 : 0.35,
-                    ),
-                    width: 2,
+      label: widget.label,
+      child: Listener(
+        onPointerDown: enabled ? (_) => _setPressed(true) : null,
+        onPointerUp: enabled ? (_) => _setPressed(false) : null,
+        onPointerCancel: enabled ? (_) => _setPressed(false) : null,
+        child: GestureDetector(
+          onTap: widget.onPressed,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOutCubic,
+            transform: Matrix4.translationValues(0, _pressed ? 3 : 0, 0),
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: enabled ? BalanceColors.paperBlue : BalanceColors.paper,
+              border: Border.all(
+                color: BalanceColors.ink.withValues(alpha: 0.62),
+                width: BalanceStrokes.regular,
+              ),
+              borderRadius: BorderRadius.circular(BalanceRadii.control),
+              boxShadow: [
+                BoxShadow(
+                  color: BalanceColors.ink.withValues(
+                    alpha: enabled ? 0.18 : 0.06,
                   ),
-                  borderRadius: BorderRadius.circular(12),
+                  offset: _pressed ? const Offset(0, 1) : const Offset(0, 5),
+                  blurRadius: _pressed ? 2 : 10,
                 ),
-                child: Icon(
-                  icon,
-                  color: enabled ? BalanceColors.ink : BalanceColors.muted,
-                  size: 24,
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  widget.icon,
+                  color: enabled ? BalanceColors.blueDark : BalanceColors.muted,
+                  size: 19,
                 ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                label,
-                maxLines: 1,
-                style: TextStyle(
-                  color: enabled ? BalanceColors.ink : BalanceColors.muted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    widget.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: enabled ? BalanceColors.ink : BalanceColors.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -395,62 +473,91 @@ class _ControlAction extends StatelessWidget {
   }
 }
 
-class _ShutterButton extends StatelessWidget {
-  const _ShutterButton({required this.loading, required this.onPressed});
+class _ReviewControls extends StatelessWidget {
+  const _ReviewControls({
+    required this.onRetake,
+    required this.onUsePhoto,
+    super.key,
+  });
 
-  final bool loading;
-  final VoidCallback onPressed;
+  final VoidCallback onRetake;
+  final VoidCallback onUsePhoto;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      enabled: !loading,
-      label: 'Chụp ảnh',
-      child: GestureDetector(
-        key: const ValueKey('camera-shutter'),
-        onTap: loading ? null : onPressed,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _ActionHeader(
+          icon: Icons.check_circle_outline_rounded,
+          title: 'Ảnh đã sẵn sàng',
+          subtitle: 'Xác nhận để Balance bắt đầu phân tích.',
+        ),
+        const SizedBox(height: 12),
+        Row(
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 76,
-              height: 76,
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: BalanceColors.paper,
-                border: Border.all(color: BalanceColors.ink, width: 2.8),
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: loading ? BalanceColors.muted : BalanceColors.blue,
-                ),
-                child: loading
-                    ? const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 3,
-                        ),
-                      )
-                    : null,
+            Expanded(
+              child: PressableButton(
+                onPressed: onRetake,
+                icon: Icons.camera_alt_outlined,
+                label: 'Chụp lại',
+                backgroundColor: BalanceColors.paperBlue,
+                foregroundColor: BalanceColors.ink,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              loading ? 'Đang xử lý' : 'Chụp ảnh',
-              style: const TextStyle(
-                color: BalanceColors.ink,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
+            const SizedBox(width: 10),
+            Expanded(
+              child: PressableButton(
+                onPressed: onUsePhoto,
+                icon: Icons.auto_awesome_rounded,
+                label: 'Dùng ảnh này',
               ),
             ),
           ],
         ),
-      ),
+      ],
+    );
+  }
+}
+
+class _AnalyzingControls extends StatelessWidget {
+  const _AnalyzingControls({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _ActionHeader(
+          icon: Icons.auto_awesome_motion_rounded,
+          title: 'Balance đang đọc ảnh',
+          subtitle: 'Đợi một lát để AI đối chiếu món và khẩu phần.',
+        ),
+        SizedBox(height: 14),
+        Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                color: BalanceColors.blueDark,
+                strokeWidth: 2.6,
+              ),
+            ),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Đang phân tích ảnh món ăn...',
+                style: TextStyle(
+                  color: BalanceColors.muted,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -463,32 +570,14 @@ class _CaptureError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFE7DE),
-        border: Border.all(color: BalanceColors.ink, width: 2),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.error_outline_rounded, size: 22),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Chưa phân tích được ảnh',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
-                Text(message, maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          TextButton(onPressed: onRetry, child: const Text('Thử lại')),
-        ],
-      ),
+    return BalanceNotice(
+      icon: Icons.error_outline_rounded,
+      title: 'Chưa phân tích được ảnh',
+      message: message,
+      color: BalanceColors.dangerPaper,
+      actionLabel: 'Thử lại',
+      onAction: onRetry,
+      shadow: true,
     );
   }
 }
@@ -530,7 +619,7 @@ class _FocusCorners extends StatelessWidget {
     return const IgnorePointer(
       key: ValueKey('capture-focus-corners'),
       child: Padding(
-        padding: EdgeInsets.all(26),
+        padding: EdgeInsets.all(20),
         child: CustomPaint(painter: _CornerPainter()),
       ),
     );
@@ -542,9 +631,9 @@ class _CornerPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const length = 36.0;
+    const length = 28.0;
     final paint = Paint()
-      ..strokeWidth = 5
+      ..strokeWidth = 4
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
     final paths = [
@@ -570,13 +659,13 @@ class _CornerPainter extends CustomPainter {
         path,
         paint
           ..color = BalanceColors.ink
-          ..strokeWidth = 5,
+          ..strokeWidth = 4,
       );
       canvas.drawPath(
         path,
         paint
           ..color = Colors.white
-          ..strokeWidth = 2.5,
+          ..strokeWidth = 2.2,
       );
     }
   }

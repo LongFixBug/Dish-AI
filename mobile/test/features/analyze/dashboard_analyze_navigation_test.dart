@@ -17,7 +17,7 @@ void main() {
       MaterialApp(theme: BalanceTheme.light, home: const DashboardScreen()),
     );
 
-    final cameraButton = find.widgetWithText(PressableButton, 'Chụp món ăn');
+    final cameraButton = find.widgetWithText(PressableButton, 'Quét món ăn');
     await tester.ensureVisible(cameraButton);
     await tester.tap(cameraButton);
     await tester.pumpAndSettle();
@@ -35,11 +35,16 @@ void main() {
     );
 
     expect(find.text('Chào buổi sáng, An!'), findsOneWidget);
+    expect(find.text('Cân bằng hôm nay'), findsOneWidget);
+    expect(find.text('ĐÃ NẠP'), findsOneWidget);
     expect(find.text('1.240'), findsOneWidget);
     expect(find.text('/ 1.800 kcal'), findsOneWidget);
-    expect(find.text('Bữa sáng'), findsOneWidget);
-    expect(find.text('Bữa trưa'), findsOneWidget);
-    expect(find.text('Bữa tối'), findsOneWidget);
+    expect(find.text('Gợi ý cho bạn'), findsOneWidget);
+    expect(find.text('Thói quen'), findsOneWidget);
+    expect(find.text('Uống đủ nước'), findsOneWidget);
+    expect(find.text('Đi bộ 30 phút'), findsOneWidget);
+    expect(find.text('Ăn rau xanh'), findsOneWidget);
+    expect(find.widgetWithText(PressableButton, 'Quét món ăn'), findsOneWidget);
   });
 
   testWidgets('suggestion tab opens the dinner recommendation screen', (

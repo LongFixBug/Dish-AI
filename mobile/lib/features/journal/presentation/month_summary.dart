@@ -39,7 +39,7 @@ class MonthStickerPile extends StatefulWidget {
 }
 
 class _MonthStickerPileState extends State<MonthStickerPile>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   Ticker? _ticker;
   StickerWorld? _world;
   Size _area = Size.zero;

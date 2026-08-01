@@ -7,8 +7,9 @@ import 'package:balance/features/mascot/domain/mascot_shape.dart';
 import 'package:balance/features/mascot/presentation/mascot_painter.dart';
 import 'package:balance/features/mascot/presentation/walking_mascot.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/load_test_fonts.dart';
 
 /// Bút vẽ mà widget đang thật sự dùng — nơi duy nhất biết tư thế hiện tại.
 MascotPainter _painterIn(WidgetTester tester) => tester
@@ -20,9 +21,7 @@ MascotPainter _painterIn(WidgetTester tester) => tester
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
-    final font = FontLoader('Baloo 2')
-      ..addFont(rootBundle.load('assets/fonts/Baloo2-Variable.ttf'));
-    await font.load();
+    await loadBalanceTestFonts();
   });
 
   testWidgets('ba dáng linh vật khớp bản đã duyệt', (tester) async {

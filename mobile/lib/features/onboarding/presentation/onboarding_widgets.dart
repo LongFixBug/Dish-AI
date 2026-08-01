@@ -1,4 +1,6 @@
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/balance_app_bar.dart';
+import 'package:balance/core/widgets/sketch_card.dart';
 import 'package:balance/features/onboarding/presentation/ruler_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -17,31 +19,63 @@ class OnboardingProgressHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 10, 20, 0),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onBack,
-            icon: const Icon(Icons.arrow_back_rounded, size: 30),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: LinearProgressIndicator(
-                value: (step + 1) / totalSteps,
-                minHeight: 9,
-                backgroundColor: const Color(0xFFD9D9D9),
-                color: BalanceColors.blue,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+      child: SketchCard(
+        padding: const EdgeInsets.fromLTRB(8, 8, 10, 8),
+        radius: 16,
+        shadow: false,
+        child: Row(
+          children: [
+            BalanceIconButton(
+              tooltip: 'Quay lại',
+              icon: Icons.arrow_back_rounded,
+              onPressed: onBack,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Hồ sơ dinh dưỡng',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      Text(
+                        'Bước ${step + 1} trong $totalSteps',
+                        style: const TextStyle(
+                          color: BalanceColors.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(99),
+                          child: LinearProgressIndicator(
+                            value: (step + 1) / totalSteps,
+                            minHeight: 7,
+                            backgroundColor: const Color(0xFFD9D9D9),
+                            color: BalanceColors.blue,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(width: 18),
-          Text(
-            '${step + 1} / $totalSteps',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-        ],
+            const SizedBox(width: 8),
+            Text(
+              '${step + 1} / $totalSteps',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -116,9 +150,9 @@ class NumberStepperCard extends StatelessWidget {
       children: [
         Text(label, style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
-        Container(
+        SketchCard(
           padding: EdgeInsets.fromLTRB(14, 14, 14, _showRuler ? 8 : 14),
-          decoration: _raisedDecoration(),
+          radius: 16,
           child: Column(
             children: [
               Row(
@@ -126,6 +160,7 @@ class NumberStepperCard extends StatelessWidget {
                   _SquareControl(
                     key: decrementKey,
                     icon: Icons.remove_rounded,
+                    tooltip: 'Giảm $label',
                     onTap: onDecrement,
                   ),
                   Expanded(
@@ -154,6 +189,7 @@ class NumberStepperCard extends StatelessWidget {
                   _SquareControl(
                     key: incrementKey,
                     icon: Icons.add_rounded,
+                    tooltip: 'Tăng $label',
                     onTap: onIncrement,
                   ),
                 ],
@@ -175,39 +211,21 @@ class NumberStepperCard extends StatelessWidget {
   }
 }
 
-BoxDecoration _raisedDecoration({Color color = BalanceColors.paper}) {
-  return BoxDecoration(
-    color: color,
-    border: Border.all(color: BalanceColors.ink, width: 2.5),
-    borderRadius: BorderRadius.circular(13),
-    boxShadow: const [
-      BoxShadow(color: BalanceColors.ink, offset: Offset(4, 6)),
-    ],
-  );
-}
-
 class _SquareControl extends StatelessWidget {
-  const _SquareControl({required this.icon, required this.onTap, super.key});
+  const _SquareControl({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    super.key,
+  });
 
   final IconData icon;
+  final String tooltip;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        width: 46,
-        height: 46,
-        decoration: BoxDecoration(
-          color: BalanceColors.paper,
-          border: Border.all(color: BalanceColors.ink, width: 2.5),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(icon, size: 30),
-      ),
-    );
+    return BalanceIconButton(tooltip: tooltip, icon: icon, onPressed: onTap);
   }
 }
 
@@ -233,31 +251,43 @@ class GenderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final foreground = selected ? Colors.white : BalanceColors.ink;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        height: 152,
-        decoration: _raisedDecoration(
-          color: selected ? BalanceColors.blue : BalanceColors.paper,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(option.icon, size: 50, color: foreground),
-            const SizedBox(height: 8),
-            Text(
-              option.label,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(color: foreground),
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: option.label,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutBack,
+          scale: selected ? 1 : 0.985,
+          child: SketchCard(
+            color: selected ? BalanceColors.blue : BalanceColors.paper,
+            padding: EdgeInsets.zero,
+            radius: 14,
+            child: SizedBox(
+              height: 148,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(option.icon, size: 48, color: foreground),
+                  const SizedBox(height: 8),
+                  Text(
+                    option.label,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.titleMedium?.copyWith(color: foreground),
+                  ),
+                  const SizedBox(height: 8),
+                  Icon(
+                    selected ? Icons.check_circle : Icons.circle_outlined,
+                    color: foreground,
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Icon(
-              selected ? Icons.check_circle : Icons.circle_outlined,
-              color: foreground,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -326,45 +356,59 @@ class _ChoiceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(13),
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 86),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: _raisedDecoration(
-          color: selected ? selectedColor : BalanceColors.paper,
-        ),
-        child: Row(
-          children: [
-            Icon(option.icon, size: 42),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: option.title,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutBack,
+          scale: selected ? 1 : 0.992,
+          child: SketchCard(
+            color: selected ? selectedColor : BalanceColors.paper,
+            radius: 16,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 82),
+              child: Row(
                 children: [
-                  Text(
-                    option.title,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleMedium?.copyWith(fontSize: 19),
-                  ),
-                  Text(
-                    option.subtitle,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: BalanceColors.ink,
-                      height: 1.15,
+                  Icon(option.icon, size: 40),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          option.title,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleMedium?.copyWith(fontSize: 19),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          option.subtitle,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: BalanceColors.ink,
+                                height: 1.15,
+                              ),
+                        ),
+                      ],
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    selected ? Icons.check_circle : Icons.circle_outlined,
+                    size: 28,
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            Icon(
-              selected ? Icons.check_circle : Icons.circle_outlined,
-              size: 28,
-            ),
-          ],
+          ),
         ),
       ),
     );

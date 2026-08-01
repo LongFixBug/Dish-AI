@@ -4,6 +4,8 @@ import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/state/app_state.dart';
 import 'package:balance/core/storage/app_storage.dart';
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/graph_paper_background.dart';
+import 'package:balance/core/widgets/sketch_card.dart';
 import 'package:balance/features/auth/data/auth_api.dart';
 import 'package:balance/features/chat/data/chat_api.dart';
 import 'package:balance/features/chat/presentation/chat_screen.dart';
@@ -77,6 +79,26 @@ Future<AppState> _signedInState({AuthGateway? authGateway}) async {
 }
 
 void main() {
+  testWidgets('màn chat dùng giấy kẻ ô và các thẻ gợi ý dạng sketch', (
+    tester,
+  ) async {
+    final state = await _signedInState();
+    await tester.pumpWidget(
+      AppScope(
+        notifier: state,
+        child: MaterialApp(
+          theme: BalanceTheme.light,
+          home: ChatScreen(api: _FakeChatApi()),
+        ),
+      ),
+    );
+
+    expect(find.byType(GraphPaperBackground), findsOneWidget);
+    expect(find.byType(SketchCard), findsAtLeastNWidgets(4));
+    expect(find.byType(ActionChip), findsNothing);
+    expect(find.bySemanticsLabel('Gửi câu hỏi'), findsOneWidget);
+  });
+
   testWidgets('hiện nguồn catalog bên dưới câu trả lời RAG', (tester) async {
     final state = await _signedInState();
     await tester.pumpWidget(

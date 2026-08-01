@@ -2,7 +2,10 @@ import 'dart:typed_data';
 
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/balance_app_bar.dart';
 import 'package:balance/core/widgets/balance_bottom_bar.dart';
+import 'package:balance/core/widgets/balance_page_route.dart';
+import 'package:balance/core/widgets/balance_screen_motion.dart';
 import 'package:balance/core/widgets/main_shell.dart';
 import 'package:balance/core/widgets/food_photo.dart';
 import 'package:balance/core/widgets/graph_paper_background.dart';
@@ -170,42 +173,40 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      bottomNavigationBar: BalanceBottomBar(
-        currentIndex: -1,
-        // Màn hình kết quả nằm chồng lên khung chính, nên bấm một tab là
-        // đóng cả chồng màn hình rồi mở khung chính đúng tab đó — người dùng
-        // không bị kẹt lại nhiều lớp lịch sử phía sau.
-        onHomePressed: () => _openShell(context, ShellTab.home),
-        onJournalPressed: () => _openShell(context, ShellTab.journal),
-        onCameraPressed: () => Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(builder: (_) => const AnalyzeScreen()),
+    return BalanceScreenMotion(
+      child: Scaffold(
+        bottomNavigationBar: BalanceBottomBar(
+          currentIndex: -1,
+          // Màn hình kết quả nằm chồng lên khung chính, nên bấm một tab là
+          // đóng cả chồng màn hình rồi mở khung chính đúng tab đó — người dùng
+          // không bị kẹt lại nhiều lớp lịch sử phía sau.
+          onHomePressed: () => _openShell(context, ShellTab.home),
+          onJournalPressed: () => _openShell(context, ShellTab.journal),
+          onCameraPressed: () => Navigator.of(context).pushReplacement(
+            BalancePageRoute<void>(builder: (_) => const AnalyzeScreen()),
+          ),
+          onSuggestionsPressed: () => _openShell(context, ShellTab.suggestions),
+          onProfilePressed: () => _openShell(context, ShellTab.profile),
         ),
-        onSuggestionsPressed: () => _openShell(context, ShellTab.suggestions),
-        onProfilePressed: () => _openShell(context, ShellTab.profile),
-      ),
-      appBar: AppBar(
-        title: const Text('Kết quả phân tích'),
-        centerTitle: true,
-        backgroundColor: BalanceColors.paperBlue,
-      ),
-      body: GraphPaperBackground(
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-            child: _ResultContent(
-              result: _result,
-              imageBytes: widget.imageBytes,
-              stickerBytes: widget.stickerBytes,
-              saving: _saving,
-              saved: _saved,
-              verdict: _verdict,
-              onSave: _saveToJournal,
-              onEdit: _editPortion,
-              onComponentGramsChanged: _updateComponentGrams,
-              onRecognitionGood: _markRecognitionGood,
-              onRecognitionWrong: _reportRecognitionWrong,
+        appBar: const BalanceAppBar(title: 'Kết quả phân tích'),
+        body: GraphPaperBackground(
+          child: SafeArea(
+            top: false,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+              child: _ResultContent(
+                result: _result,
+                imageBytes: widget.imageBytes,
+                stickerBytes: widget.stickerBytes,
+                saving: _saving,
+                saved: _saved,
+                verdict: _verdict,
+                onSave: _saveToJournal,
+                onEdit: _editPortion,
+                onComponentGramsChanged: _updateComponentGrams,
+                onRecognitionGood: _markRecognitionGood,
+                onRecognitionWrong: _reportRecognitionWrong,
+              ),
             ),
           ),
         ),
@@ -285,43 +286,58 @@ class _ResultContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final nutrition = result.nutrition;
+    final componentRows = _componentRows(result, onComponentGramsChanged);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ResultSummary(
-          result: result,
-          imageBytes: imageBytes,
-          stickerBytes: stickerBytes,
+        BalanceReveal(
+          index: 0,
+          child: _ResultSummary(
+            result: result,
+            imageBytes: imageBytes,
+            stickerBytes: stickerBytes,
+          ),
         ),
         const SizedBox(height: 14),
-        if (nutrition != null) _MacroRow(nutrition: nutrition),
+        if (nutrition != null)
+          BalanceReveal(index: 1, child: _MacroRow(nutrition: nutrition)),
         const SizedBox(height: 12),
-        QuickFeedbackCard(
-          verdict: verdict,
-          onGood: onRecognitionGood,
-          onWrong: onRecognitionWrong,
+        BalanceReveal(
+          index: 2,
+          child: QuickFeedbackCard(
+            verdict: verdict,
+            onGood: onRecognitionGood,
+            onWrong: onRecognitionWrong,
+          ),
         ),
         const SizedBox(height: 12),
-        const _NutritionDisclaimer(),
+        const BalanceReveal(index: 3, child: _NutritionDisclaimer()),
         const SizedBox(height: 20),
-        Row(
-          children: [
-            Text(
-              'Thành phần ước tính',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(width: 5),
-            const Icon(Icons.info_outline_rounded, size: 18),
-          ],
+        BalanceReveal(
+          index: 4,
+          child: Row(
+            children: [
+              Text(
+                'Thành phần ước tính',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(width: 5),
+              const Icon(Icons.info_outline_rounded, size: 18),
+            ],
+          ),
         ),
         const SizedBox(height: 10),
-        ..._componentRows(result, onComponentGramsChanged),
+        for (var i = 0; i < componentRows.length; i++)
+          BalanceReveal(index: 5 + i.clamp(0, 2), child: componentRows[i]),
         const SizedBox(height: 18),
-        _ResultActions(
-          saving: saving,
-          saved: saved,
-          onSave: onSave,
-          onEdit: onEdit,
+        BalanceReveal(
+          index: 8,
+          child: _ResultActions(
+            saving: saving,
+            saved: saved,
+            onSave: onSave,
+            onEdit: onEdit,
+          ),
         ),
       ],
     );
@@ -339,8 +355,11 @@ class _NutritionDisclaimer extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: const Color(0xFFFFF3CD),
-          border: Border.all(color: BalanceColors.ink, width: 1.4),
-          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: BalanceColors.ink, width: 2.2),
+          borderRadius: BorderRadius.circular(BalanceRadii.card),
+          boxShadow: const [
+            BoxShadow(color: BalanceColors.ink, offset: Offset(3, 3)),
+          ],
         ),
         child: const Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -375,8 +394,9 @@ class _ResultSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SketchCard(
-      shadow: false,
+      key: const ValueKey('result-summary-card'),
       padding: const EdgeInsets.all(12),
+      radius: BalanceRadii.sheet,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -457,6 +477,7 @@ class _ResultFacts extends StatelessWidget {
     final recognitionPercent = _recognitionPercent(result);
     final catalogPercent = _catalogCoveragePercent(result);
     final nutrition = result.nutrition;
+    final servingSummary = _servingSummary(result);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -474,7 +495,8 @@ class _ResultFacts extends StatelessWidget {
           // đọc thành "bữa này không có calo" chứ không phải "chưa có dữ liệu".
           nutrition == null
               ? '— kcal'
-              : '${_format(nutrition.totalCalories)} kcal',
+              : '${_format(nutrition.totalCalories)} kcal'
+                    '${servingSummary == null ? '' : ' / $servingSummary'}',
           style: Theme.of(
             context,
           ).textTheme.displaySmall?.copyWith(color: BalanceColors.blueDark),
@@ -562,15 +584,12 @@ class _ResultActions extends StatelessWidget {
           onPressed: saving || saved ? null : onSave,
         ),
         const SizedBox(height: 12),
-        OutlinedButton.icon(
+        PressableButton(
           onPressed: onEdit,
-          icon: const Icon(Icons.edit_outlined),
-          label: const Text('Chỉnh sửa'),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(54),
-            foregroundColor: BalanceColors.ink,
-            side: const BorderSide(color: BalanceColors.ink, width: 2),
-          ),
+          icon: Icons.edit_outlined,
+          label: 'Chỉnh sửa',
+          backgroundColor: BalanceColors.paper,
+          foregroundColor: BalanceColors.ink,
         ),
       ],
     );
@@ -586,8 +605,11 @@ class _AiBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: const Color(0xFFD9F6D9),
-        border: Border.all(color: const Color(0xFF198736)),
-        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF198736), width: 2),
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [
+          BoxShadow(color: BalanceColors.ink, offset: Offset(2, 2)),
+        ],
       ),
       child: const Text(
         '✓ AI nhận diện',
@@ -644,6 +666,7 @@ class _ComponentRow extends StatefulWidget {
     this.proteinGrams,
     this.fatGrams,
     this.carbsGrams,
+    this.servingLabel,
     this.onGramsChanged,
   });
 
@@ -653,6 +676,7 @@ class _ComponentRow extends StatefulWidget {
   final double? proteinGrams;
   final double? fatGrams;
   final double? carbsGrams;
+  final String? servingLabel;
 
   /// ``null`` khi chưa tra được dinh dưỡng — hiện "—" chứ không hiện "0 kcal".
   final double? calories;
@@ -677,6 +701,9 @@ class _ComponentRowState extends State<_ComponentRow> {
     final calories = widget.calories;
     return calories == null ? '— kcal' : '${_format(calories)} kcal';
   }
+
+  String get _servingSuffix =>
+      widget.servingLabel == null ? '' : ' / ${widget.servingLabel}';
 
   @override
   void initState() {
@@ -715,7 +742,7 @@ class _ComponentRowState extends State<_ComponentRow> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 9),
       child: SketchCard(
-        shadow: false,
+        radius: BalanceRadii.card,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -773,7 +800,7 @@ class _ComponentRowState extends State<_ComponentRow> {
                         )
                       else
                         Text(
-                          '${_format(widget.grams)} g  •  $_caloriesLabel',
+                          '${_format(widget.grams)} g  •  $_caloriesLabel$_servingSuffix',
                           key: ValueKey('component-calories-${widget.index}'),
                           style: const TextStyle(fontSize: 13),
                         ),
@@ -980,6 +1007,11 @@ List<Widget> _componentRows(
   void Function(int index, double grams) onComponentGramsChanged,
 ) {
   final items = result.nutrition?.items ?? const <NutritionItem>[];
+  final servingLabels = {
+    for (final dish in result.dishes)
+      if (dish.foundInDatabase && dish.servingLabel != null)
+        dish.name: dish.servingLabel!,
+  };
   if (items.isNotEmpty) {
     return items
         .asMap()
@@ -994,6 +1026,7 @@ List<Widget> _componentRows(
             proteinGrams: entry.value.proteinGrams,
             fatGrams: entry.value.fatGrams,
             carbsGrams: entry.value.carbsGrams,
+            servingLabel: servingLabels[entry.value.name],
             onGramsChanged: (grams) =>
                 onComponentGramsChanged(entry.key, grams),
           ),
@@ -1029,6 +1062,17 @@ int? _catalogCoveragePercent(AnalyzeResult result) {
       : (nutrition.catalogCoverageScore * 100).round();
 }
 
+String? _servingSummary(AnalyzeResult result) {
+  final labels = <String>[];
+  for (final dish in result.dishes) {
+    final label = dish.servingLabel;
+    if (dish.foundInDatabase && label != null && !labels.contains(label)) {
+      labels.add(label);
+    }
+  }
+  return labels.isEmpty ? null : labels.join(' + ');
+}
+
 String _format(double value) {
   return value == value.roundToDouble()
       ? value.toStringAsFixed(0)
@@ -1044,7 +1088,7 @@ MealType _mealTypeFor(DateTime time) => switch (time.hour) {
 
 void _openShell(BuildContext context, ShellTab tab) {
   Navigator.of(context).pushAndRemoveUntil(
-    MaterialPageRoute<void>(builder: (_) => MainShell(initialTab: tab)),
+    BalancePageRoute<void>(builder: (_) => MainShell(initialTab: tab)),
     (route) => false,
   );
 }

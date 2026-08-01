@@ -38,9 +38,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Chào bạn, An!'), findsOneWidget);
+    expect(find.textContaining('An!'), findsOneWidget);
+    expect(find.text('Cân bằng hôm nay'), findsOneWidget);
+    expect(find.textContaining('kcal còn lại'), findsOneWidget);
     expect(find.text('650'), findsOneWidget);
-    expect(find.text('650 kcal'), findsOneWidget);
+    expect(find.text('32 g'), findsOneWidget);
+    expect(find.text('78 g'), findsOneWidget);
+    expect(find.text('22 g'), findsOneWidget);
 
     await tester.tap(find.text('Nhật ký'));
     await tester.pumpAndSettle();

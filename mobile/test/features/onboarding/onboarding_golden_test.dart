@@ -4,18 +4,18 @@ library;
 import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/state/app_state.dart';
+import 'package:balance/core/widgets/food_photo.dart';
 import 'package:balance/core/widgets/main_shell.dart';
 import 'package:balance/features/onboarding/presentation/profile_setup_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/load_test_fonts.dart';
 
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
-    final font = FontLoader('Baloo 2')
-      ..addFont(rootBundle.load('assets/fonts/Baloo2-Variable.ttf'));
-    await font.load();
+    await loadBalanceTestFonts();
   });
 
   testWidgets('profile setup matches the approved first step', (tester) async {
@@ -63,6 +63,10 @@ void main() {
         notifier: AppState.memory(),
         child: _testApp(MainShell(now: DateTime(2026, 5, 15, 9))),
       ),
+    );
+    final context = tester.element(find.byType(MainShell));
+    await tester.runAsync(
+      () => precacheImage(const AssetImage(FoodPhoto.caKhoAssetPath), context),
     );
     await tester.pumpAndSettle();
 

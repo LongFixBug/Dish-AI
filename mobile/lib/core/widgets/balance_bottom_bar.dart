@@ -21,8 +21,9 @@ class BalanceBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = BalanceTheme.paletteOf(context);
     return SizedBox(
-      height: 92,
+      height: 96,
       child: Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.topCenter,
@@ -30,15 +31,22 @@ class BalanceBottomBar extends StatelessWidget {
           Positioned(
             left: 14,
             right: 14,
-            bottom: 8,
+            bottom: 10,
             child: Container(
-              height: 68,
+              height: 70,
               decoration: BoxDecoration(
-                color: BalanceColors.paper,
-                border: Border.all(color: BalanceColors.ink, width: 2.5),
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: const [
-                  BoxShadow(color: BalanceColors.ink, offset: Offset(4, 5)),
+                color: palette.surface,
+                border: Border.all(
+                  color: palette.ink,
+                  width: BalanceStrokes.strong,
+                ),
+                borderRadius: BorderRadius.circular(BalanceRadii.card),
+                boxShadow: [
+                  BoxShadow(
+                    color: palette.shadow,
+                    offset: const Offset(4, 5),
+                    blurRadius: 0,
+                  ),
                 ],
               ),
               child: Row(
@@ -82,19 +90,30 @@ class BalanceBottomBar extends StatelessWidget {
                 child: Container(
                   width: 72,
                   height: 72,
-                  padding: const EdgeInsets.all(5),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: BalanceColors.paper,
+                    color: palette.surface,
                     shape: BoxShape.circle,
-                    border: Border.all(color: BalanceColors.ink, width: 2.5),
-                    boxShadow: const [
-                      BoxShadow(color: BalanceColors.ink, offset: Offset(3, 4)),
+                    border: Border.all(
+                      color: palette.ink,
+                      width: BalanceStrokes.strong,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: palette.shadow,
+                        offset: const Offset(4, 5),
+                        blurRadius: 0,
+                      ),
                     ],
                   ),
                   child: Container(
-                    decoration: const BoxDecoration(
-                      color: BalanceColors.blue,
+                    decoration: BoxDecoration(
+                      color: palette.primary,
                       shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        width: 1.5,
+                      ),
                     ),
                     child: const Icon(
                       Icons.camera_alt_rounded,
@@ -127,29 +146,40 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? Colors.white : BalanceColors.ink;
+    final palette = BalanceTheme.paletteOf(context);
+    final color = selected ? palette.primaryDark : palette.muted;
     return Expanded(
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(7),
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
           height: double.infinity,
+          margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 7),
           decoration: BoxDecoration(
-            color: selected ? BalanceColors.blue : Colors.transparent,
-            borderRadius: BorderRadius.circular(7),
+            color: selected
+                ? palette.primary.withValues(alpha: 0.14)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(BalanceRadii.small),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: color, size: 25),
-              Text(
-                label,
-                maxLines: 1,
+              AnimatedScale(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOutCubic,
+                scale: selected ? 1.08 : 1,
+                child: Icon(icon, color: color, size: 25),
+              ),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 220),
                 style: TextStyle(
                   color: color,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 10.5,
+                  fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
                 ),
+                child: Text(label, maxLines: 1),
               ),
             ],
           ),
