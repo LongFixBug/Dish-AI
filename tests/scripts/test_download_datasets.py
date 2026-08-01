@@ -174,6 +174,30 @@ def test_collect_split_skips_duplicate_images(tmp_path, make_noise_image):
     assert result.saved["pho_bo"] == 2
 
 
+def test_collect_split_skips_images_seen_in_an_earlier_split(
+    tmp_path, make_noise_image
+):
+    train_hash = imagehash.phash(make_noise_image(7))
+    rows = [
+        {"image": make_noise_image(7), "label": 0},
+        {"image": make_noise_image(8), "label": 0},
+    ]
+
+    result = collect_split(
+        rows,
+        "image",
+        "label",
+        LABEL_NAMES,
+        tmp_path,
+        per_class=1,
+        blocked_hashes={"pho_bo": [train_hash]},
+    )
+
+    assert result.skipped_duplicate == 1
+    assert result.saved["pho_bo"] == 1
+    assert len(list((tmp_path / "pho_bo").iterdir())) == 1
+
+
 def test_collect_split_restricts_to_wanted_classes(tmp_path, make_noise_image):
     rows = [
         {"image": make_noise_image(1), "label": 1},  # banh_xeo — ngoài wanted

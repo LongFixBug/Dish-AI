@@ -1,6 +1,7 @@
 """Contracts for the dish image indexing CLI."""
 
 import logging
+import json
 import uuid
 from pathlib import Path
 
@@ -128,6 +129,39 @@ async def test_force_flag_recreates_collection(tmp_path, pipeline):
     assert pipeline["init_force"] == [True, False]
 
 
+async def test_manifest_indexes_only_explicitly_approved_relative_paths(
+    tmp_path, pipeline,
+):
+    root = tmp_path / "references"
+    _write_image(root / "pho_bo" / "approved.jpg")
+    _write_image(root / "pho_bo" / "not-approved.jpg", color="blue")
+    manifest = tmp_path / "approved.json"
+    manifest.write_text(
+        json.dumps({"approved_paths": ["pho_bo/approved.jpg"]}),
+        encoding="utf-8",
+    )
+
+    totals = await index_dish_images.run([root], manifest_path=manifest)
+
+    assert totals == {"pho_bo": 1}
+    assert pipeline["entries"][0].record_id == _expected_record_id(
+        root / "pho_bo" / "approved.jpg"
+    )
+
+
+def test_manifest_rejects_path_outside_album_root(tmp_path):
+    root = tmp_path / "references"
+    _write_image(root / "pho_bo" / "approved.jpg")
+    manifest = tmp_path / "unsafe.json"
+    manifest.write_text(
+        json.dumps({"approved_paths": ["../outside.jpg"]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="outside"):
+        index_dish_images.load_manifest_image_paths(root, manifest)
+
+
 async def test_missing_root_raises_before_touching_qdrant(tmp_path, pipeline):
     with pytest.raises(FileNotFoundError):
         await index_dish_images.run([tmp_path / "does_not_exist"])
@@ -149,7 +183,9 @@ def test_parser_defaults_match_contract():
     assert arguments.force is False
 
 
-def test_default_roots_always_include_train():
+def test_default_roots_use_only_the_curated_reference_album():
     roots = index_dish_images.default_roots()
 
-    assert roots[0] == index_dish_images.PROJECT_ROOT / "data" / "images" / "train"
+    assert roots == [
+        index_dish_images.PROJECT_ROOT / "data" / "images" / "references"
+    ]

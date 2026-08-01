@@ -10,7 +10,7 @@ field phân loại gốc:
 Probe (scripts/probe_vn_api.py) đã xác nhận CẢ 2 endpoint đều có field category.
 Script này re-crawl, giữ nguyên logic tính nutrition (Atwater cho food, total_energy
 cho meal — KHÔNG đổi nutrition đã seed trong DB), chỉ THÊM field `category` vào
-output để migrate_item_type_v2.py map sang item_type chính xác hơn heuristic.
+output để audit hoặc chủ động tái tạo phân loại catalog chính xác hơn heuristic.
 
 Output: data/vn_foods_with_category.json (schema cũ + `category`, KHÔNG đè
 data/vn_foods.json). Tái dùng pattern parse_vn_foods.py.

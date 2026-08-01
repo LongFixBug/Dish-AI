@@ -10,7 +10,7 @@ Read-only: KHÔNG ghi file, KHÔNG sửa data. Chỉ in ra console để ngườ
 định có re-parse VN hay không.
 
 Kỳ vọng (dựa schema vn_foods.json hiện có 7 field): API không trả field category
-→ VN giữ heuristic migrate_item_type.py, chỉ USDA re-parse.
+→ giữ nguyên phân loại VN hiện có và chỉ re-parse nguồn USDA.
 
 Usage:
     python scripts/probe_vn_api.py
@@ -89,8 +89,8 @@ def main() -> None:
         _probe_endpoint(client, "Thực phẩm (nguyên liệu)", FOOD_API)
         _probe_endpoint(client, "Món ăn (nấu sẵn)", MEAL_API)
 
-    print("\n👉 Nếu 2 endpoint đều không có field phân loại → VN giữ heuristic,")
-    print("   chỉ USDA re-parse (xem reparse_usda_category.py + migrate_item_type_v2.py).")
+    print("\n👉 Nếu 2 endpoint đều không có field phân loại → giữ phân loại VN hiện có,")
+    print("   chỉ re-parse USDA bằng scripts/reparse_usda_category.py.")
 
 
 if __name__ == "__main__":

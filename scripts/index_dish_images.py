@@ -6,7 +6,7 @@ deterministic uuid5 id so re-running the command stays idempotent.
 
 Usage:
     uv run python scripts/index_dish_images.py
-    uv run python scripts/index_dish_images.py data/images/train --cap 30 --force
+    uv run python scripts/index_dish_images.py data/images/references --cap 30 --force
 """
 
 import argparse
@@ -45,12 +45,9 @@ def _resolve_embedder():
 
 
 def default_roots() -> list[Path]:
-    """Training images always; curated references only when present."""
-    roots = [PROJECT_ROOT / "data" / "images" / "train"]
+    """Use only the curated runtime album, never classifier training images."""
     references = PROJECT_ROOT / "data" / "images" / "references"
-    if references.is_dir():
-        roots.append(references)
-    return roots
+    return [references]
 
 
 def load_class_names(path: Path | None = None) -> dict[str, str]:
@@ -85,6 +82,33 @@ def collect_image_paths(root: Path, cap: int) -> dict[str, list[Path]]:
         if files:
             selected[class_dir.name] = files[:cap]
     return selected
+
+
+def load_manifest_image_paths(root: Path, manifest_path: Path) -> dict[str, list[Path]]:
+    """Load only reviewed, relative paths from an album-approval manifest."""
+    value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    paths = value.get("approved_paths") if isinstance(value, dict) else None
+    if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
+        raise ValueError(f"{manifest_path} phải có approved_paths là JSON list")
+    root_resolved = root.resolve()
+    selected: dict[str, list[Path]] = {}
+    seen: set[Path] = set()
+    for raw_path in paths:
+        relative = Path(raw_path)
+        if relative.is_absolute():
+            raise ValueError("Manifest path must stay inside album root")
+        candidate = (root / relative).resolve()
+        if not candidate.is_relative_to(root_resolved):
+            raise ValueError("Manifest path points outside album root")
+        if candidate in seen:
+            raise ValueError(f"Manifest has duplicate path: {raw_path}")
+        if not candidate.is_file() or candidate.suffix.lower() not in IMAGE_EXTENSIONS:
+            raise ValueError(f"Manifest image is missing or unsupported: {raw_path}")
+        if candidate.parent.parent != root_resolved:
+            raise ValueError(f"Manifest image must use <class>/<file>: {raw_path}")
+        seen.add(candidate)
+        selected.setdefault(candidate.parent.name, []).append(candidate)
+    return {slug: sorted(paths) for slug, paths in sorted(selected.items())}
 
 
 def read_valid_image(path: Path) -> bytes | None:
@@ -152,9 +176,10 @@ async def index_root(
     cap: int,
     source: str,
     embed_images,
+    selected_paths: dict[str, list[Path]] | None = None,
 ) -> dict[str, int]:
     """Index every class folder under one root; return per-class counts."""
-    per_class = collect_image_paths(root, cap)
+    per_class = selected_paths if selected_paths is not None else collect_image_paths(root, cap)
     _warn_unmapped(per_class, class_names)
     counts: dict[str, int] = {}
     for class_slug, paths in per_class.items():
@@ -179,6 +204,7 @@ async def run(
     source: str = DEFAULT_SOURCE,
     force: bool = False,
     class_names_path: Path | None = None,
+    manifest_path: Path | None = None,
 ) -> dict[str, int]:
     """Index all roots into ``dish_images`` and print a per-class summary."""
     if cap < 1:
@@ -187,13 +213,27 @@ async def run(
     if missing:
         raise FileNotFoundError(f"Image root(s) not found: {', '.join(missing)}")
 
+    if manifest_path is not None and len(roots) != 1:
+        raise ValueError("--manifest chỉ hỗ trợ một album root")
+    selected_paths = (
+        load_manifest_image_paths(roots[0], manifest_path)
+        if manifest_path is not None
+        else None
+    )
     class_names = load_class_names(class_names_path)
     embed_images = _resolve_embedder()
     await asyncio.to_thread(init_dish_images_collection, force)
 
     totals: dict[str, int] = {}
-    for root in roots:
-        counts = await index_root(root, class_names, cap, source, embed_images)
+    for index, root in enumerate(roots):
+        counts = await index_root(
+            root,
+            class_names,
+            cap,
+            source,
+            embed_images,
+            selected_paths=selected_paths if index == 0 else None,
+        )
         totals = _merge_counts(totals, counts)
 
     for class_slug in sorted(totals):
@@ -212,7 +252,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         type=Path,
         help="Image roots laid out as <root>/<class_slug>/*.jpg "
-        "(default: data/images/train plus data/images/references when present).",
+        "(default: data/images/references only).",
     )
     parser.add_argument(
         "--cap",
@@ -230,6 +270,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Recreate the dish_images collection before indexing.",
     )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="JSON manifest of explicitly reviewed relative album paths.",
+    )
     return parser
 
 
@@ -243,6 +289,7 @@ def main() -> None:
         cap=arguments.cap,
         source=arguments.source,
         force=arguments.force,
+        manifest_path=arguments.manifest,
     ))
 
 

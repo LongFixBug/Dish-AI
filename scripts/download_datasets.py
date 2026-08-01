@@ -6,6 +6,8 @@ train/validation/test). Dùng streaming=True nên KHÔNG BAO GIỜ tải trọn
 
 - split "train" → data/images/references/<class_slug>/ (mặc định 40 ảnh/lớp)
 - split "test"  → data/images/golden/<class_slug>/     (mặc định 15 ảnh/lớp)
+- --training-splits → data/images/vn30/{train,val,test}/ cho fine-tune local,
+  giữ nguyên album references, golden và dataset CV cũ.
 - data/eval/class_names.json được merge thêm cặp slug → tên món hiển thị
   (giữ nguyên key đã có, key sort).
 
@@ -18,6 +20,7 @@ Usage:
     uv run python scripts/download_datasets.py
     uv run python scripts/download_datasets.py --refs-per-class 40 --golden-per-class 15
     uv run python scripts/download_datasets.py --classes pho_bo,banh_xeo
+    uv run python scripts/download_datasets.py --training-splits
 """
 
 import argparse
@@ -37,9 +40,16 @@ DATASET_ID = "TuyenTrungLe/vietnamese_food_images"
 CLASS_NAMES_PATH = PROJECT_ROOT / "data" / "eval" / "class_names.json"
 REFERENCES_DIR = PROJECT_ROOT / "data" / "images" / "references"
 GOLDEN_DIR = PROJECT_ROOT / "data" / "images" / "golden"
+TRAINING_ROOT = PROJECT_ROOT / "data" / "images" / "vn30"
 
 DEFAULT_REFS_PER_CLASS = 40
 DEFAULT_GOLDEN_PER_CLASS = 15
+DEFAULT_TRAIN_PER_CLASS = 500
+DEFAULT_VAL_PER_CLASS = 75
+DEFAULT_TEST_PER_CLASS = 150
+# ``banh_duc`` không có trong references/golden hiện hữu do nhiễu nhãn đã được
+# review trước đó. Người dùng vẫn có thể đưa nó vào bằng --classes banh_duc.
+DEFAULT_EXCLUDED_TRAINING_SLUGS = frozenset({"banh_duc"})
 MIN_IMAGE_SIDE_PX = 100
 PHASH_DUPLICATE_DISTANCE = 4
 JPEG_QUALITY = 90
@@ -174,6 +184,7 @@ def collect_split(
     out_dir: Path,
     per_class: int,
     wanted: set[str] | None = None,
+    blocked_hashes: Mapping[str, list[imagehash.ImageHash]] | None = None,
 ) -> SplitResult:
     """Gom ảnh từ một split tới khi mọi lớp mục tiêu đủ per_class ảnh.
 
@@ -198,7 +209,8 @@ def collect_split(
                 skipped_small += 1
                 continue
             candidate = imagehash.phash(image)
-            if is_duplicate_phash(candidate, hashes[slug]):
+            seen_hashes = [*hashes[slug], *(blocked_hashes or {}).get(slug, [])]
+            if is_duplicate_phash(candidate, seen_hashes):
                 skipped_duplicate += 1
                 continue
             _save_row_image(image, out_dir / slug, slug, counts[slug])
@@ -211,6 +223,19 @@ def collect_split(
     except Exception as exc:  # noqa: BLE001 — báo tiến độ thay vì traceback
         error = f"{type(exc).__name__}: {exc}"
     return SplitResult(dict(counts), skipped_small, skipped_duplicate, error)
+
+
+def load_blocked_hashes(
+    roots: Iterable[Path], slugs: Iterable[str]
+) -> dict[str, list[imagehash.ImageHash]]:
+    """Gom pHash từ các split trước để chặn leakage giữa train/val/test."""
+    targets = list(slugs)
+    blocked = {slug: [] for slug in targets}
+    for root in roots:
+        _, hashes = load_existing_state(root, targets)
+        for slug, values in hashes.items():
+            blocked[slug].extend(values)
+    return blocked
 
 
 def stream_split(dataset_id: str, split: str):
@@ -264,6 +289,24 @@ def print_summary(
     )
 
 
+def print_training_summary(
+    slugs: list[str], results: Mapping[str, SplitResult]
+) -> None:
+    """In số ảnh train/val/test đã lưu cho dataset fine-tune riêng."""
+    print(f"\n{'class_slug':<24}{'train':>10}{'val':>10}{'test':>10}")
+    print("-" * 54)
+    for slug in slugs:
+        print(
+            f"{slug:<24}{results['train'].saved.get(slug, 0):>10}"
+            f"{results['validation'].saved.get(slug, 0):>10}"
+            f"{results['test'].saved.get(slug, 0):>10}"
+        )
+    print("-" * 54)
+    print(
+        f"{'TỔNG':<24}{sum(results['train'].saved.values()):>10}"
+        f"{sum(results['validation'].saved.values()):>10}"
+        f"{sum(results['test'].saved.values()):>10}"
+    )
 def run(refs_per_class: int, golden_per_class: int, classes: str | None) -> int:
     """Stream 2 split, lưu ảnh, merge class_names.json, in tổng kết."""
     train_stream = stream_split(DATASET_ID, "train")
@@ -300,6 +343,63 @@ def run(refs_per_class: int, golden_per_class: int, classes: str | None) -> int:
     return 1 if references.error or golden.error else 0
 
 
+def run_training_splits(
+    training_root: Path,
+    train_per_class: int,
+    val_per_class: int,
+    test_per_class: int,
+    classes: str | None,
+) -> int:
+    """Tải 3 split 30VNFoods vào root riêng, chống pHash leakage chéo."""
+    train_stream = stream_split(DATASET_ID, "train")
+    image_column, label_column, label_names = find_dataset_columns(
+        train_stream.features
+    )
+    slug_to_name = {build_class_slug(name): name for name in label_names}
+    merge_class_names(CLASS_NAMES_PATH, slug_to_name)
+
+    explicitly_wanted = parse_wanted_classes(classes, list(slug_to_name))
+    wanted = explicitly_wanted or (
+        set(slug_to_name) - DEFAULT_EXCLUDED_TRAINING_SLUGS
+    )
+    selected_slugs = sorted(wanted)
+    split_specs = (
+        ("train", train_per_class, train_stream, []),
+        ("validation", val_per_class, None, [training_root / "train"]),
+        (
+            "test",
+            test_per_class,
+            None,
+            [training_root / "train", training_root / "val"],
+        ),
+    )
+    output_names = {"train": "train", "validation": "val", "test": "test"}
+    results: dict[str, SplitResult] = {}
+
+    for split, per_class, stream, prior_roots in split_specs:
+        print(f"Đang stream split {split} → {training_root / output_names[split]} ...")
+        try:
+            rows = stream if stream is not None else stream_split(DATASET_ID, split)
+            blocked = load_blocked_hashes(prior_roots, selected_slugs)
+            results[split] = collect_split(
+                rows,
+                image_column,
+                label_column,
+                label_names,
+                training_root / output_names[split],
+                per_class,
+                wanted,
+                blocked,
+            )
+        except Exception as exc:  # noqa: BLE001 — in được split còn lại
+            results[split] = SplitResult({}, 0, 0, f"{type(exc).__name__}: {exc}")
+        if results[split].error:
+            print(f"⚠️ Split {split} dừng giữa chừng: {results[split].error}")
+
+    print_training_summary(selected_slugs, results)
+    return 1 if any(result.error for result in results.values()) else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """CLI: số ảnh mỗi lớp cho references/golden + lọc lớp."""
     parser = argparse.ArgumentParser(
@@ -317,6 +417,35 @@ def build_parser() -> argparse.ArgumentParser:
         "--classes", default=None,
         help="Chỉ tải các slug này (phân tách bằng dấu phẩy), vd: pho_bo,banh_xeo",
     )
+    parser.add_argument(
+        "--training-splits",
+        action="store_true",
+        help="Tải 29 lớp 30VNFoods vào data/images/vn30/{train,val,test}.",
+    )
+    parser.add_argument(
+        "--training-dir",
+        type=Path,
+        default=TRAINING_ROOT,
+        help="Root cho --training-splits (mặc định: data/images/vn30).",
+    )
+    parser.add_argument(
+        "--train-per-class",
+        type=int,
+        default=DEFAULT_TRAIN_PER_CLASS,
+        help=f"Ảnh train mỗi lớp cho --training-splits (mặc định {DEFAULT_TRAIN_PER_CLASS}).",
+    )
+    parser.add_argument(
+        "--val-per-class",
+        type=int,
+        default=DEFAULT_VAL_PER_CLASS,
+        help=f"Ảnh val mỗi lớp cho --training-splits (mặc định {DEFAULT_VAL_PER_CLASS}).",
+    )
+    parser.add_argument(
+        "--test-per-class",
+        type=int,
+        default=DEFAULT_TEST_PER_CLASS,
+        help=f"Ảnh test mỗi lớp cho --training-splits (mặc định {DEFAULT_TEST_PER_CLASS}).",
+    )
     return parser
 
 
@@ -324,8 +453,20 @@ def main() -> None:
     """Parse CLI rồi chạy; lỗi mạng ngay từ đầu cũng báo gọn, không traceback."""
     arguments = build_parser().parse_args()
     try:
-        exit_code = run(
-            arguments.refs_per_class, arguments.golden_per_class, arguments.classes
+        exit_code = (
+            run_training_splits(
+                arguments.training_dir,
+                arguments.train_per_class,
+                arguments.val_per_class,
+                arguments.test_per_class,
+                arguments.classes,
+            )
+            if arguments.training_splits
+            else run(
+                arguments.refs_per_class,
+                arguments.golden_per_class,
+                arguments.classes,
+            )
         )
     except SystemExit:
         raise

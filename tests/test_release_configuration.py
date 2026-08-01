@@ -5,6 +5,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_obsolete_clients_and_compatibility_entry_points_are_removed() -> None:
+    obsolete_paths = (
+        "FoodAI-CONTEXT.md",
+        "LEARNING-ROADMAP.md",
+        "hello.py",
+        "requirements.txt",
+        "streamlit_app.py",
+        "scripts/create_tables.py",
+        "scripts/seed_conversion_rates.py",
+        "scripts/seed_grams_v2.py",
+    )
+
+    assert [path for path in obsolete_paths if (ROOT / path).is_file()] == []
+    assert not list((ROOT / "scripts/legacy").rglob("*.py"))
+
+
 def test_android_release_does_not_use_debug_signing() -> None:
     gradle = (ROOT / "mobile/android/app/build.gradle.kts").read_text()
 

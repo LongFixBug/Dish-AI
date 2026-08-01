@@ -8,6 +8,8 @@ Usage:
     python -m ml.training.train                                  # train ảnh raw
     python -m ml.training.train --ckpt checkpoints/xxx.pth --resume
     python -m ml.training.train --no-class-weight                  # baseline
+    python -m ml.training.train --output-dir checkpoints/experiments/20260730_46class
+        # safe experiment: never writes serving class_mapping/best_model/manifest
 
 Yêu cầu: ảnh đã được tổ chức trong <data_dir>/{train,val}/<ten_mon>/
 (mặc định data/images).
@@ -47,7 +49,6 @@ RANDOM_SEED = 42
 
 DATA_DIR = PROJECT_ROOT / "data" / "images"
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
-CHECKPOINT_DIR.mkdir(exist_ok=True)
 BEST_CHECKPOINT_PATH = CHECKPOINT_DIR / "best_model.pth"
 BEST_MANIFEST_PATH = CHECKPOINT_DIR / "best_model.manifest.json"
 
@@ -73,23 +74,54 @@ def _class_folders(data_dir: Path, split: str) -> list[str]:
     return sorted(path.name for path in split_dir.iterdir() if path.is_dir())
 
 
+def load_class_allowlist(path: str | Path) -> list[str]:
+    """Read a versioned class allowlist and return a stable class mapping."""
+    config_path = Path(path)
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Cannot read class allowlist: {config_path}") from exc
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        raise ValueError("Class allowlist must use schema_version 1")
+    classes = payload.get("classes")
+    if (
+        not isinstance(classes, list)
+        or not classes
+        or any(not isinstance(name, str) or not name.strip() for name in classes)
+    ):
+        raise ValueError("Class allowlist must contain non-empty class names")
+    normalized = sorted(name.strip() for name in classes)
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("Class allowlist contains duplicate class names")
+    return normalized
+
+
 def load_training_datasets(
     data_dir: str | Path,
+    classes: list[str] | None = None,
 ) -> tuple[VietFoodDataset, VietFoodDataset]:
     """Load train/val with one shared class mapping and reject split drift."""
     root = Path(data_dir)
     train_classes = _class_folders(root, "train")
     val_classes = _class_folders(root, "val")
-    if train_classes != val_classes:
+    if classes is None and train_classes != val_classes:
         raise ValueError(
             "Validation class folders must exactly match train class folders: "
             f"train={train_classes}, val={val_classes}"
         )
-    train_ds = VietFoodDataset(root, classes=train_classes, split="train")
-    val_ds = VietFoodDataset(root, classes=train_classes, split="val")
+    selected_classes = train_classes if classes is None else sorted(classes)
+    missing_train = sorted(set(selected_classes) - set(train_classes))
+    missing_val = sorted(set(selected_classes) - set(val_classes))
+    if missing_train or missing_val:
+        raise ValueError(
+            "Selected classes missing from dataset splits: "
+            f"train={missing_train}, val={missing_val}"
+        )
+    train_ds = VietFoodDataset(root, classes=selected_classes, split="train")
+    val_ds = VietFoodDataset(root, classes=selected_classes, split="val")
     empty_val_classes = [
         name
-        for name, count in zip(train_classes, val_ds.class_counts(), strict=True)
+        for name, count in zip(selected_classes, val_ds.class_counts(), strict=True)
         if count == 0
     ]
     if empty_val_classes:
@@ -99,14 +131,55 @@ def load_training_datasets(
     return train_ds, val_ds
 
 
-def find_latest_checkpoint() -> Path | None:
+def resolve_training_output_dir(output_dir: str | Path | None) -> Path:
+    """Return the artifact directory, rejecting the serving checkpoint root.
+
+    A named experiment must never write ``checkpoints/class_mapping.json`` or
+    any serving artifact. It may live below ``checkpoints/experiments/`` but
+    cannot be the ``checkpoints/`` root itself.
+    """
+    if output_dir is None:
+        return CHECKPOINT_DIR
+    directory = Path(output_dir)
+    if not directory.is_absolute():
+        directory = PROJECT_ROOT / directory
+    directory = directory.resolve()
+    if directory == CHECKPOINT_DIR.resolve():
+        raise ValueError(
+            "--output-dir must not be the serving checkpoint directory; "
+            "use a named experiment such as checkpoints/experiments/<name>"
+        )
+    return directory
+
+
+def training_epoch_checkpoint_path(
+    output_dir: Path,
+    timestamp: str,
+    epoch: int,
+) -> Path:
+    """Return a versioned epoch checkpoint path inside one experiment."""
+    return output_dir / f"efficientnet_vietfood_{timestamp}_epoch{epoch}.pth"
+
+
+def training_class_mapping_path(output_dir: Path) -> Path:
+    """Return the class mapping path owned by an experiment."""
+    return output_dir / "class_mapping.json"
+
+
+def training_history_path(output_dir: Path, timestamp: str) -> Path:
+    """Return the history path owned by an experiment."""
+    return output_dir / f"history_{timestamp}.json"
+
+
+def find_latest_checkpoint(checkpoint_dir: Path | None = None) -> Path | None:
     """Tìm checkpoint efficientnet mới nhất trong checkpoints/.
 
     Sắp theo thời điểm sửa file, KHÔNG theo tên: tên kết thúc bằng ``_epoch{N}``
     nên sort chuỗi sẽ xếp ``epoch9`` sau ``epoch18`` và resume nhầm.
     Ưu tiên: dùng --ckpt <path> để resume chính xác, tránh đoán sai.
     """
-    files = list(CHECKPOINT_DIR.glob("efficientnet_vietfood_*.pth"))
+    directory = checkpoint_dir or CHECKPOINT_DIR
+    files = list(directory.glob("efficientnet_vietfood_*.pth"))
     return max(files, key=lambda path: path.stat().st_mtime) if files else None
 
 
@@ -427,8 +500,15 @@ def main(
     *,
     use_class_weight: bool = USE_CLASS_WEIGHT,
     seed: int = RANDOM_SEED,
+    output_dir: str | Path | None = None,
+    classes_file: str | Path | None = None,
 ) -> None:
     global DATA_DIR
+    try:
+        training_output_dir = resolve_training_output_dir(output_dir)
+    except ValueError as exc:
+        print(f"\n❌ {exc}")
+        return
     if data_dir:
         DATA_DIR = Path(data_dir)
         if not DATA_DIR.is_absolute():
@@ -436,13 +516,23 @@ def main(
     set_reproducible_seed(seed)
     print(f"🔥 Device: {DEVICE}")
     print(f"📂 Data: {DATA_DIR}")
+    print(f"📦 Artifacts: {training_output_dir}")
     print(f"🎲 Seed: {seed}")
     print()
 
     # ── Load datasets ────────────────────────────────────────────────
     print("📦 Loading datasets...")
     try:
-        train_ds, val_ds = load_training_datasets(DATA_DIR)
+        selected_classes = None
+        if classes_file is not None:
+            allowlist_path = Path(classes_file)
+            if not allowlist_path.is_absolute():
+                allowlist_path = PROJECT_ROOT / allowlist_path
+            selected_classes = load_class_allowlist(allowlist_path)
+        train_ds, val_ds = load_training_datasets(
+            DATA_DIR,
+            classes=selected_classes,
+        )
     except (FileNotFoundError, ValueError) as e:
         print(f"\n❌ {e}")
         print("\n💡 Tạo cấu trúc thư mục mẫu trước khi train:")
@@ -487,9 +577,14 @@ def main(
     if ckpt:
         checkpoint_path = Path(ckpt)
         if not checkpoint_path.is_absolute():
-            checkpoint_path = CHECKPOINT_DIR / checkpoint_path
+            experiment_checkpoint = training_output_dir / checkpoint_path
+            checkpoint_path = (
+                experiment_checkpoint
+                if experiment_checkpoint.exists()
+                else CHECKPOINT_DIR / checkpoint_path
+            )
     elif resume:
-        checkpoint_path = find_latest_checkpoint()
+        checkpoint_path = find_latest_checkpoint(training_output_dir)
     else:
         checkpoint_path = None
     if checkpoint_path and checkpoint_path.exists():
@@ -620,9 +715,10 @@ def main(
             }
 
             # Giữ lại checkpoint theo epoch để debug hoặc so sánh sau này.
-            epoch_checkpoint_path = (
-                CHECKPOINT_DIR / f"efficientnet_vietfood_{timestamp}_epoch{epoch}.pth"
+            epoch_checkpoint_path = training_epoch_checkpoint_path(
+                training_output_dir, timestamp, epoch
             )
+            training_output_dir.mkdir(parents=True, exist_ok=True)
             torch.save(checkpoint_data, epoch_checkpoint_path)
 
             # Cập nhật NGAY, không phụ thuộc kết quả promote. Nếu để trong nhánh
@@ -635,7 +731,8 @@ def main(
             )
 
     # Save class mapping
-    mapping_path = CHECKPOINT_DIR / "class_mapping.json"
+    training_output_dir.mkdir(parents=True, exist_ok=True)
+    mapping_path = training_class_mapping_path(training_output_dir)
     with open(mapping_path, "w") as f:
         json.dump({
             "classes": train_ds.classes,
@@ -644,7 +741,7 @@ def main(
     print(f"📋 Class mapping saved: {mapping_path}")
 
     # Save training history
-    history_path = CHECKPOINT_DIR / f"history_{timestamp}.json"
+    history_path = training_history_path(training_output_dir, timestamp)
     with open(history_path, "w") as f:
         json.dump(history, f, indent=2)
     print(f"📈 History saved: {history_path}")
@@ -671,6 +768,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Thư mục data gốc (chứa train/val) — mặc định data/images.",
     )
     parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Thư mục artifact của experiment. Dùng checkpoints/experiments/<tên> "
+        "để không ghi đè checkpoint serving.",
+    )
+    parser.add_argument(
+        "--classes-file",
+        type=str,
+        default=None,
+        help="JSON allowlist lớp được duyệt cho experiment (schema_version=1).",
+    )
+    parser.add_argument(
         "--no-class-weight",
         action="store_true",
         help="Tắt class_weight (mặc định bật) — dùng khi data đã cân bằng "
@@ -686,6 +796,8 @@ def run_from_args(args: argparse.Namespace) -> None:
         ckpt=args.ckpt,
         data_dir=args.data_dir,
         use_class_weight=not args.no_class_weight,
+        output_dir=args.output_dir,
+        classes_file=args.classes_file,
     )
 
 

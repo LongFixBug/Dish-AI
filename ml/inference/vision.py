@@ -91,7 +91,7 @@ def _build_food_identification_prompt(
         "BẮT BUỘC — OUTPUT CHÍNH XÁC:\n"
         "Trả về CHỈ JSON đúng cấu trúc:\n"
         '{"confidence": số từ 0 đến 1, "dishes": [{"dish_name": str, '
-        '"gram": số, "gram_confidence": số từ 0 đến 1, "is_side": bool, '
+        '"gram": số, "gram_confidence": số từ 0 đến 1, "serving_label": str, "is_side": bool, '
         '"confidence": số từ 0 đến 1, '
         '"total_calories": số, "total_protein_g": số, "total_fat_g": số, '
         '"total_carbs_g": số, "total_fiber_g": số}]}\n'
@@ -103,6 +103,9 @@ def _build_food_identification_prompt(
         "- gram_confidence là độ chắc chắn riêng về khối lượng; nếu không chắc "
         "khối lượng thì dùng confidence thấp, nhất là khi không có vật chuẩn "
         "so sánh.\n"
+        "- serving_label là đơn vị khẩu phần nhìn thấy ứng với đúng lượng gram. "
+        "BẮT BUỘC ghi ngắn theo mẫu '1 tô', '1 chén', '1 ly', '1 đĩa', '1 phần' "
+        "hoặc '1 cái'; chọn đơn vị phù hợp nhất. Không ghi dấu '/', không ghi gram hoặc calo.\n"
         "- total_calories dùng kcal; 4 trường còn lại dùng gram.\n"
         "- Các total là cho đúng lượng gram vừa ước tính, không phải trên 100g.\n"
         "- Không có trường ingredients. Nếu không thấy món nào thì dishes=[].\n"
@@ -287,6 +290,14 @@ def _as_non_negative_float(value: object) -> float:
         return 0.0
 
 
+def _normalize_serving_label(value: object) -> str | None:
+    """Keep a compact, display-safe Vietnamese serving unit from Vision."""
+    if not isinstance(value, str):
+        return None
+    label = " ".join(value.strip().lstrip("/").split())
+    return label[:30] or None
+
+
 def _extract_message_content(data: object) -> str:
     """Extract text from an OpenAI-compatible response with schema checks."""
     if not isinstance(data, dict):
@@ -429,6 +440,9 @@ def _normalize_dishes(
             "total_carbs_g": total_carbs,
             "total_fiber_g": total_fiber,
         }
+        serving_label = _normalize_serving_label(d.get("serving_label"))
+        if serving_label:
+            normalized_item["serving_label"] = serving_label
         if "gram_confidence" in d:
             normalized_item["gram_confidence"] = _as_confidence(
                 d.get("gram_confidence"),

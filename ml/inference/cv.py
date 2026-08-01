@@ -31,7 +31,7 @@ def _resolve_serving_metadata(checkpoint: dict) -> tuple[str, float]:
         threshold = float(raw_threshold)
     except (TypeError, ValueError):
         threshold = DEFAULT_SERVING_THRESHOLD
-    return version, min(0.99, max(0.5, threshold))
+    return version, min(1.0, max(0.5, threshold))
 
 
 def _resolve_checkpoint_classes(

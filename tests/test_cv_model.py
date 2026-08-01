@@ -28,3 +28,11 @@ def test_checkpoint_supplies_version_and_calibrated_serving_threshold() -> None:
 
     assert version == "2026-07-25-e18"
     assert threshold == 0.88
+
+
+def test_checkpoint_keeps_high_calibrated_threshold_above_point_99() -> None:
+    _, threshold = cv._resolve_serving_metadata(
+        {"cv_confidence_threshold": 0.996}
+    )
+
+    assert threshold == 0.996

@@ -62,6 +62,14 @@ def test_prompt_requests_a_separate_portion_confidence() -> None:
     assert "không chắc khối lượng thì dùng confidence thấp" in prompt.casefold()
 
 
+def test_prompt_requires_a_short_visible_serving_label() -> None:
+    prompt = _build_food_identification_prompt()
+
+    assert '"serving_label": str' in prompt
+    assert "'1 tô', '1 chén', '1 ly'" in prompt
+    assert "không ghi gram hoặc calo" in prompt.casefold()
+
+
 def test_normalizer_keeps_at_most_three_menu_items() -> None:
     raw_dishes = [
         {"dish_name": "Cơm sườn", "gram": 450, "confidence": 0.9},
@@ -159,6 +167,21 @@ def test_normalizer_preserves_item_confidence_for_the_api() -> None:
     )
 
     assert normalized[0]["confidence"] == 0.87
+
+
+def test_normalizer_keeps_a_clean_serving_label_for_the_ui() -> None:
+    normalized = _normalize_dishes(
+        [
+            {
+                "dish_name": "Phở bò",
+                "gram": 500,
+                "confidence": 0.87,
+                "serving_label": " /  1 tô  ",
+            }
+        ]
+    )
+
+    assert normalized[0]["serving_label"] == "1 tô"
 
 
 def test_normalizer_drops_implausible_numbers_but_keeps_the_dish_name() -> None:
