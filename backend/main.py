@@ -52,12 +52,15 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.exception("CV load failed")
 
-    try:
-        from backend.services.vector_catalog import init_collection
+    if settings.qdrant_required:
+        try:
+            from backend.services.vector_catalog import init_collection
 
-        await asyncio.to_thread(init_collection)
-    except Exception:
-        logger.exception("Qdrant init failed; exact catalog lookup remains available")
+            await asyncio.to_thread(init_collection)
+        except Exception:
+            logger.exception(
+                "Qdrant init failed; exact catalog lookup remains available",
+            )
 
     try:
         yield

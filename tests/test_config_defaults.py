@@ -49,6 +49,17 @@ def test_production_accepts_explicit_security_configuration() -> None:
     assert settings.environment == "production"
 
 
+def test_railway_postgres_url_is_normalized_to_asyncpg() -> None:
+    settings = Settings(
+        database_url="postgresql://foodai_prod:secret@db.railway.internal:5432/foodai",
+        _env_file=None,
+    )
+
+    assert settings.database_url == (
+        "postgresql+asyncpg://foodai_prod:secret@db.railway.internal:5432/foodai"
+    )
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [

@@ -94,3 +94,19 @@ async def test_enabled_chat_requires_local_llm_readiness(monkeypatch) -> None:
         "ready": False,
         "detail": "RuntimeError",
     }
+
+
+async def test_lifespan_skips_optional_qdrant_initialization(monkeypatch) -> None:
+    async def fail_if_called() -> None:
+        raise AssertionError("optional Qdrant must not initialize")
+
+    monkeypatch.setattr(main.settings, "qdrant_required", False)
+    monkeypatch.setattr(main.settings, "cv_enabled", False)
+    monkeypatch.setattr(main.settings, "chat_enabled", False)
+    monkeypatch.setattr(
+        "backend.services.vector_catalog.init_collection",
+        fail_if_called,
+    )
+
+    async with main.lifespan(main.app):
+        pass
