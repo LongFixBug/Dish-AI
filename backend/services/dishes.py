@@ -14,6 +14,7 @@ from backend.services.menu_vocabulary import (
     family_pair,
     menu_tokens,
 )
+from backend.services.catalog_aliases import get_reviewed_catalog_alias
 from backend.services.vector_catalog import CatalogType, search_catalog
 from schemas.nutrition import NutritionPerGram
 
@@ -284,6 +285,12 @@ async def lookup_dish(session: AsyncSession, name: str) -> VnDish | None:
     vn = await _lookup_institute_exact(session, name)
     if vn is not None:
         return vn
+
+    reviewed_alias = get_reviewed_catalog_alias(name)
+    if reviewed_alias is not None:
+        aliased = await _lookup_institute_exact(session, reviewed_alias)
+        if aliased is not None:
+            return aliased
 
     return await _lookup_institute_by_vector(session, name)
 

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "policy": "Only these reviewed defaults may bypass semantic catalog lookup; all other variants remain Vision-only.",
+  "aliases": [
+    {
+      "class_slug": "banh_chung",
+      "query": "Bánh chưng",
+      "canonical_name": "Bánh chưng cỡ vừa",
+      "status": "reviewed",
+      "reviewer": "codex",
+      "nutrition_basis": "vnmeal",
+      "reason": "Use the plain, non-fried serving row for the generic class; do not use Bánh chưng rán."
+    },
+    {
+      "class_slug": "banh_mi_kep_thit",
+      "query": "Bánh mì kẹp thịt",
+      "canonical_name": "Bánh mì thập cẩm",
+      "status": "reviewed",
+      "reviewer": "codex",
+      "nutrition_basis": "vnmeal",
+      "reason": "The catalog row is a filled bánh mì rather than Bánh mì chảo; the output keeps the canonical catalog name."
+    },
+    {
+      "class_slug": "bun_bo_hue",
+      "query": "Bún bò Huế",
+      "canonical_name": "Bún bò giò heo (Huế)",
+      "status": "reviewed",
+      "reviewer": "codex",
+      "nutrition_basis": "vnmeal",
+      "reason": "This is the only reviewed Huế preparation in vn_dishes; it is an explicit default, not a claim that every bowl contains the same toppings."
+    },
+    {
+      "class_slug": "hu_tieu",
+      "query": "Hủ tiếu",
+      "canonical_name": "Hủ tiếu nước",
+      "status": "reviewed",
+      "reviewer": "codex",
+      "nutrition_basis": "vnmeal",
+      "reason": "Use the soup preparation for the generic class; dry and stir-fried variants are not silently merged."
+    },
+    {
+      "class_slug": "pho_bo",
+      "query": "Phở bò",
+      "canonical_name": "Phở bò chín",
+      "status": "reviewed",
+      "reviewer": "codex",
+      "nutrition_basis": "vnmeal",
+      "reason": "Use the plain cooked-beef preparation for the generic class; tái, sốt vang and xào remain distinct."
+    },
+    {
+      "class_slug": "mi_quang",
+      "query": "Mì Quảng",
+      "canonical_name": "Mỳ Quảng",
+      "status": "reviewed",
+      "reviewer": "codex",
+      "nutrition_basis": "vnmeal",
+      "reason": "Vietnamese spelling variant only; the canonical row is the same dish, not a different preparation."
+    }
+  ]
+}

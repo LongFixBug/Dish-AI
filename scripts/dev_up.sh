@@ -32,7 +32,7 @@ wait_for_port() {
   return 1
 }
 
-echo "▶ 1/6  Data stores (postgres :5432, qdrant :6333)"
+echo "▶ 1/5  Data stores (postgres :5432, qdrant :6333)"
 if port_open 5432 && port_open 6333; then
   echo "   ⏭  đã chạy sẵn"
 else
@@ -41,18 +41,10 @@ else
   wait_for_port 6333 qdrant
 fi
 
-echo "▶ 2/6  Migrations"
-DEBUG=false uv run alembic upgrade head
+echo "▶ 2/5  Migrations"
+DEBUG=false uv run python -m alembic upgrade head
 
-echo "▶ 3/6  Image matching — SigLIP (:8082)"
-if port_open 8082; then
-  echo "   ⏭  đã chạy sẵn"
-else
-  bash scripts/start_image_embed.sh
-  wait_for_port 8082 image-embed
-fi
-
-echo "▶ 4/6  Sticker segmentation (:8083)"
+echo "▶ 3/5  Sticker segmentation (:8083)"
 if port_open 8083; then
   echo "   ⏭  đã chạy sẵn"
 else
@@ -60,7 +52,7 @@ else
   wait_for_port 8083 segment
 fi
 
-echo "▶ 5/6  llama.cpp (LLM :8080, embedding :8081)"
+echo "▶ 4/5  llama.cpp (LLM :8080, embedding :8081)"
 if [ "$WITH_LLM" = "0" ]; then
   echo "   ⏭  bỏ qua theo --no-llm"
 elif port_open 8080 && port_open 8081; then
@@ -72,13 +64,13 @@ else
   bash scripts/start_llama.sh
 fi
 
-echo "▶ 6/6  API (:8000)"
+echo "▶ 5/5  API (:8000)"
 if port_open 8000; then
   echo "   ⏭  đã chạy sẵn"
 else
   # --timeout-graceful-shutdown: request treo (vd Vision cloud chậm) không được
   # phép kẹt vòng reload/shutdown vô hạn như từng gặp 26/7.
-  DEBUG=false uv run uvicorn backend.main:app --reload --port 8000 \
+  DEBUG=false "$ROOT/.venv/bin/python" -m uvicorn backend.main:app --reload --port 8000 \
     --timeout-graceful-shutdown 5 \
     > "$LOG_DIR/api.log" 2>&1 &
   echo $! > "$RUN_DIR/api.pid"
@@ -95,7 +87,6 @@ cat <<EOF
 ──────────────────────────────────────────────
   API      http://127.0.0.1:8000
   Docs     http://127.0.0.1:8000/docs
-  Image matching  http://127.0.0.1:8082
   Sticker  http://127.0.0.1:8083
   Log      $LOG_DIR/api.log
   Smoke    bash scripts/smoke_test.sh

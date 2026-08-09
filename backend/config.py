@@ -46,7 +46,9 @@ class Settings(BaseSettings):
 
     # Runtime capabilities are explicit so readiness cannot hide fallbacks.
     vision_enabled: bool = True
-    cv_enabled: bool = True
+    # Legacy compatibility flag. EfficientNet is no longer part of the
+    # runtime recognition flow; keep parsing old .env files without loading it.
+    cv_enabled: bool = False
     qdrant_required: bool = True
     enable_dev_routes: bool = True
     log_level: str = "INFO"
@@ -97,10 +99,15 @@ class Settings(BaseSettings):
     llm_model: str = "qwen2.5-7b-instruct-q4_k_m.gguf"
     embedding_model: str = "qwen3-embedding-0.6b-q8_0.gguf"
 
-    # SigLIP 2 image-embedding sidecar (dish photo matching)
-    image_embed_enabled: bool = True
+    # Retired local image-matching settings. They remain parseable so an old
+    # .env or offline evaluation script does not crash, but the API never reads
+    # them and the default is deliberately disabled.
+    image_embed_enabled: bool = False
     image_embed_url: str = "http://localhost:8082"
+    image_embed_backend: Literal["siglip2", "dinov2"] = "siglip2"
     image_embed_model: str = "google/siglip2-base-patch16-224"
+    image_embed_dim: int = Field(default=768, ge=1, le=4_096)
+    image_embed_collection: str = "dish_images_siglip2_base"
     image_embed_max_concurrency: int = Field(default=4, ge=1, le=64)
 
     # Sidecar tách chủ thể thành sticker (ml/serving/segment_server.py).
@@ -120,7 +127,7 @@ class Settings(BaseSettings):
     # decision while preserving the legacy response. Active rollout is a
     # separate kill switch. CV solo remains disabled until eval writes an
     # explicitly calibrated threshold into the environment.
-    local_fusion_enabled: bool = True
+    local_fusion_enabled: bool = False
     local_fusion_shadow_enabled: bool = False
     # Stricter than the calibrated CV serving threshold: used only when CV
     # participates in fusion consensus/disagreement, never for CV-only answers.

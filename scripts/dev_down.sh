@@ -11,11 +11,6 @@ if [ -f "$RUN_DIR/api.pid" ]; then
   rm -f "$RUN_DIR/api.pid"
 fi
 
-if [ -f "$RUN_DIR/image_embed.pid" ]; then
-  kill "$(cat "$RUN_DIR/image_embed.pid")" 2>/dev/null && echo "🛑 image-embed"
-  rm -f "$RUN_DIR/image_embed.pid"
-fi
-
 if [ -f "$RUN_DIR/segment.pid" ]; then
   kill "$(cat "$RUN_DIR/segment.pid")" 2>/dev/null && echo "🛑 segment"
   rm -f "$RUN_DIR/segment.pid"

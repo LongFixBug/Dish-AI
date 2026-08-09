@@ -117,19 +117,3 @@ jobs:
           exit-code: "1"
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-      # Image CV cũng chạy production nên phải build + quét CVE như image API.
-      # checkpoints/ bị gitignore, nên tạo file rỗng để lệnh COPY chạy được —
-      # mục tiêu ở bước này là base image + dependency, không phải trọng số model.
-      - name: Build the CV image
-        run: |
-          mkdir -p checkpoints
-          : > checkpoints/best_model.pth
-          echo '{}' > checkpoints/best_model.manifest.json
-          docker build --file Dockerfile.cv --tag foodai-cv:ci .
-      - uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: foodai-cv:ci
-          format: table
-          exit-code: "1"
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true

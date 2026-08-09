@@ -50,8 +50,6 @@ async def _probe_components() -> dict[str, object]:
         checks["redis"] = _check_redis
     if settings.vision_enabled:
         checks["vision"] = _check_vision_config
-    if settings.cv_enabled:
-        checks["cv_model"] = _check_cv_model
     if settings.chat_enabled:
         checks["llm"] = _check_chat_llm
 
@@ -100,13 +98,6 @@ async def _check_redis() -> None:
 async def _check_vision_config() -> None:
     if not settings.vision_api_key:
         raise RuntimeError("Vision API key is missing")
-
-
-async def _check_cv_model() -> None:
-    from ml.inference.cv import cv_model
-
-    if not cv_model.is_loaded:
-        raise RuntimeError("CV model is not loaded")
 
 
 async def _check_chat_llm() -> None:

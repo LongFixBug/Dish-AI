@@ -18,7 +18,9 @@ GOLDEN_TESTS = (
 def test_ci_uses_a_supported_versioned_trivy_tag() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
-    assert workflow.count("aquasecurity/trivy-action@v0.36.0") == 2
+    # Only the API image remains in CI; retired local image-model images are
+    # no longer built or scanned here.
+    assert workflow.count("aquasecurity/trivy-action@v0.36.0") == 1
     assert "aquasecurity/trivy-action@v0.32.0" not in workflow
     assert "aquasecurity/trivy-action@0.32.0" not in workflow
 

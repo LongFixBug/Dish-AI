@@ -43,15 +43,6 @@ async def lifespan(app: FastAPI):
     Both initializers run outside the event loop. Their failure is non-fatal:
     Vision analysis and exact PostgreSQL lookup remain available respectively.
     """
-    if settings.cv_enabled:
-        try:
-            from ml.inference.cv import cv_model
-
-            await asyncio.to_thread(cv_model.load)
-            logger.info("CV model loaded (%d classes)", len(cv_model.classes))
-        except Exception:
-            logger.exception("CV load failed")
-
     if settings.qdrant_required:
         try:
             from backend.services.vector_catalog import init_collection
