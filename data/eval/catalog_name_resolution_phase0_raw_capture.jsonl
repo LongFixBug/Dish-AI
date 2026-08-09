@@ -1,0 +1,6 @@
+{"capture_version":1,"case_id":"phase0-banh-canh-001","vision_raw_items":["Bún gà"],"vision_confidence":0.92,"latency_ms":4879.4,"status":"ok","review_status":"pending_human_review"}
+{"capture_version":1,"case_id":"phase0-banh-canh-002","vision_raw_items":["Bún mọc"],"vision_confidence":0.92,"latency_ms":5355.5,"status":"ok","review_status":"pending_human_review"}
+{"capture_version":1,"case_id":"phase0-banh-canh-003","vision_raw_items":["Bún riêu"],"vision_confidence":0.92,"latency_ms":5081.4,"status":"ok","review_status":"pending_human_review"}
+{"capture_version":1,"case_id":"phase0-banh-canh-004","vision_raw_items":["Bún mọc"],"vision_confidence":0.92,"latency_ms":4566.4,"status":"ok","review_status":"pending_human_review"}
+{"capture_version":1,"case_id":"phase0-banh-canh-005","vision_raw_items":["Bún riêu"],"vision_confidence":0.92,"latency_ms":4570.2,"status":"ok","review_status":"pending_human_review"}
+{"capture_version":1,"case_id":"phase0-ha-cao-001","vision_raw_items":["Hoành thánh thịt xá xíu"],"vision_confidence":0.92,"latency_ms":5035.4,"status":"ok","review_status":"pending_human_review"}
