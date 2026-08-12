@@ -28,3 +28,5 @@ def test_info_returns_ok(client: TestClient) -> None:
     assert "author" in data
     assert "vision_model" in data
     assert "llm_model" in data
+    assert data["siglip_food_hint_mode"] in {"disabled", "shadow", "hint"}
+    assert "siglip_food_hint_min_score" in data

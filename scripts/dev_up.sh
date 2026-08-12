@@ -68,9 +68,18 @@ echo "▶ 5/5  API (:8000)"
 if port_open 8000; then
   echo "   ⏭  đã chạy sẵn"
 else
+  # Pydantic ưu tiên biến đã export trong terminal hơn file .env. Xóa riêng
+  # các biến SigLIP local đã cũ để API dev luôn đọc mode hiện tại từ .env.
+  # Không thay đổi quy tắc này cho production/deploy environment.
+  unset "SIGLIP_FOOD_HINT_MODE"
+  unset "SIGLIP_FOOD_HINT_URL"
+  unset "SIGLIP_FOOD_HINT_TIMEOUT_SECONDS"
+  unset "SIGLIP_FOOD_HINT_TOP_K"
+  unset "SIGLIP_FOOD_HINT_MIN_SCORE"
+
   # --timeout-graceful-shutdown: request treo (vd Vision cloud chậm) không được
   # phép kẹt vòng reload/shutdown vô hạn như từng gặp 26/7.
-  DEBUG=false "$ROOT/.venv/bin/python" -m uvicorn backend.main:app --reload --port 8000 \
+  DEBUG=false nohup "$ROOT/.venv/bin/python" -m uvicorn backend.main:app --reload --port 8000 \
     --timeout-graceful-shutdown 5 \
     > "$LOG_DIR/api.log" 2>&1 &
   echo $! > "$RUN_DIR/api.pid"

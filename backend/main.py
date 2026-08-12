@@ -123,13 +123,15 @@ async def metrics(
 
 if not settings.is_production and settings.enable_dev_routes:
     @app.get("/info")
-    async def info() -> dict[str, str]:
+    async def info() -> dict[str, str | float]:
         """Development-only application information."""
         return {
             "app": settings.app_name,
             "author": "nguyen hai long",
             "vision_model": settings.vision_model,
             "llm_model": settings.llm_model,
+            "siglip_food_hint_mode": settings.siglip_food_hint_mode,
+            "siglip_food_hint_min_score": settings.siglip_food_hint_min_score,
         }
 
     @app.get("/stream-demo")

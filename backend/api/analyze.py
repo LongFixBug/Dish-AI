@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.postgres import get_session
@@ -36,6 +36,8 @@ from backend.services.dishes import (
     resolve_catalog_portion_grams,
 )
 from backend.services.catalog_identity import is_catalog_identity_safe
+from backend.services.food_gate import observe_food_gate_shadow, predict_food_gate
+from backend.services.siglip_food_hints import observe_siglip_food_hint_shadow, predict_siglip_food_hints
 from backend.services.dish_candidates import stage_dish_candidate
 from backend.services.image_segmentation import cut_out_subject
 from backend.services.recognition_events import record_recognition_event
@@ -330,10 +332,15 @@ async def create_sticker(
 async def _analyze_vision_path(
     session: AsyncSession,
     temp_path: Path,
+    *,
+    candidate_names: tuple[str, ...] | None = None,
 ) -> AnalyzeResponse:
     """Run the single image recognizer and resolve its result to catalog data."""
     try:
-        vision = await identify_dish(temp_path)
+        vision = await identify_dish(
+            temp_path,
+            candidate_names=candidate_names,
+        )
     except VisionError as exc:
         logger.warning("Vision analysis failed: %s", exc)
         return _analysis_response(
@@ -408,6 +415,7 @@ async def _finish_vision_response(
 
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_food(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_session),
     _current_user: CurrentUser = Depends(require_user),
@@ -420,10 +428,54 @@ async def analyze_food(
         content,
         file.content_type,
     )
+    candidate_names: tuple[str, ...] | None = None
+
+    if settings.food_gate_mode == "shadow":
+        background_tasks.add_task(
+            observe_food_gate_shadow,
+            image.content,
+            image.content_type,
+        )
+
+    elif settings.food_gate_mode == "enforce":
+        gate_result = await predict_food_gate(
+            image.content,
+            image.content_type,
+        )
+
+        if gate_result is not None and gate_result.action == "block":
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "non_food_image",
+                    "message": "Ảnh này chưa thấy món ăn. Hãy chụp gần món hơn.",
+                },
+            )
+
+    if settings.siglip_food_hint_mode == "shadow":
+        background_tasks.add_task(
+            observe_siglip_food_hint_shadow,
+            image.content,
+            image.content_type,
+        )
+
+    elif settings.siglip_food_hint_mode == "hint":
+        hint_result = await predict_siglip_food_hints(
+            image.content,
+            image.content_type,
+        )
+
+        if hint_result is not None and hint_result.candidates:
+            candidate_names = tuple(candidate.name for candidate in hint_result.candidates)
+
     temp_path = UPLOAD_DIR / f"upload_{uuid.uuid4().hex[:12]}{image.extension}"
     await asyncio.to_thread(temp_path.write_bytes, image.content)
     try:
-        response = await _analyze_vision_path(session, temp_path)
+        response = await _analyze_vision_path(
+            session,
+            temp_path,
+            candidate_names=candidate_names,
+        )
         return await _finish_vision_response(session, response, _current_user)
     finally:
         await asyncio.to_thread(temp_path.unlink, missing_ok=True)

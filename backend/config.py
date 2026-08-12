@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AnyHttpUrl, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -71,6 +71,25 @@ class Settings(BaseSettings):
     vision_api_key: str = ""
     vision_api_base: str = "https://opencode.ai/zen/go/v1"
     vision_model: str = "qwen3.7-plus"
+    # Food Gate là service local riêng.
+    # disabled: không gọi Gate
+    # shadow: gọi Gate nền, vẫn luôn gọi Vision
+    # enforce: Gate block thì không gọi Vision
+    food_gate_mode: Literal["disabled", "shadow", "enforce"] = "disabled"
+    food_gate_url: AnyHttpUrl | None = None
+    food_gate_timeout_seconds: float = Field(default=1.0, ge=0.1, le=10)
+    food_gate_service_token: str = ""
+
+    # SigLIP món nước: chỉ gợi ý cho Vision, không tự chốt món.
+    # disabled: không gọi SigLIP
+    # shadow: gọi nền để quan sát, chưa ảnh hưởng Vision
+    # hint: gửi top-k gợi ý vào prompt Vision
+    siglip_food_hint_mode: Literal["disabled", "shadow", "hint"] = "disabled"
+    siglip_food_hint_url: AnyHttpUrl | None = None
+    siglip_food_hint_timeout_seconds: float = Field(default=1.5, ge=0.1, le=10)
+    siglip_food_hint_top_k: int = Field(default=3, ge=1, le=5)
+    siglip_food_hint_min_score: float = Field(default=0.90, ge=0, le=1)
+
 
     # Derived semantic index. PostgreSQL remains the source of truth.
     qdrant_url: str = "http://localhost:6333"
@@ -86,6 +105,23 @@ class Settings(BaseSettings):
             return value.replace("postgresql://", "postgresql+asyncpg://", 1)
         if value.startswith("postgres://"):
             return value.replace("postgres://", "postgresql+asyncpg://", 1)
+    @model_validator(mode="after")
+    def validate_local_recognition_modes(self) -> "Settings":
+        if self.food_gate_mode != "disabled" and self.food_gate_url is None:
+            raise ValueError(
+                "FOOD_GATE_URL is required when Food Gate is shadow or enforce"
+            )
+
+        if (
+            self.siglip_food_hint_mode != "disabled"
+            and self.siglip_food_hint_url is None
+        ):
+            raise ValueError(
+                "SIGLIP_FOOD_HINT_URL is required when SigLIP food hint is shadow or hint"
+            )
+
+        return self
+
         return value
 
     # LLM + Embedding (local with llama.cpp)
