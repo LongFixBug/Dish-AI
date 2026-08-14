@@ -1,48 +1,72 @@
 # Balance mobile
 
-Ứng dụng Flutter gọi API FoodAI để nhận diện ảnh món ăn và hiển thị dinh dưỡng.
+Balance là ứng dụng Flutter iOS/Android cho FoodAI. App đăng ký/đăng nhập email-mật khẩu hoặc Google, chụp/nhập món ăn, xem dinh dưỡng, ghi nhật ký bữa ăn, đặt mục tiêu và dùng chat dinh dưỡng.
 
-Hồ sơ, phiên đăng nhập demo, sở thích và nhật ký được lưu cục bộ bằng
-`SharedPreferences`. Auth hiện chưa có token/backend thật; luồng phân tích ảnh vẫn gọi
-FastAPI thật.
+## Cấu hình build
 
-## Cấu hình lúc build (`--dart-define`)
-
-Ứng dụng **không đọc `.env`** — mọi giá trị đều là hằng số compile-time nạp qua
-`String.fromEnvironment`. Chép file mẫu rồi điền giá trị thật:
+App nhận cấu hình qua `--dart-define`, không đọc `.env`. Không commit file cấu hình thật:
 
 ```bash
+cd mobile
 cp dart_defines.example.json dart_defines.json
+```
+
+| Khoá | Dùng cho | Ghi chú |
+|---|---|---|
+| `API_BASE_URL` | Mọi bản chạy | Release bắt buộc dùng HTTPS. |
+| `GOOGLE_WEB_CLIENT_ID` | Google Sign-In | Web client ID mà backend dùng để xác minh ID token. |
+| `IOS_CLIENT_ID` | Google Sign-In iOS | Phải khớp OAuth iOS client và URL scheme trong `ios/Runner/Info.plist`. |
+
+`dart_defines.json` bị Git ignore vì chứa cấu hình môi trường thật. `GOOGLE_WEB_CLIENT_ID` là client ID (không phải client secret), nhưng vẫn chỉ nên phân phối qua quy trình build thay vì chép vào tài liệu public.
+
+## Chạy local
+
+Khởi động backend ở thư mục gốc trước:
+
+```bash
+bash scripts/dev_up.sh --no-llm
+```
+
+Sau đó chạy Flutter:
+
+```bash
+cd mobile
+flutter pub get
 flutter run --dart-define-from-file=dart_defines.json
 ```
 
-`dart_defines.json` đã được gitignore vì chứa client ID thật.
+Khi không truyền `API_BASE_URL` ở debug:
 
-| Khoá | Bắt buộc khi | Ghi chú |
-|---|---|---|
-| `API_BASE_URL` | Bản release | Debug tự dùng `10.0.2.2` (Android) hoặc `127.0.0.1` (iOS). Release bắt buộc HTTPS. |
-| `GOOGLE_WEB_CLIENT_ID` | Muốn dùng nút "Tiếp tục với Google" | Web client ID; cũng chính là `audience` mà backend kiểm tra, nên phải trùng `GOOGLE_WEB_CLIENT_ID` trong `.env` của backend. |
-| `IOS_CLIENT_ID` | Google trên iOS | Phải khớp URL scheme đã khai trong `ios/Runner/Info.plist`. |
+- Android emulator dùng `http://10.0.2.2:8000`.
+- iOS Simulator dùng `http://127.0.0.1:8000`.
 
-Thiếu `GOOGLE_WEB_CLIENT_ID` thì app vẫn chạy bình thường, chỉ nút Google báo
-"Thiếu GOOGLE_WEB_CLIENT_ID khi build ứng dụng" — đăng nhập bằng email/mật khẩu
-không bị ảnh hưởng.
-
-## Chạy với backend local
-
-Backend phải lắng nghe trên mọi interface để thiết bị khác truy cập được:
-
-```bash
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-- Android emulator tự dùng `http://10.0.2.2:8000`.
-- iOS simulator tự dùng `http://127.0.0.1:8000`.
-- Máy thật cần IP LAN của máy chạy backend:
+Với máy thật chạy backend trong cùng Wi-Fi, truyền IP LAN của máy phát triển:
 
 ```bash
 flutter run --dart-define=API_BASE_URL=http://192.168.1.10:8000
 ```
 
-Điện thoại và máy chạy backend phải ở cùng Wi-Fi. Production nên truyền URL HTTPS
-qua `API_BASE_URL`; cấu hình Android chỉ cho phép HTTP cleartext ở debug build.
+HTTP chỉ hợp lệ ở debug. Bản release phải trỏ tới API HTTPS production.
+
+## Google Sign-In
+
+Google Cloud cần có các OAuth clients trong cùng project:
+
+- Web application client cho backend và `GOOGLE_WEB_CLIENT_ID`.
+- Android client gắn đúng package name `com.longfixbug.balance` và SHA-1 của keystore release.
+- iOS client gắn đúng bundle ID/URL scheme nếu phát hành iOS.
+
+OAuth consent screen phải ở production để người ngoài danh sách test đăng nhập được. Sau thay đổi OAuth, Google có thể mất một khoảng ngắn để áp dụng.
+
+## Build phát hành Android
+
+```bash
+cd mobile
+flutter build apk --release --dart-define-from-file=dart_defines.json
+flutter build appbundle --release --dart-define-from-file=dart_defines.json
+```
+
+- APK: cài trực tiếp để thử nội bộ.
+- AAB: tải lên Google Play Console để phân phối qua Play Store.
+
+Không commit `.jks`, `.keystore`, `key.properties` hay `dart_defines.json`.

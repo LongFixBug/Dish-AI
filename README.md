@@ -1,157 +1,110 @@
 # FoodAI
 
-FoodAI nhận diện món ăn Việt từ ảnh và ước lượng dinh dưỡng theo khẩu phần. Đây là portfolio project cho hướng AI Engineer: kết hợp Vision LLM, catalog dinh dưỡng có provenance, semantic retrieval và FastAPI.
+FoodAI là ứng dụng phân tích ảnh món ăn Việt và theo dõi dinh dưỡng. Người dùng có thể chụp ảnh hoặc nhập tên món, nhận ước lượng dinh dưỡng theo khẩu phần, lưu nhật ký bữa ăn, đặt mục tiêu và trò chuyện với trợ lý dinh dưỡng.
 
-## Vấn đề và cách giải quyết
-
-Ảnh món ăn không cho biết chính xác công thức hay khối lượng. FoodAI tách bài toán thành các mức độ tin cậy thay vì biến dự đoán AI thành dữ liệu chuẩn:
+## Luồng phân tích ảnh
 
 ```mermaid
 flowchart LR
-    A[Ảnh tải lên] --> G{Food Gate}
-    G -->|Không phải món ăn| N[Trả hướng dẫn chụp lại]
-    G -->|Món ăn hoặc Gate lỗi| B[Vision LLM]
-    B --> C{Tên món có trong catalog?}
-    C -->|Có| D[PostgreSQL: exact lookup]
-    C -->|Gần đúng| Q[Qdrant: semantic candidates]
-    Q --> D
-    C -->|Không| E[dish_candidates: chờ duyệt]
-    D --> F[Tổng dinh dưỡng theo khẩu phần]
-    F --> G[Scale theo gram ảnh]
+    A[Ảnh món ăn] --> G{Food Gate}
+    G -->|Không phải món ăn| B[Hướng dẫn chụp lại]
+    G -->|Món ăn hoặc Gate không sẵn sàng| V[Vision LLM]
+    V --> R{Catalog resolver}
+    R -->|Exact| P[PostgreSQL]
+    R -->|Semantic fallback| Q[Qdrant]
+    Q --> P
+    R -->|Chưa có món| C[dish_candidates chờ duyệt]
+    P --> N[Dinh dưỡng theo gram]
 ```
 
-- `vn_ingredients`: nguyên liệu và dinh dưỡng per-gram; PostgreSQL là nguồn dữ liệu chuẩn.
-- `vn_dishes`: món đã duyệt, tổng dinh dưỡng theo khẩu phần và gram ước lượng có nguồn/độ tin cậy/quy tắc.
-- `dish_candidates`: kết quả Vision chưa được duyệt; không được đưa vào catalog hay semantic index.
-- Qdrant `food_catalog`: chỉ mục vector dẫn về UUID PostgreSQL, có thể dựng lại hoàn toàn bằng script reindex.
+- Food Gate chặn ảnh không phải món ăn trước khi gọi Vision khi chạy ở chế độ `enforce`; nếu Gate lỗi, hệ thống fail-open sang Vision.
+- Vision chỉ là dự đoán. PostgreSQL là nguồn dữ liệu dinh dưỡng chuẩn; Qdrant chỉ là semantic index có thể dựng lại.
+- Món chưa có catalog được đưa vào `dish_candidates`, không tự động thành dữ liệu tham chiếu.
 
-## Những điểm kỹ thuật đáng chú ý
+## Thành phần chính
 
-- FastAPI async + PostgreSQL + Qdrant + Alembic migration.
-- Vision output được validate, chuẩn hóa và đưa vào staging thay vì ghi thẳng vào dữ liệu tham chiếu.
-- Exact lookup không phân biệt dấu tiếng Việt, sau đó mới fallback Qdrant với lexical guard để tránh match khác họ món.
-- Dinh dưỡng `vnmeal` được lưu theo **khẩu phần của nguồn**, không giả định là per-100g.
-- Gram khẩu phần là ước lượng minh bạch (`typical_grams_source`, `confidence`, `rule`), không tự nhận là số đo y khoa.
-- Deterministic evaluation và RAGAS evaluation tách riêng để kết quả có thể lặp lại.
+| Thành phần | Vai trò |
+|---|---|
+| FastAPI | API, authentication, phân tích, nhật ký và gợi ý |
+| PostgreSQL | Catalog, user, phiên đăng nhập, meal log và nutrition goals |
+| Qdrant | Semantic retrieval cho catalog và RAG; dữ liệu dẫn xuất |
+| Vision API | Nhận diện món ăn từ ảnh |
+| Food Gate + segmentation | Chặn ảnh ngoài phạm vi và tạo sticker khi sidecar được bật |
+| Flutter Balance | Ứng dụng iOS/Android |
 
-## Quick start
+API có đăng ký/đăng nhập email-mật khẩu, đăng nhập Google, refresh token và logout. Google Sign-In production cần Web client ID ở backend và OAuth clients tương ứng cho Android/iOS.
 
-Hướng dẫn đầy đủ để mở backend, model server và iOS Simulator: [LOCAL_TESTING.md](LOCAL_TESTING.md).
+## Chạy local
 
-Yêu cầu: Python 3.12+, Docker, và `uv`.
+Yêu cầu: Python 3.12+, [uv](https://docs.astral.sh/uv/), Docker và (tuỳ chọn) `llama-server` cho chat/embedding local.
 
 ```bash
 cp .env.example .env
-docker compose up -d postgres qdrant
 uv sync --all-groups
-uv run alembic upgrade head
+bash scripts/dev_up.sh
 ```
 
-Embedding server chạy riêng vì model local không nằm trong Docker:
+`dev_up.sh` bật PostgreSQL, Qdrant, Food Gate, segmentation, migration và API. Thêm `--no-llm` nếu chưa cài `llama-server`:
 
 ```bash
-llama-server \
-  --model models/Qwen3-Embedding-0.6B-Q8_0.gguf \
-  --embedding --port 8081 --host 0.0.0.0
+bash scripts/dev_up.sh --no-llm
+curl -fsS http://127.0.0.1:8000/ready
 ```
 
-Nạp dữ liệu và dựng lại semantic index:
+API docs: <http://127.0.0.1:8000/docs>.
+
+Tắt môi trường local nhưng giữ Docker volumes:
+
+```bash
+bash scripts/dev_down.sh
+```
+
+### Dữ liệu catalog và Qdrant
+
+Sau migration, các script catalog chạy theo thứ tự dưới đây. PostgreSQL là canonical source; có thể reindex Qdrant bất kỳ lúc nào.
 
 ```bash
 DEBUG=false uv run python scripts/seed_nutrition.py
 DEBUG=false uv run python scripts/recreate_vn_dishes.py
 DEBUG=false uv run python scripts/rebuild_dish_servings.py --apply
-DEBUG=false uv run python scripts/cleanup_vn_dishes.py
-DEBUG=false uv run python scripts/cleanup_vn_dishes.py --apply
 DEBUG=false uv run python scripts/reindex_qdrant.py
 ```
 
-Lệnh cleanup đầu tiên luôn là **dry-run** để in đúng các thay đổi dự kiến. Bản
-`--apply` ghi snapshot trước khi sửa/xóa vào `catalog_cleanup_log`, nên mọi thay
-đổi tự động đều truy vết được. Nếu cleanup có xóa duplicate sau khi Qdrant đã
-được dựng, đồng bộ các UUID đã lưu trong journal sau khi PostgreSQL commit:
+## Ứng dụng mobile
+
+Từ thư mục `mobile/`, tạo cấu hình build local (file này đã bị Git ignore):
 
 ```bash
-DEBUG=false uv run python scripts/cleanup_vn_dishes.py --sync-qdrant
+cp dart_defines.example.json dart_defines.json
+flutter pub get
+flutter run --dart-define-from-file=dart_defines.json
 ```
 
-Kiểm tra Qdrant có khớp tuyệt đối với UUID trong PostgreSQL mà không thay đổi dữ liệu:
+`API_BASE_URL` bắt buộc dùng HTTPS ở bản release. `GOOGLE_WEB_CLIENT_ID` phải trùng client ID backend dùng để kiểm tra Google ID token. Chi tiết build và cấu hình mobile: [`mobile/README.md`](mobile/README.md).
 
-```bash
-DEBUG=false uv run python scripts/reindex_qdrant.py --check
-```
-
-Chạy API:
-
-```bash
-uv run uvicorn backend.main:app --reload
-```
-
-API docs: `http://localhost:8000/docs`.
-
-## Quality checks
+## Kiểm tra chất lượng
 
 ```bash
 uv run alembic check
 uv run pytest -q
 DEBUG=false uv run python scripts/audit_catalog.py --fail-on error
-DEBUG=false uv run python -m ml.evaluation.catalog_eval --output reports/catalog_eval.md
 ```
 
-`audit_catalog.py` chỉ đọc dữ liệu và kiểm tra số âm, khẩu phần bất khả thi,
-candidate không thể duyệt, duplicate khác hoa/thường và độ lệch calories so với
-macro. Va chạm tìm kiếm bỏ dấu như “dưa/dứa” chỉ là warning, tuyệt đối không tự
-gộp. CI seed catalog thật, chạy cleanup rồi thất bại nếu audit còn `error`; báo
-cáo Markdown được giữ lại cùng coverage artifact.
+## Deploy production
 
-`catalog_eval` đo accuracy và coverage trên bộ câu truy vấn tiếng Việt có dấu/không dấu. RAGAS evaluation chậm hơn và dùng LLM judge được chạy riêng:
+Production gồm API, PostgreSQL, Qdrant, Redis, object storage và Vision API. Food Gate/segmentation có thể chạy trong sidecar; chat cần LLM endpoint và embedding runtime phù hợp.
 
-```bash
-DEBUG=false uv run python -m ml.evaluation.rag_eval
-```
+1. Dùng [`.env.production.example`](.env.production.example) làm checklist, nhưng nhập secrets trong dashboard của nền tảng deploy — không commit file có giá trị thật.
+2. Đặt `ENVIRONMENT=production`, `RATE_LIMIT_BACKEND=redis`, S3 object storage, `DATABASE_URL`, `QDRANT_URL`, Vision key và `AUTH_SECRET_KEY` riêng có ít nhất 32 ký tự.
+3. Nếu bật Food Gate, đặt `FOOD_GATE_MODE=enforce`, `FOOD_GATE_URL` và service token khớp sidecar.
+4. Chạy `alembic upgrade head` trong release/deploy process, sau đó kiểm tra `/live`, `/health` và `/ready`.
 
-## Deploy
+## Bảo mật và Git
 
-Image API chỉ đóng gói dependency runtime; training và RAGAS evaluation không làm phình production image:
+Không commit secrets, ảnh upload, database dump, checkpoint/model local, file keystore hay cấu hình build thật. Các ghi chú local (`docs/`, `plan.md`, `LOCAL_TESTING.md`, agent memories), báo cáo sinh tự động và `mobile/dart_defines.json` đều bị `.gitignore` chặn.
 
-```bash
-docker build -t foodai-api .
-docker run --rm -p 8000:8000 --env-file .env foodai-api
-```
+## Giới hạn
 
-Khi deploy lên Render, Railway hay Fly.io, dùng `.env.production.example` làm checklist biến môi trường, cung cấp `DATABASE_URL`, `QDRANT_URL`, `VISION_API_KEY`, `VISION_API_BASE`, `REDIS_URL`, thông tin S3 và chạy `alembic upgrade head` trong release command. PostgreSQL giữ dữ liệu chuẩn; Qdrant chỉ giữ vector cho semantic search của catalog/chat. Flow ảnh là Food Gate (tuỳ chọn, fail-open) → Qwen Vision → catalog PostgreSQL.
-
-### Production layout
-
-Repo chỉ nên chứa code, migration, schema, seed catalog nhỏ và script vận hành. Các thư mục nặng hoặc có dữ liệu người dùng phải nằm ngoài Git:
-
-```text
-Git repo
-  backend/
-  schemas/
-  ml/inference/
-  ml/evaluation/
-  alembic/
-  scripts/
-  data/*.json
-  data/eval/*.json
-
-Local runtime, không commit
-  checkpoints/food_gate/
-  models/*.gguf
-
-Production runtime
-  PostgreSQL       dữ liệu chuẩn
-  Qdrant           semantic index dựng lại được
-  S3               ảnh upload/feedback/object
-  Redis            rate limit/session runtime
-  Vision API        Qwen Vision image recognition
-```
-
-`.gitignore` loại checkpoint và model local; `.dockerignore` chỉ cho checkpoint Food Gate cần thiết vào image sidecar. Dataset/trainer local cũ không còn là một phần của project runtime; có thể khôi phục từ commit checkpoint khi thực sự cần nghiên cứu lại.
-
-## Giới hạn hiện tại
-
-- Gram của món `vnmeal` là heuristic; cần thêm dữ liệu khẩu phần đo thực tế để dùng trong bối cảnh sức khỏe/y tế.
-- Vision có thể nhầm món có ngoại hình gần nhau; candidate cần được review trước khi xuất bản.
-- Chưa có authentication/multi-user production. Đây là bước phù hợp tiếp theo nếu phát triển thành sản phẩm thật.
+- Dinh dưỡng và gram là ước lượng, không phải tư vấn y tế.
+- Vision có thể nhầm món; món mới cần review trước khi đưa vào catalog.
+- OAuth có thể yêu cầu Google verification nếu sau này dùng sensitive/restricted scopes hoặc thay đổi branding/domain theo điều kiện của Google.
