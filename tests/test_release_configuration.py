@@ -78,6 +78,15 @@ def test_api_image_includes_google_auth_used_during_startup() -> None:
     assert '"requests>=' in project
 
 
+def test_api_image_includes_rag_import_dependencies() -> None:
+    requirements = (ROOT / "requirements.api.txt").read_text()
+    lockfile = (ROOT / "requirements.api.lock").read_text()
+
+    for package in ("langchain-community", "langchain-text-splitters"):
+        assert package in requirements
+        assert f"{package}==" in lockfile
+
+
 def test_api_image_does_not_package_retired_image_model_config() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text()
 
