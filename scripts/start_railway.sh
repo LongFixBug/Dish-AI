@@ -19,24 +19,32 @@ redis-server \
   --maxmemory-policy allkeys-lru \
   > /proc/1/fd/1 2>&1 &
 
-if [ ! -s "$MODEL_FILE" ]; then
-  echo "Downloading embedding model..."
-  wget -q \
-    -O "$MODEL_FILE" \
-    "https://huggingface.co/mradermacher/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B.Q4_K_M.gguf"
-fi
+start_embedding_server() {
+  if [ ! -s "$MODEL_FILE" ]; then
+    echo "Downloading embedding model in background..."
+    wget -q \
+      -O "$MODEL_FILE.part" \
+      "https://huggingface.co/mradermacher/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B.Q4_K_M.gguf" \
+      && mv "$MODEL_FILE.part" "$MODEL_FILE" \
+      || {
+        echo "Embedding model download failed; semantic retrieval stays unavailable."
+        return 0
+      }
+  fi
 
-echo "Starting llama.cpp embedding server..."
-/opt/llama/llama-server \
-  --model "$MODEL_FILE" \
-  --embedding \
-  --host 127.0.0.1 \
-  --port "$EMBED_PORT" \
-  --ctx-size 256 \
-  --parallel 1 \
-  --batch-size 256 \
-  --ubatch-size 256 \
-  > /proc/1/fd/1 2>&1 &
+  echo "Starting llama.cpp embedding server..."
+  /opt/llama/llama-server \
+    --model "$MODEL_FILE" \
+    --embedding \
+    --host 127.0.0.1 \
+    --port "$EMBED_PORT" \
+    --ctx-size 256 \
+    --parallel 1 \
+    --batch-size 256 \
+    --ubatch-size 256 \
+    > /proc/1/fd/1 2>&1
+}
 
+start_embedding_server &
 echo "FastAPI starting while embedding model loads in background."
 exec uvicorn backend.main:app --host 0.0.0.0 --port "${PORT:-8000}"

@@ -196,6 +196,14 @@ def test_api_image_can_host_the_ephemeral_rate_limiter() -> None:
     assert "--maxmemory 16mb" in startup
 
 
+def test_railway_api_starts_before_optional_embedding_model_download() -> None:
+    startup = (ROOT / "scripts/start_railway.sh").read_text()
+
+    assert "start_embedding_server()" in startup
+    assert "start_embedding_server &" in startup
+    assert startup.index("start_embedding_server &") < startup.index("exec uvicorn")
+
+
 def test_container_healthchecks_probe_liveness_not_readiness() -> None:
     """Healthcheck quyết định restart container, nên phải độc lập với dịch vụ ngoài."""
     for name in ("Dockerfile", "Dockerfile.food-gate"):
