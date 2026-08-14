@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 
 from backend.config import Settings
 from backend.middleware.rate_limit import (
-    POLICIES,
     RateLimitMiddleware,
     _request_identity,
 )

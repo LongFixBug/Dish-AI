@@ -27,10 +27,10 @@ from backend.services.auth import TokenManager
 
 
 @pytest.fixture(autouse=True)
-def _local_vision_offline_by_default(monkeypatch) -> None:
-    """Keep historical local-model tests hermetic when old services exist."""
-    monkeypatch.setattr(settings, "cv_enabled", False)
-    monkeypatch.setattr(settings, "image_embed_enabled", False)
+def _image_sidecars_disabled_by_default(monkeypatch) -> None:
+    """Keep API tests hermetic; dedicated tests opt into each sidecar explicitly."""
+    monkeypatch.setattr(settings, "food_gate_mode", "disabled")
+    monkeypatch.setattr(settings, "siglip_food_hint_mode", "disabled")
 
 
 @pytest.fixture

@@ -20,6 +20,18 @@ def test_dev_up_does_not_start_retired_image_model_sidecars() -> None:
     assert "Image matching" not in script
 
 
+def test_dev_up_starts_food_gate_with_the_api_dependencies() -> None:
+    script = _script("dev_up.sh")
+
+    assert "docker compose --profile food-gate up -d postgres qdrant food-gate" in script
+
+
+def test_dev_down_stops_food_gate_with_the_data_stores() -> None:
+    script = _script("dev_down.sh")
+
+    assert "docker compose stop postgres qdrant food-gate" in script
+
+
 def test_dev_up_runs_migrations_through_the_installed_python_module() -> None:
     script = _script("dev_up.sh")
 
@@ -61,7 +73,7 @@ def test_segment_process_does_not_depend_on_a_stale_console_script_shebang() -> 
 
 
 def test_dev_stack_shell_scripts_have_valid_syntax() -> None:
-    for script_name in ("dev_up.sh", "dev_down.sh", "start_image_embed.sh"):
+    for script_name in ("dev_up.sh", "dev_down.sh", "start_segment.sh"):
         result = subprocess.run(
             ["bash", "-n", str(SCRIPTS / script_name)],
             check=False,

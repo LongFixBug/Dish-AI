@@ -10,7 +10,8 @@ DART_TEST_CONFIG = ROOT / "mobile" / "dart_test.yaml"
 GOLDEN_TESTS = (
     ROOT / "mobile" / "test" / "features" / "analyze" / "analyze_screens_golden_test.dart",
     ROOT / "mobile" / "test" / "features" / "auth" / "welcome_golden_test.dart",
-    ROOT / "mobile" / "test" / "features" / "mascot" / "mascot_golden_test.dart",
+    ROOT / "mobile" / "test" / "features" / "chat" / "chat_screen_golden_test.dart",
+    ROOT / "mobile" / "test" / "features" / "journal" / "journal_golden_test.dart",
     ROOT / "mobile" / "test" / "features" / "onboarding" / "onboarding_golden_test.dart",
 )
 

@@ -18,6 +18,6 @@ fi
 
 pkill -f "llama-server --model" 2>/dev/null && echo "🛑 llama.cpp"
 
-docker compose stop postgres qdrant >/dev/null 2>&1 && echo "🛑 postgres + qdrant"
+docker compose stop postgres qdrant food-gate >/dev/null 2>&1 && echo "🛑 postgres + qdrant + food-gate"
 
 echo "✅ Đã dừng. Dữ liệu trong docker volume không bị xoá."

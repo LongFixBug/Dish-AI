@@ -1,7 +1,7 @@
 """Từ vựng thực đơn Việt dùng chung cho tra catalog và soi tên nhận diện.
 
 Tách riêng vì hai tầng đều cần đúng một bộ luật "họ món": ``dishes`` lọc ứng
-viên Qdrant, còn ``recognition_cascade`` soi xem tên catalog có phản bội tên
+viên Qdrant, đồng thời hỗ trợ kiểm tra tên catalog có mâu thuẫn hay không
 album/Vision không. Trước đây mỗi bên tự chuẩn hóa dấu một kiểu — bên tách
 theo khoảng trắng nên nuốt luôn dấu ngoặc, bên tách theo regex thì không —
 khiến cùng một cặp tên cho ra hai kết luận trái ngược.

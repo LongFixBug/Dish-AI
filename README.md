@@ -8,7 +8,9 @@ FoodAI nhận diện món ăn Việt từ ảnh và ước lượng dinh dưỡn
 
 ```mermaid
 flowchart LR
-    A[Ảnh món ăn] --> B[Vision LLM]
+    A[Ảnh tải lên] --> G{Food Gate}
+    G -->|Không phải món ăn| N[Trả hướng dẫn chụp lại]
+    G -->|Món ăn hoặc Gate lỗi| B[Vision LLM]
     B --> C{Tên món có trong catalog?}
     C -->|Có| D[PostgreSQL: exact lookup]
     C -->|Gần đúng| Q[Qdrant: semantic candidates]
@@ -117,7 +119,7 @@ docker build -t foodai-api .
 docker run --rm -p 8000:8000 --env-file .env foodai-api
 ```
 
-Khi deploy lên Render, Railway hay Fly.io, dùng `.env.production.example` làm checklist biến môi trường, cung cấp `DATABASE_URL`, `QDRANT_URL`, `VISION_API_KEY`, `VISION_API_BASE`, `REDIS_URL`, thông tin S3 và chạy `alembic upgrade head` trong release command. PostgreSQL giữ dữ liệu chuẩn; Qdrant chỉ giữ vector cho semantic search của catalog/chat. Flow ảnh hiện tại là Vision → catalog PostgreSQL; không cần EfficientNet, SigLIP hay image-embedding sidecar.
+Khi deploy lên Render, Railway hay Fly.io, dùng `.env.production.example` làm checklist biến môi trường, cung cấp `DATABASE_URL`, `QDRANT_URL`, `VISION_API_KEY`, `VISION_API_BASE`, `REDIS_URL`, thông tin S3 và chạy `alembic upgrade head` trong release command. PostgreSQL giữ dữ liệu chuẩn; Qdrant chỉ giữ vector cho semantic search của catalog/chat. Flow ảnh là Food Gate (tuỳ chọn, fail-open) → Qwen Vision → catalog PostgreSQL.
 
 ### Production layout
 
@@ -129,20 +131,13 @@ Git repo
   schemas/
   ml/inference/
   ml/evaluation/
-  ml/training/
   alembic/
   scripts/
   data/*.json
   data/eval/*.json
 
-Local/training only, không commit
-  data/images/train/
-  data/images/val/
-  data/images/test/
-  data/images/references/
-  data/images/siglip_fast_lane/
-  checkpoints/experiments/
-  checkpoints/siglip_fast_lane/
+Local runtime, không commit
+  checkpoints/food_gate/
   models/*.gguf
 
 Production runtime
@@ -150,45 +145,10 @@ Production runtime
   Qdrant           semantic index dựng lại được
   S3               ảnh upload/feedback/object
   Redis            rate limit/session runtime
-  Vision API          Qwen Vision image recognition
+  Vision API        Qwen Vision image recognition
 ```
 
-`.gitignore` đã loại `data/images/`, `checkpoints/`, `models/*.gguf` và `.dockerignore` cũng chặn toàn bộ dữ liệu nặng. Checkpoint EfficientNet/Dockerfile.cv cũ vẫn được giữ riêng cho rollback/offline evaluation, nhưng không được API hoặc image-embedding sidecar khởi động.
-
-### Archived local image-model experiments
-
-Các trainer, checkpoint, reference album và Dockerfile của EfficientNet/SigLIP
-được giữ lại để xem lại kết quả hoặc rollback, nhưng không nằm trong flow API
-và không được `scripts/dev_up.sh` khởi động. Thay đổi chúng không thay đổi kết
-quả nhận diện production cho đến khi có một kế hoạch release riêng.
-
-Các lệnh train/re-index cũ vẫn nằm trong lịch sử repo để phục vụ nghiên cứu;
-không chạy chúng trong môi trường production hiện tại. Muốn đưa một local
-image model trở lại cần một release plan và bộ đánh giá riêng.
-
-### Dataset sync
-
-Ảnh train nên sống ở S3 hoặc MinIO dưới một prefix riêng, rồi sync về máy train khi cần:
-
-```bash
-# push local train set lên S3/MinIO
-DATASET_S3_BUCKET=foodai-datasets \
-DATASET_S3_PREFIX=datasets/train \
-DATASET_S3_ENDPOINT_URL=http://localhost:9000 \
-DATASET_S3_ACCESS_KEY_ID=foodai_local \
-DATASET_S3_SECRET_ACCESS_KEY=change-this-local-password \
-uv run python scripts/sync_image_dataset.py push --root data/images/train --create-bucket
-
-# pull lại về máy train
-DATASET_S3_BUCKET=foodai-datasets \
-DATASET_S3_PREFIX=datasets/train \
-DATASET_S3_ENDPOINT_URL=http://localhost:9000 \
-DATASET_S3_ACCESS_KEY_ID=foodai_local \
-DATASET_S3_SECRET_ACCESS_KEY=change-this-local-password \
-uv run python scripts/sync_image_dataset.py pull --root data/images/train
-```
-
-Mặc định script giữ nguyên cây thư mục dưới root, nên `data/images/train/pho_bo/a.jpg` sẽ thành `s3://bucket/datasets/train/pho_bo/a.jpg`. Nếu muốn tách version dataset, đổi prefix thành `datasets/v1/train`, `datasets/v2/train`... là xong.
+`.gitignore` loại checkpoint và model local; `.dockerignore` chỉ cho checkpoint Food Gate cần thiết vào image sidecar. Dataset/trainer local cũ không còn là một phần của project runtime; có thể khôi phục từ commit checkpoint khi thực sự cần nghiên cứu lại.
 
 ## Giới hạn hiện tại
 

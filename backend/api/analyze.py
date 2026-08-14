@@ -393,9 +393,10 @@ async def _analyze_vision_path(
 ) -> AnalyzeResponse:
     """Run the single image recognizer and resolve its result to catalog data."""
     try:
-        vision = await identify_dish(
-            temp_path,
-            candidate_names=candidate_names,
+        vision = await (
+            identify_dish(temp_path, candidate_names=candidate_names)
+            if candidate_names
+            else identify_dish(temp_path)
         )
     except VisionError as exc:
         logger.warning("Vision analysis failed: %s", exc)

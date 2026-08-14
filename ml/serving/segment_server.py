@@ -2,7 +2,7 @@
 
 Trả về PNG nền trong suốt để app dán thành sticker. Model u2net chỉ được nạp
 lười ở request đầu tiên, và import module này KHÔNG kéo theo onnxruntime nên
-test lẫn tooling vẫn nhẹ — cùng khuôn với image_embed_server.
+test lẫn tooling vẫn nhẹ.
 
 API contract:
 - ``POST /v1/segment`` body ``{"image": "<base64>", "max_side": 512}`` →

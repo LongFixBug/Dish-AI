@@ -32,13 +32,14 @@ wait_for_port() {
   return 1
 }
 
-echo "▶ 1/5  Data stores (postgres :5432, qdrant :6333)"
-if port_open 5432 && port_open 6333; then
+echo "▶ 1/5  Data stores + Food Gate (postgres :5432, qdrant :6333, gate :8084)"
+if port_open 5432 && port_open 6333 && port_open 8084; then
   echo "   ⏭  đã chạy sẵn"
 else
-  docker compose up -d postgres qdrant
+  docker compose --profile food-gate up -d postgres qdrant food-gate
   wait_for_port 5432 postgres
   wait_for_port 6333 qdrant
+  wait_for_port 8084 food-gate
 fi
 
 echo "▶ 2/5  Migrations"

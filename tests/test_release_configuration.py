@@ -1,4 +1,3 @@
-import re
 from pathlib import Path
 
 
@@ -126,38 +125,64 @@ def test_dependency_and_toolchain_versions_are_reproducible() -> None:
     assert "uv sync --all-groups --frozen" in workflow
     assert "--hash=sha256:" in lockfile
     assert "python:3.12-slim@sha256:" in dockerfile
-    # Archived local image-model Dockerfiles remain reproducible for offline use.
-    assert "python:3.12-slim@sha256:" in (ROOT / "Dockerfile.cv").read_text()
+    assert "python:3.12-slim@sha256:" in (ROOT / "Dockerfile.food-gate").read_text()
 
 
-def test_image_embedding_sidecar_installs_a_complete_hashed_lockfile() -> None:
-    dockerfile = (ROOT / "Dockerfile.local-vision").read_text()
-    lockfile = (ROOT / "requirements.image_embed.lock").read_text()
-    requirements = (ROOT / "requirements.image_embed.txt").read_text()
+def test_retired_local_image_model_artifacts_are_removed() -> None:
+    retired_paths = (
+        "Dockerfile.cv",
+        "Dockerfile.local-vision",
+        "requirements.image_embed.txt",
+        "requirements.image_embed.lock",
+    )
 
-    assert "COPY requirements.image_embed.lock" in dockerfile
-    assert "pip install --no-cache-dir -r requirements.image_embed.lock" in dockerfile
-    for package in ("torch==2.13.0+cpu",):
-        assert package in lockfile
-    assert "timm==" not in lockfile
-    assert "--hash=sha256:" in lockfile
-    assert "--find-links https://download.pytorch.org/whl/cpu/torch/" in requirements
-    assert "--find-links https://download.pytorch.org/whl/cpu/torch/" in lockfile
-    for package in (r"torch==2\.13\.0\+cpu",):
-        assert re.search(rf"{package} \\\n(?:    --hash=sha256:[a-f0-9]{{64}}\n)+", lockfile)
-    assert "cuda-toolkit" not in lockfile
+    assert not [path for path in retired_paths if (ROOT / path).exists()]
 
 
-def test_local_vision_image_contains_only_the_image_embedding_runtime() -> None:
-    dockerfile = (ROOT / "Dockerfile.local-vision").read_text()
-    lockfile = (ROOT / "requirements.image_embed.lock").read_text()
+def test_retired_local_image_recognition_code_is_removed() -> None:
+    retired_paths = (
+        "backend/services/dish_image_index.py",
+        "backend/services/fast_lane_config.py",
+        "backend/services/image_embeddings.py",
+        "backend/services/recognition_cascade.py",
+        "ml/evaluation/cv_calibration.py",
+        "ml/evaluation/cv_release.py",
+        "ml/evaluation/fusion_eval.py",
+        "ml/evaluation/tune_cascade.py",
+        "ml/inference/cv.py",
+        "ml/inference/siglip_food_v1.py",
+        "ml/model_registry.py",
+        "ml/serving/image_embed_server.py",
+        "ml/training/dataset.py",
+        "ml/training/siglip_fast_lane.py",
+        "ml/training/train.py",
+        "scripts/index_dish_images.py",
+        "scripts/start_image_embed.sh",
+    )
 
-    assert "COPY requirements.image_embed.lock" in dockerfile
-    assert "COPY ml/serving" in dockerfile
-    assert "ml.serving.image_embed_server:app" in dockerfile
-    assert "best_model.pth" not in dockerfile
-    assert "classifier" not in dockerfile.lower()
-    assert "transformers==" in lockfile
+    assert not [path for path in retired_paths if (ROOT / path).exists()]
+
+
+def test_retired_local_image_recognition_data_is_removed() -> None:
+    retired_paths = (
+        "data/config/siglip_fast_lane.json",
+        "data/config/siglip_food_v1.json",
+        "data/eval/camera_feedback_dataset_manifest.json",
+        "data/eval/catalog_name_resolution_siglip_hints_capture.jsonl",
+        "data/eval/dinov2_reference_metrics_20260808.json",
+        "data/eval/efficientnet_ood_classes.json",
+        "data/eval/efficientnet_tier_a_classes.json",
+        "data/eval/reference_album_tier_a_approved.json",
+        "data/eval/reference_candidate_commons_reviewed.json",
+        "data/eval/reference_candidate_demo_cv_reviewed.json",
+        "data/eval/reference_candidate_demo_reviewed.json",
+        "data/eval/reference_candidate_demo_reviewed_v2.json",
+        "data/eval/reference_candidate_new_classes_audit.json",
+        "data/eval/reference_candidate_review_queue.json",
+        "data/eval/siglip2_reference_metrics_20260808.json",
+    )
+
+    assert not [path for path in retired_paths if (ROOT / path).exists()]
 
 
 def test_api_image_can_host_the_ephemeral_rate_limiter() -> None:
@@ -173,7 +198,7 @@ def test_api_image_can_host_the_ephemeral_rate_limiter() -> None:
 
 def test_container_healthchecks_probe_liveness_not_readiness() -> None:
     """Healthcheck quyết định restart container, nên phải độc lập với dịch vụ ngoài."""
-    for name in ("Dockerfile", "Dockerfile.cv", "Dockerfile.local-vision"):
+    for name in ("Dockerfile", "Dockerfile.food-gate"):
         healthcheck = [
             line
             for line in (ROOT / name).read_text().splitlines()

@@ -3,11 +3,9 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, PrivateAttr, field_validator, model_validator
+from pydantic import AnyHttpUrl, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
-
-from backend.services.fast_lane_config import load_fast_lane_classes
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEVELOPMENT_AUTH_SECRET = "dev-only-foodai-secret-change-before-production"
@@ -48,9 +46,6 @@ class Settings(BaseSettings):
 
     # Runtime capabilities are explicit so readiness cannot hide fallbacks.
     vision_enabled: bool = True
-    # Legacy compatibility flag. EfficientNet is no longer part of the
-    # runtime recognition flow; keep parsing old .env files without loading it.
-    cv_enabled: bool = False
     qdrant_required: bool = True
     enable_dev_routes: bool = True
     log_level: str = "INFO"
@@ -127,23 +122,9 @@ class Settings(BaseSettings):
     chat_enabled: bool = True
     llm_max_concurrency: int = Field(default=2, ge=1, le=32)
     chat_request_timeout_seconds: float = Field(default=90, ge=5, le=300)
-    # Legacy setting retained so old deployment manifests still parse. The API
-    # no longer starts or calls an EfficientNet/CV service.
-    cv_url: str = ""
     # Model names (as reported by llama-server)
     llm_model: str = "qwen2.5-7b-instruct-q4_k_m.gguf"
     embedding_model: str = "qwen3-embedding-0.6b-q8_0.gguf"
-
-    # Retired local image-matching settings. They remain parseable so an old
-    # .env or offline evaluation script does not crash, but the API never reads
-    # them and the default is deliberately disabled.
-    image_embed_enabled: bool = False
-    image_embed_url: str = "http://localhost:8082"
-    image_embed_backend: Literal["siglip2", "dinov2"] = "siglip2"
-    image_embed_model: str = "google/siglip2-base-patch16-224"
-    image_embed_dim: int = Field(default=768, ge=1, le=4_096)
-    image_embed_collection: str = "dish_images_siglip2_base"
-    image_embed_max_concurrency: int = Field(default=4, ge=1, le=64)
 
     # Sidecar tách chủ thể thành sticker (ml/serving/segment_server.py).
     segment_enabled: bool = True
@@ -151,92 +132,6 @@ class Settings(BaseSettings):
     segment_max_concurrency: int = Field(default=2, ge=1, le=32)
     segment_max_side: int = Field(default=512, ge=64, le=2048)
     segment_outline_width: int = Field(default=10, ge=0, le=40)
-    # Historical image-album thresholds. Kept for offline reports only; the
-    # Vision-only API does not read them.
-    image_match_threshold: float = Field(default=0.86, ge=0, le=1)
-    image_match_margin: float = Field(default=0.07, ge=0, le=1)
-    # ``best`` preserves the evaluated production baseline. ``top3_blend``
-    # rewards a dish whose several reference photos agree, but must be tuned
-    # and promoted from a sealed evaluation report before it is enabled.
-    image_match_score_mode: Literal["best", "top3_blend"] = "best"
-    image_candidates_limit: int = Field(default=8, ge=1, le=20)
-    # Optional business fast-lane. The class list is loaded from this shared
-    # JSON contract; it is deliberately not duplicated in environment values.
-    image_fast_lane_enabled: bool = False
-    image_fast_lane_config_path: Path = PROJECT_ROOT / "data" / "config" / "siglip_fast_lane.json"
-    _fast_lane_classes: frozenset[str] = PrivateAttr(default=frozenset())
-
-    # Legacy fusion fields remain parseable for backwards-compatible .env files;
-    # neither EfficientNet nor SigLIP participates in the API runtime anymore.
-    local_fusion_enabled: bool = False
-    local_fusion_shadow_enabled: bool = False
-    # Retained only for old config compatibility; no runtime branch reads it.
-    local_fusion_cv_threshold: float | None = Field(default=0.999, ge=0, le=1)
-    local_fusion_album_solo_enabled: bool = False
-    cv_solo_confidence_threshold: float | None = Field(default=None, ge=0, le=1)
-
-    @model_validator(mode="before")
-    @classmethod
-    def apply_image_embed_backend_defaults(cls, values):
-        """Keep model, dimension and Qdrant collection settings aligned."""
-        if not isinstance(values, dict):
-            return values
-        backend = str(values.get("image_embed_backend", "siglip2")).strip().lower()
-        resolved = dict(values)
-        resolved["image_embed_backend"] = backend
-        if backend == "dinov2":
-            if resolved.get("image_embed_model") in {
-                None,
-                "",
-                "google/siglip2-base-patch16-224",
-            }:
-                resolved["image_embed_model"] = "facebook/dinov2-small"
-            if resolved.get("image_embed_dim") in {None, 768}:
-                resolved["image_embed_dim"] = 384
-            if resolved.get("image_embed_collection") in {
-                None,
-                "",
-                "dish_images",
-            }:
-                resolved["image_embed_collection"] = "dish_images_dinov2_s14"
-        elif backend == "siglip2":
-            if resolved.get("image_embed_model") in {
-                None,
-                "",
-                "facebook/dinov2-small",
-            }:
-                resolved["image_embed_model"] = "google/siglip2-base-patch16-224"
-            if resolved.get("image_embed_dim") in {None, 384}:
-                resolved["image_embed_dim"] = 768
-            if resolved.get("image_embed_collection") in {
-                None,
-                "",
-                "dish_images_dinov2_s14",
-            }:
-                resolved["image_embed_collection"] = "dish_images_siglip2_base"
-        return resolved
-
-    @model_validator(mode="after")
-    def validate_image_embed_dimension(self) -> "Settings":
-        """Fail fast when backend and Qdrant vector dimensions disagree."""
-        expected = 384 if self.image_embed_backend == "dinov2" else 768
-        if self.image_embed_dim != expected:
-            raise ValueError(
-                f"IMAGE_EMBED_DIM must be {expected} for "
-                f"IMAGE_EMBED_BACKEND={self.image_embed_backend}"
-            )
-        self._fast_lane_classes = (
-            load_fast_lane_classes(self.image_fast_lane_config_path)
-            if self.image_fast_lane_enabled
-            else frozenset()
-        )
-        return self
-
-    @property
-    def image_fast_lane_classes(self) -> frozenset[str]:
-        """Class slugs loaded from the single fast-lane JSON contract."""
-        return self._fast_lane_classes
-
     @property
     def is_production(self) -> bool:
         """Cờ production duy nhất, để mọi nơi khỏi tự so sánh chuỗi mỗi kiểu."""

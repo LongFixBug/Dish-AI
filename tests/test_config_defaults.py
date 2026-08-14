@@ -20,10 +20,17 @@ def test_qdrant_default_matches_local_compose() -> None:
     assert Settings.model_fields["qdrant_url"].default == "http://localhost:6333"
 
 
-def test_retired_local_image_flows_are_disabled_by_default() -> None:
-    assert Settings.model_fields["cv_enabled"].default is False
-    assert Settings.model_fields["image_embed_enabled"].default is False
-    assert Settings.model_fields["local_fusion_enabled"].default is False
+def test_retired_local_image_flows_are_not_runtime_settings() -> None:
+    retired_fields = {
+        "cv_enabled",
+        "cv_url",
+        "image_embed_enabled",
+        "image_embed_url",
+        "image_fast_lane_enabled",
+        "local_fusion_enabled",
+    }
+
+    assert not (retired_fields & Settings.model_fields.keys())
 
 
 def test_food_gate_mode_is_disabled_by_default() -> None:

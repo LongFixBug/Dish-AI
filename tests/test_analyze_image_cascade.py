@@ -49,7 +49,7 @@ def _enforce_settings() -> SimpleNamespace:
     """Minimal settings surface used by the enforce-path contract tests."""
     return SimpleNamespace(
         food_gate_mode="enforce",
-        food_gate_shadow_enabled=False,
+        siglip_food_hint_mode="disabled",
         vision_model=analyze.settings.vision_model,
     )
 
