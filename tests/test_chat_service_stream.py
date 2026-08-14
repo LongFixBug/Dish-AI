@@ -1,6 +1,7 @@
 """Orchestration tests for grounded and deterministic chat responses."""
 
 import pytest
+from langchain_core.documents import Document
 
 from backend.services import chat_service
 from backend.services.chat_service import ToolContext
@@ -69,6 +70,79 @@ async def test_catalog_miss_does_not_ask_model_to_invent_an_answer(
     )
 
     assert "chưa tìm thấy dữ liệu" in events[1][1]["text"]
+    assert events[-1] == ("done", {})
+
+
+@pytest.mark.asyncio
+async def test_knowledge_base_search_returns_chunks_with_document_sources(monkeypatch) -> None:
+    async def search(query: str, *, limit: int):
+        assert query == "Phở bò thường gồm những gì?"
+        assert limit == 3
+        return [
+            Document(
+                page_content="Phở bò có bánh phở và nước dùng.",
+                metadata={
+                    "document_id": "pho-bo",
+                    "title": "Phở bò",
+                    "source": "foodai_demo",
+                    "chunk_index": 0,
+                    "score": 0.81,
+                },
+            )
+        ]
+
+    monkeypatch.setattr(chat_service, "search_chunks", search)
+
+    context = await chat_service._execute_tool(
+        object(),
+        "user-a",
+        chat_service.parse_tool_call(
+            {
+                "tool": "search_knowledge_base",
+                "arguments": {"query": "Phở bò thường gồm những gì?"},
+            }
+        ),
+        timezone="Asia/Ho_Chi_Minh",
+    )
+
+    assert context.payload["chunks"][0]["content"] == "Phở bò có bánh phở và nước dùng."
+    assert context.sources[0].model_dump() == {
+        "label": "Phở bò",
+        "source": "foodai_demo",
+        "score": 0.81,
+    }
+
+
+@pytest.mark.asyncio
+async def test_knowledge_base_miss_does_not_ask_model_to_invent_an_answer(monkeypatch) -> None:
+    async def plan(*_args, **_kwargs):
+        return ChatPlan.model_validate(
+            {
+                "route": "knowledge",
+                "calls": [
+                    {
+                        "tool": "search_knowledge_base",
+                        "arguments": {"query": "Tài liệu không tồn tại"},
+                    }
+                ],
+            }
+        )
+
+    async def execute(*_args, **_kwargs):
+        return ToolContext(payload={"query": "x", "chunks": []})
+
+    monkeypatch.setattr(chat_service, "_plan", plan)
+    monkeypatch.setattr(chat_service, "_execute_tool", execute)
+
+    events = await _events(
+        chat_service.stream_chat(
+            object(),
+            "user-a",
+            ChatRequest(message="Tài liệu này nói gì?"),
+        )
+    )
+
+    assert "chưa tìm thấy tài liệu" in events[1][1]["text"]
     assert events[-1] == ("done", {})
 
 

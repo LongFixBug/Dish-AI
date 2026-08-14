@@ -15,6 +15,7 @@ from schemas.chat import (
     DateRangeArgs,
     MealsToolArgs,
     SearchCatalogToolArgs,
+    SearchKnowledgeBaseToolArgs,
     SuggestDishesToolArgs,
 )
 
@@ -31,6 +32,7 @@ _TOOL_ARGUMENTS: dict[str, type[BaseModel]] = {
     "count_dish": CountDishToolArgs,
     "compare_goal": DateRangeArgs,
     "search_catalog": SearchCatalogToolArgs,
+    "search_knowledge_base": SearchKnowledgeBaseToolArgs,
     "suggest_dishes": SuggestDishesToolArgs,
 }
 

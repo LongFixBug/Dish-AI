@@ -262,10 +262,23 @@ message + tối đa 12 history messages
 - `mobile/lib/features/chat/`: giữ history trong bộ nhớ của màn chat và hiển thị
   token ngay khi SSE trả về.
 
+Tool `search_knowledge_base(query)` nối hai phần trước đây đang tách riêng:
+planner gọi tool này khi câu hỏi là FAQ/chính sách/kiến thức từ tài liệu, còn
+tool gọi lại `search_chunks()` của RAG V0. Nó trả nhiều nhất 3 chunk đã vượt
+`score_threshold`, gồm nội dung, `document_id`, title và source. Không có chunk
+thì server trả câu cố định, không gọi LLM để đoán.
+
 `search_catalog` có thể dùng Qdrant để tìm mờ, nhưng luôn đọc record và dinh
 dưỡng cuối từ PostgreSQL. Tool cá nhân cũng nhận `user_id` từ access token,
 không nhận từ planner. Vì vậy model chỉ *đề xuất việc cần tra*, còn server vẫn
 quyết định quyền và dữ liệu nào được trả về.
+
+Quy tắc chọn tool quan trọng:
+
+- calo/dinh dưỡng của món → `search_catalog`;
+- FAQ, policy, kiến thức có trong `.txt` → `search_knowledge_base`;
+- “tôi đã ăn gì”, mục tiêu, gợi ý cá nhân → tool PostgreSQL theo token;
+- bệnh lý/thuốc → `out_of_scope`.
 
 Ví dụ request:
 

@@ -51,6 +51,30 @@ def test_planner_accepts_only_allowlisted_tools() -> None:
         )
 
 
+def test_planner_accepts_a_read_only_knowledge_base_search() -> None:
+    plan = ChatPlan.model_validate(
+        {
+            "route": "knowledge",
+            "calls": [
+                {
+                    "tool": "search_knowledge_base",
+                    "arguments": {"query": "Phở bò gồm những gì?"},
+                }
+            ],
+        }
+    )
+
+    assert plan.calls[0].tool == "search_knowledge_base"
+
+    with pytest.raises(ValidationError):
+        parse_tool_call(
+            {
+                "tool": "search_knowledge_base",
+                "arguments": {"query": "phở bò", "user_id": "attacker"},
+            }
+        )
+
+
 @pytest.mark.parametrize(
     ("route", "calls"),
     [
@@ -248,3 +272,25 @@ async def test_planner_repairs_one_invalid_schema_response(monkeypatch) -> None:
     assert "search_catalog" in repair_prompt
     assert "route=catalog" in repair_prompt
     assert "không thêm trường khác" in repair_prompt
+
+
+@pytest.mark.asyncio
+async def test_planner_receives_the_knowledge_base_tool_in_its_json_schema(monkeypatch) -> None:
+    async def fake_complete_json(_messages, *, schema):
+        tools = schema["properties"]["calls"]["items"]["properties"]["tool"]["enum"]
+        assert "search_knowledge_base" in tools
+        return {
+            "route": "knowledge",
+            "calls": [
+                {
+                    "tool": "search_knowledge_base",
+                    "arguments": {"query": "Tài liệu về phở bò"},
+                }
+            ],
+        }
+
+    monkeypatch.setattr(chat_service.chat_llm, "complete_json", fake_complete_json)
+
+    plan = await chat_service._plan(ChatRequest(message="Tài liệu có nói gì về phở bò?"))
+
+    assert plan.route == "knowledge"

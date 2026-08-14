@@ -25,6 +25,7 @@ from backend.services.suggestions import DishOption, rank_dishes, remaining_budg
 from backend.services.vector_catalog import CatalogHit, CatalogType, search_catalog
 from backend.services.meals import count_dish, list_meals, summarize_meals
 from backend.services.menu_vocabulary import accent_tokens
+from backend.services.rag import search_chunks
 from schemas.chat import (
     ChatMeta,
     ChatPlan,
@@ -40,7 +41,7 @@ PLANNER_SCHEMA: dict[str, Any] = {
     "properties": {
         "route": {
             "type": "string",
-            "enum": ["personal", "catalog", "hybrid", "general", "out_of_scope"],
+            "enum": ["personal", "catalog", "knowledge", "hybrid", "general", "out_of_scope"],
         },
         "calls": {
             "type": "array",
@@ -59,6 +60,7 @@ PLANNER_SCHEMA: dict[str, Any] = {
                             "compare_goal",
                             "suggest_dishes",
                             "search_catalog",
+                            "search_knowledge_base",
                         ],
                     },
                     "arguments": {"type": "object"},
@@ -75,18 +77,21 @@ Chỉ trả về JSON đúng schema. Không trả lời người dùng và khôn
 Chọn tool dựa trên câu hỏi:
 - lịch sử, số lần, calo, mục tiêu, gợi ý cá nhân -> tool cá nhân;
 - hỏi calo, so sánh hoặc dinh dưỡng của một món ăn -> search_catalog và route catalog;
-- câu hỏi lai -> chọn cả hai loại;
+- hỏi FAQ, chính sách hoặc kiến thức trong tài liệu FoodAI -> search_knowledge_base và route knowledge;
+- câu hỏi lai về dữ liệu cá nhân và một loại thông tin được tra cứu -> chọn cả hai loại;
 - bệnh lý, chẩn đoán, thuốc, hoặc yêu cầu ngoài dinh dưỡng -> out_of_scope.
 Với tool có ngày, luôn điền date_from/date_to dạng YYYY-MM-DD dựa trên ngày hiện tại
 và timezone do server cung cấp. Không đưa user_id vào arguments.
 Arguments chính xác:
 - search_catalog: chỉ {"query":"tên món hoặc nguyên liệu"}, không có ngày/timezone;
+- search_knowledge_base: chỉ {"query":"câu hỏi cần tra tài liệu"};
 - get_meals: date_from, date_to, meal_type tùy chọn;
 - get_summary và compare_goal: date_from, date_to;
 - count_dish: dish_name, date_from, date_to;
 - get_goal: object rỗng;
 - suggest_dishes: date tùy chọn.
-Route personal chỉ có tool cá nhân; catalog chỉ có search_catalog; hybrid phải có cả hai;
+Route personal chỉ có tool cá nhân; catalog chỉ có search_catalog; knowledge chỉ có
+search_knowledge_base; hybrid phải có tool cá nhân và ít nhất một tool truy xuất;
 general và out_of_scope phải có calls rỗng.
 """
 
@@ -214,6 +219,8 @@ async def _plan(request: ChatRequest, *, today: date | None = None) -> ChatPlan:
                     f"Lỗi validation: {exc.errors(include_url=False)}\n"
                     "Hãy sửa đúng kế hoạch trên. Nếu dùng search_catalog thì "
                     'route=catalog và arguments chỉ là {"query":"tên món"}; '
+                    "nếu dùng search_knowledge_base thì route=knowledge và arguments chỉ là "
+                    '{"query":"câu hỏi"}; '
                     "tool cá nhân dùng route=personal; kết hợp hai loại mới dùng "
                     "route=hybrid; general/out_of_scope phải có calls rỗng. "
                     "Mỗi tool chỉ nhận đúng arguments đã mô tả, không thêm trường khác."
@@ -404,6 +411,31 @@ async def _execute_tool(
 ) -> ToolContext:
     if call.tool == "search_catalog":
         return await _catalog_context(session, call.arguments["query"])
+
+    if call.tool == "search_knowledge_base":
+        chunks = await search_chunks(call.arguments["query"], limit=3)
+        records = [
+            {
+                "document_id": str(chunk.metadata["document_id"]),
+                "title": str(chunk.metadata["title"]),
+                "source": str(chunk.metadata["source"]),
+                "chunk_index": int(chunk.metadata["chunk_index"]),
+                "content": chunk.page_content,
+            }
+            for chunk in chunks
+        ]
+        sources = tuple(
+            ChatSource(
+                label=record["title"],
+                source=record["source"],
+                score=float(chunk.metadata["score"]),
+            )
+            for record, chunk in zip(records, chunks, strict=True)
+        )
+        return ToolContext(
+            payload={"query": call.arguments["query"], "chunks": records},
+            sources=sources,
+        )
 
     if call.tool == "get_goal":
         goal = await session.scalar(
@@ -680,6 +712,25 @@ async def stream_chat(
                         "để trả lời chính xác câu này."
                     )
                 },
+            )
+            yield ("sources", {"items": [source.model_dump(mode="json") for source in sources]})
+            yield ("done", {})
+            return
+
+        knowledge_without_hits = all(
+            context.payload.get("chunks") == []
+            for context in contexts
+            if "chunks" in context.payload
+        )
+        no_grounded_knowledge = (
+            plan.route in {"knowledge", "hybrid"}
+            and any("chunks" in context.payload for context in contexts)
+            and knowledge_without_hits
+        )
+        if no_grounded_knowledge:
+            yield (
+                "delta",
+                {"text": "Mình chưa tìm thấy tài liệu phù hợp để trả lời câu này."},
             )
             yield ("sources", {"items": [source.model_dump(mode="json") for source in sources]})
             yield ("done", {})

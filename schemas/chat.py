@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ChatRole = Literal["user", "assistant"]
-ChatRoute = Literal["personal", "catalog", "hybrid", "general", "out_of_scope"]
+ChatRoute = Literal["personal", "catalog", "knowledge", "hybrid", "general", "out_of_scope"]
 ChatToolName = Literal[
     "get_meals",
     "get_summary",
@@ -16,6 +16,7 @@ ChatToolName = Literal[
     "compare_goal",
     "suggest_dishes",
     "search_catalog",
+    "search_knowledge_base",
 ]
 
 
@@ -71,14 +72,18 @@ class ChatPlan(_StrictModel):
     @model_validator(mode="after")
     def route_matches_tools(self) -> "ChatPlan":
         tools = {call.tool for call in self.calls}
-        personal_tools = tools - {"search_catalog"}
+        retrieval_tools = {"search_catalog", "search_knowledge_base"}
+        personal_tools = tools - retrieval_tools
         uses_catalog = "search_catalog" in tools
+        uses_knowledge = "search_knowledge_base" in tools
         if self.route == "personal" and (not personal_tools or uses_catalog):
             raise ValueError("Route personal chỉ được gọi tool dữ liệu cá nhân.")
         if self.route == "catalog" and tools != {"search_catalog"}:
             raise ValueError("Route catalog phải gọi search_catalog.")
-        if self.route == "hybrid" and (not personal_tools or not uses_catalog):
-            raise ValueError("Route hybrid cần cả tool cá nhân và catalog.")
+        if self.route == "knowledge" and tools != {"search_knowledge_base"}:
+            raise ValueError("Route knowledge phải gọi search_knowledge_base.")
+        if self.route == "hybrid" and (not personal_tools or not (uses_catalog or uses_knowledge)):
+            raise ValueError("Route hybrid cần tool cá nhân và ít nhất một tool truy xuất.")
         if self.route in {"general", "out_of_scope"} and self.calls:
             raise ValueError(f"Route {self.route} không được gọi tool.")
         return self
@@ -134,6 +139,10 @@ class SearchCatalogToolArgs(_StrictModel):
         if not value:
             raise ValueError("query không được để trống.")
         return value
+
+
+class SearchKnowledgeBaseToolArgs(SearchCatalogToolArgs):
+    """A read-only semantic lookup over the approved RAG document corpus."""
 
 
 class SuggestDishesToolArgs(_StrictModel):
