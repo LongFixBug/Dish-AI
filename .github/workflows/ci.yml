@@ -62,7 +62,7 @@ jobs:
           uv tool run --from pip-audit==2.10.1 pip-audit
           -r requirements.api.lock --require-hashes
           --disable-pip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: backend-reports
@@ -89,7 +89,7 @@ jobs:
       # stay in the approved renderer.
       - run: flutter test --coverage --exclude-tags=golden
       - run: flutter build apk --debug
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mobile-coverage
           path: mobile/coverage/lcov.info
