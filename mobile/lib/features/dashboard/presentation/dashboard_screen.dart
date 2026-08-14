@@ -1,6 +1,5 @@
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/theme/balance_theme.dart';
-import 'package:balance/core/widgets/balance_app_bar.dart';
 import 'package:balance/core/widgets/balance_page_route.dart';
 import 'package:balance/core/widgets/balance_screen_motion.dart';
 import 'package:balance/core/widgets/food_photo.dart';
@@ -8,9 +7,9 @@ import 'package:balance/core/widgets/graph_paper_background.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
 import 'package:balance/features/analyze/presentation/analyze_screen.dart';
-import 'package:balance/features/chat/presentation/chat_screen.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
 import 'package:balance/features/nutrition/presentation/nutrition_goal_screen.dart';
+import 'package:balance/features/rag/presentation/rag_chat_screen.dart';
 import 'package:balance/features/suggestions/presentation/suggestions_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -113,7 +112,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                       child: _DashboardHeader(
                         name: profile?.name ?? 'An',
                         date: state == null ? DateTime(2024, 5, 15, 9) : today,
-                        onChat: () => _open(context, const ChatScreen()),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -176,6 +174,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                         ),
                       ),
                       offsetY: 14,
+                      child: _RagCard(
+                        onTap: () => _open(context, const RagChatScreen()),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _EntryReveal(
+                      animation: CurvedAnimation(
+                        parent: _controller,
+                        curve: const Interval(
+                          0.68,
+                          1.00,
+                          curve: Curves.easeOut,
+                        ),
+                      ),
+                      offsetY: 14,
                       child: _HabitCard(
                         onScan: () => _open(context, const AnalyzeScreen()),
                       ),
@@ -192,15 +205,10 @@ class _DashboardScreenState extends State<DashboardScreen>
 }
 
 class _DashboardHeader extends StatelessWidget {
-  const _DashboardHeader({
-    required this.name,
-    required this.date,
-    required this.onChat,
-  });
+  const _DashboardHeader({required this.name, required this.date});
 
   final String name;
   final DateTime date;
-  final VoidCallback onChat;
 
   @override
   Widget build(BuildContext context) {
@@ -224,12 +232,6 @@ class _DashboardHeader extends StatelessWidget {
               ),
             ],
           ),
-        ),
-        const SizedBox(width: 10),
-        BalanceIconButton(
-          tooltip: 'Hỏi Balance',
-          icon: Icons.chat_bubble_outline_rounded,
-          onPressed: onChat,
         ),
       ],
     );
@@ -579,6 +581,70 @@ class _RecommendationCard extends StatelessWidget {
                   const Icon(Icons.chevron_right_rounded, size: 28),
                 ],
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RagCard extends StatelessWidget {
+  const _RagCard({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Mở hỏi FoodAI',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(BalanceRadii.card),
+        child: SketchCard(
+          color: const Color(0xFFE8F4FF),
+          padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: BalanceColors.ink, width: 1.4),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: BalanceColors.blueDark,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Hỏi FoodAI',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Tra cứu từ tài liệu kiến thức',
+                      style: TextStyle(
+                        color: BalanceColors.muted,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, size: 28),
             ],
           ),
         ),

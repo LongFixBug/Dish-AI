@@ -9,13 +9,13 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from backend.api.chat import router as chat_router
 from backend.api.auth import router as auth_router
 from backend.api.analyze import router as analyze_router
 from backend.api.dishes import router as dishes_router
 from backend.api.feedback import router as feedback_router
 from backend.api.meals import router as meals_router
 from backend.api.nutrition_goals import router as nutrition_goals_router
+from backend.api.rag import router as rag_router
 from backend.api.suggestions import router as suggestions_router
 from backend.config import settings
 from backend.db.postgres import engine
@@ -38,10 +38,10 @@ rate_limit_store = (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize optional local inference and semantic-search dependencies.
+    """Initialize semantic-search dependencies used by the catalog.
 
-    Both initializers run outside the event loop. Their failure is non-fatal:
-    Vision analysis and exact PostgreSQL lookup remain available respectively.
+    Qdrant initialization runs outside the event loop. Its failure is
+    non-fatal: Vision analysis and exact PostgreSQL lookup remain available.
     """
     if settings.qdrant_required:
         try:
@@ -57,11 +57,9 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         from backend.services.embeddings import close_embedding_client
-        from backend.services.chat_llm import close_chat_client
         from ml.inference.vision import close_vision_client
 
         await close_embedding_client()
-        await close_chat_client()
         await close_vision_client()
         await rate_limit_store.close()
         await engine.dispose()
@@ -145,11 +143,11 @@ if not settings.is_production and settings.enable_dev_routes:
         return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-app.include_router(chat_router)
 app.include_router(auth_router)
 app.include_router(analyze_router)
 app.include_router(dishes_router)
 app.include_router(feedback_router)
 app.include_router(meals_router)
 app.include_router(nutrition_goals_router)
+app.include_router(rag_router)
 app.include_router(suggestions_router)

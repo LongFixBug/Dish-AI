@@ -1,0 +1,10 @@
+{
+  "documents": [
+    {
+      "document_id": "pho-bo",
+      "title": "Phở bò",
+      "source": "foodai_demo",
+      "file": "pho-bo.txt"
+    }
+  ]
+}

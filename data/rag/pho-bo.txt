@@ -1,0 +1,5 @@
+   Phở bò là món nước phổ biến của Việt Nam.
+
+Một tô phở bò thường có bánh phở, nước dùng ninh từ xương bò, thịt bò và các loại rau thơm như hành, ngò.
+
+Khi tra cứu dinh dưỡng, cần phân biệt giữa khẩu phần phở bò hoàn chỉnh và từng nguyên liệu riêng lẻ. Dữ liệu dinh dưỡng chính thức trong FoodAI phải lấy từ catalog PostgreSQL, không lấy từ nội dung tài liệu này.
