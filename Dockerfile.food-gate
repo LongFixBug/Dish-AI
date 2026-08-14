@@ -28,6 +28,6 @@ USER foodai
 EXPOSE 8084
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
-    CMD-SHELL python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '8084') + '/live', timeout=2)"
+    CMD ["sh", "-c", "python -c 'import os, urllib.request; urllib.request.urlopen(\"http://127.0.0.1:\" + os.getenv(\"PORT\", \"8084\") + \"/live\", timeout=2)'"]
 
 CMD ["/app/scripts/start_food_gate_railway.sh"]
