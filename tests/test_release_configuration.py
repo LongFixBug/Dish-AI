@@ -100,6 +100,16 @@ def test_api_image_includes_rag_import_dependencies() -> None:
         assert f"{package}==" in lockfile
 
 
+def test_sidecar_deployments_have_reproducible_dockerfiles() -> None:
+    food_gate = (ROOT / "Dockerfile.food-gate").read_text()
+    segment = (ROOT / "Dockerfile.segment").read_text()
+
+    assert "RAILWAY_DOCKERFILE_PATH" not in food_gate
+    assert "start_food_gate_railway.sh" in food_gate
+    assert "requirements.segment.lock" in segment
+    assert "/health" in segment
+
+
 def test_api_image_does_not_package_retired_image_model_config() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text()
 

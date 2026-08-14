@@ -16,9 +16,10 @@ RUN python -c "from transformers import AutoConfig, AutoImageProcessor; model = 
 
 COPY backend ./backend
 COPY ml ./ml
-COPY checkpoints/food_gate/siglip2_food_gate_best.pt ./checkpoints/food_gate/siglip2_food_gate_best.pt
+COPY scripts/start_food_gate_railway.sh ./scripts/start_food_gate_railway.sh
 
-RUN chown -R foodai:foodai /app
+RUN chmod +x /app/scripts/start_food_gate_railway.sh \
+    && chown -R foodai:foodai /app
 
 USER foodai
 
@@ -27,4 +28,4 @@ EXPOSE 8084
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8084/live', timeout=2)"]
 
-CMD ["uvicorn", "ml.inference.food_gate:app", "--host", "0.0.0.0", "--port", "8084"]
+CMD ["/app/scripts/start_food_gate_railway.sh"]

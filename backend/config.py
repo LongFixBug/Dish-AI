@@ -118,6 +118,7 @@ class Settings(BaseSettings):
 
     # LLM + Embedding (local with llama.cpp)
     llm_url: str = "http://localhost:8080"
+    llm_api_key: str = ""
     embedding_url: str = "http://localhost:8081"
     chat_enabled: bool = True
     llm_max_concurrency: int = Field(default=2, ge=1, le=32)

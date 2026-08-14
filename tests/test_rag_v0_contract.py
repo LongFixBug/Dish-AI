@@ -341,6 +341,43 @@ async def test_answer_question_sends_context_to_the_llm(monkeypatch) -> None:
     assert "CONTEXT:" in captured["json"]["messages"][0]["content"]
 
 
+async def test_answer_question_sends_cloud_llm_authentication(monkeypatch) -> None:
+    retrieved = Document(
+        page_content="Phở bò có bánh phở.",
+        metadata={"document_id": "pho-bo", "title": "Phở bò", "source": "demo", "score": 0.8},
+    )
+    captured: dict[str, object] = {}
+
+    async def fake_search_chunks(_question: str) -> list[Document]:
+        return [retrieved]
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"choices": [{"message": {"content": "Được."}}]}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def post(self, _url: str, **kwargs) -> FakeResponse:
+            captured.update(kwargs)
+            return FakeResponse()
+
+    monkeypatch.setattr(rag, "search_chunks", fake_search_chunks)
+    monkeypatch.setattr(rag.httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+    monkeypatch.setattr(rag.settings, "llm_api_key", "cloud-test-key")
+
+    await rag.answer_question("Phở bò có gì?")
+
+    assert captured["headers"] == {"Authorization": "Bearer cloud-test-key"}
+
+
 def test_build_prompt_places_context_before_question() -> None:
     prompt = rag.build_prompt(
         "Phở bò có gì?",

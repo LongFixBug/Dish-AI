@@ -61,6 +61,31 @@ async def test_health_and_json_completion_use_llama_contract(monkeypatch) -> Non
 
 
 @pytest.mark.asyncio
+async def test_cloud_chat_completion_sends_bearer_token(monkeypatch) -> None:
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {"message": {"content": '{"route":"general","calls":[]}'}},
+                ]
+            },
+        )
+
+    monkeypatch.setattr(chat_llm.settings, "llm_api_key", "cloud-test-key")
+    _use_transport(monkeypatch, handler)
+
+    result = await chat_llm.complete_json([], schema={"type": "object"})
+
+    assert result == {"route": "general", "calls": []}
+    assert captured[0].headers["authorization"] == "Bearer cloud-test-key"
+    await chat_llm.close_chat_client()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "response",
     [

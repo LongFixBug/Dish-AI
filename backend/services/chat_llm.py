@@ -24,9 +24,16 @@ class ChatModelError(RuntimeError):
     """Downstream model is unavailable or returned an invalid response."""
 
 
+def _auth_headers() -> dict[str, str]:
+    """Authenticate only when the configured model is a cloud endpoint."""
+    if not settings.llm_api_key:
+        return {}
+    return {"Authorization": f"Bearer {settings.llm_api_key}"}
+
+
 async def check_chat_health() -> None:
     """Raise unless the configured llama.cpp server is ready."""
-    response = await (await _get_client()).get(CHAT_HEALTH_URL)
+    response = await (await _get_client()).get(CHAT_HEALTH_URL, headers=_auth_headers())
     response.raise_for_status()
 
 
@@ -69,6 +76,7 @@ async def complete_json(
                 response = await (await _get_client()).post(
                     CHAT_COMPLETIONS_URL,
                     json=payload,
+                    headers=_auth_headers(),
                 )
                 response.raise_for_status()
                 return response
@@ -109,6 +117,7 @@ async def stream_completion(
                 "POST",
                 CHAT_COMPLETIONS_URL,
                 json=payload,
+                headers=_auth_headers(),
             )
 
             async def open_stream() -> httpx.Response:

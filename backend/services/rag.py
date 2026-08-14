@@ -324,6 +324,11 @@ async def answer_question(question: str) -> tuple[str, list[Document]]:
         return "Mình chưa tìm thấy tài liệu phù hợp để trả lời câu này.", []
 
     prompt = build_prompt(question, chunks)
+    headers = (
+        {"Authorization": f"Bearer {settings.llm_api_key}"}
+        if settings.llm_api_key
+        else {}
+    )
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(
             LLM_CHAT_URL,
@@ -333,6 +338,7 @@ async def answer_question(question: str) -> tuple[str, list[Document]]:
                 "temperature": 0.2,
                 "stream": False,
             },
+            headers=headers,
         )
     response.raise_for_status()
 
