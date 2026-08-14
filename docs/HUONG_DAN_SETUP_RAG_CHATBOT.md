@@ -122,9 +122,16 @@ cả chunk/vector hợp lệ; nó không đụng `food_catalog` hay `dish_images
 
 ## Retrieval, prompt và LLM
 
-`search_chunks(question, limit=3)` embed câu hỏi, tìm nhiều nhất 3 point trong
-Qdrant và yêu cầu `score_threshold=0.60`. `score` là cosine similarity, không
-phải phần trăm chính xác.
+`search_chunks(question, limit=3)` mở rộng nhẹ câu hỏi về thành phần hoặc nguồn
+dữ liệu, rồi embed và tìm nhiều nhất 3 point trong Qdrant với
+`score_threshold=0.60`. `score` semantic là cosine similarity, không phải phần
+trăm chính xác.
+
+Nếu semantic không có hit, nó lấy tối đa 24 ứng viên vector gần nhất và áp dụng
+lexical fallback: title/nội dung phải trùng ít nhất 2 token có nghĩa với câu
+hỏi. Chunk fallback được gắn `retrieval="lexical"`; score khi đó là mức chồng
+token, không phải cosine. Nhờ vậy câu hỏi tự nhiên như “Dữ liệu dinh dưỡng
+chính thức của FoodAI lấy từ đâu?” vẫn tìm được tài liệu ngắn `pho-bo.txt`.
 
 Nếu có context, `build_prompt()` tạo prompt ngắn:
 
@@ -301,3 +308,9 @@ Client phải đọc các event SSE theo thứ tự:
 Đây là "agentic" ở mức có kiểm soát: planner được chọn tối đa 3 tool trong
 allowlist. Chưa dùng LangGraph vì workflow hiện tại chỉ là một plan tuyến tính,
 đọc và kiểm tra được bằng Python thường.
+
+Server không tin planner tuyệt đối: nếu planner lỡ chọn catalog cho câu hỏi về
+thành phần/mô tả món, `ground_plan()` chuyển sang knowledge-base. Catalog chỉ
+chứa số dinh dưỡng, nên không được dùng làm context để model tự đoán nguyên
+liệu. Prompt yêu cầu không dùng Markdown, và mobile cũng bỏ marker `**`/`__`
+nếu model vẫn trả về chúng.

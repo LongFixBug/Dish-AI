@@ -236,6 +236,50 @@ async def test_search_uses_top_k_and_discards_scores_below_threshold(monkeypatch
     assert [chunk.metadata["document_id"] for chunk in chunks] == ["pho-bo"]
 
 
+async def test_search_expands_document_question_and_uses_lexical_fallback(monkeypatch) -> None:
+    embedded_texts: list[str] = []
+    calls: list[dict[str, object]] = []
+
+    async def fake_embed_text(text: str) -> list[float]:
+        embedded_texts.append(text)
+        return [0.1] * rag.VECTOR_SIZE
+
+    class FakeClient:
+        def query_points(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs.get("score_threshold") is not None:
+                return SimpleNamespace(points=[])
+            return SimpleNamespace(
+                points=[
+                    SimpleNamespace(
+                        score=0.31,
+                        payload={
+                            "document_id": "pho-bo",
+                            "title": "Phở bò",
+                            "source": "foodai_demo",
+                            "chunk_index": 0,
+                            "content": (
+                                "Dữ liệu dinh dưỡng chính thức trong FoodAI phải lấy "
+                                "từ catalog PostgreSQL."
+                            ),
+                        },
+                    )
+                ]
+            )
+
+    monkeypatch.setattr(rag, "embed_text", fake_embed_text)
+    monkeypatch.setattr(rag, "get_qdrant_client", FakeClient)
+
+    chunks = await rag.search_chunks(
+        "Dữ liệu dinh dưỡng chính thức của FoodAI lấy từ đâu?",
+    )
+
+    assert "catalog PostgreSQL" in embedded_texts[0]
+    assert len(calls) == 2
+    assert chunks[0].metadata["retrieval"] == "lexical"
+    assert chunks[0].metadata["document_id"] == "pho-bo"
+
+
 async def test_no_context_returns_fixed_answer_without_calling_llm(monkeypatch) -> None:
     async def fake_search_chunks(_question: str) -> list[Document]:
         return []

@@ -75,6 +75,29 @@ def test_planner_accepts_a_read_only_knowledge_base_search() -> None:
         )
 
 
+def test_component_question_is_redirected_from_catalog_to_knowledge_base() -> None:
+    catalog_plan = ChatPlan.model_validate(
+        {
+            "route": "catalog",
+            "calls": [
+                {
+                    "tool": "search_catalog",
+                    "arguments": {"query": "phở bò"},
+                }
+            ],
+        }
+    )
+
+    grounded = chat_service.ground_plan(
+        ChatRequest(message="Một tô phở bò thường gồm những gì?"),
+        catalog_plan,
+    )
+
+    assert grounded.route == "knowledge"
+    assert grounded.calls[0].tool == "search_knowledge_base"
+    assert grounded.calls[0].arguments == {"query": "Một tô phở bò thường gồm những gì?"}
+
+
 @pytest.mark.parametrize(
     ("route", "calls"),
     [

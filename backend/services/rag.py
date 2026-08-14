@@ -1,6 +1,8 @@
 """RAG V0: load corpus -> split -> embed -> Qdrant -> local LLM."""
 
 import asyncio
+import re
+import unicodedata
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
@@ -21,8 +23,83 @@ RAG_MANIFEST_FILE = "documents.json"
 RAG_COLLECTION_NAME = "rag_documents_v0"
 VECTOR_SIZE = 1024
 MIN_RETRIEVAL_SCORE = 0.60
+LEXICAL_FALLBACK_CANDIDATES = 24
 LLM_CHAT_URL = f"{settings.llm_url.rstrip('/')}/v1/chat/completions"
 _qdrant_client: QdrantClient | None = None
+
+
+def _normalized_text(value: str) -> str:
+    decomposed = unicodedata.normalize("NFD", value.casefold())
+    without_accents = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return without_accents.replace("đ", "d")
+
+
+def _tokens(value: str) -> set[str]:
+    return {token for token in re.findall(r"[a-z0-9]+", _normalized_text(value)) if len(token) > 1}
+
+
+def expand_knowledge_query(query: str) -> str:
+    """Add a small number of domain terms for short, paraphrased documents."""
+    normalized = _normalized_text(query)
+    additions: list[str] = []
+    if any(term in normalized for term in ("thanh phan", "bao gom", "gom gi", "co gi")):
+        additions.append("thành phần nguyên liệu mô tả món ăn")
+    if any(
+        term in normalized
+        for term in ("du lieu chinh thuc", "nguon du lieu", "lay tu dau")
+    ):
+        additions.append("nguồn dữ liệu FoodAI catalog PostgreSQL")
+    return " ".join([query, *additions])
+
+
+def _document_from_point(point, *, score: float, retrieval: str) -> Document | None:
+    payload = point.payload or {}
+    content = payload.get("content")
+    document_id = payload.get("document_id")
+    title = payload.get("title")
+    source = payload.get("source")
+    chunk_index = payload.get("chunk_index")
+    if (
+        not isinstance(content, str)
+        or not isinstance(document_id, str)
+        or not isinstance(title, str)
+        or not isinstance(source, str)
+        or not isinstance(chunk_index, int)
+    ):
+        return None
+    return Document(
+        page_content=content,
+        metadata={
+            "document_id": document_id,
+            "title": title,
+            "source": source,
+            "chunk_index": chunk_index,
+            "score": round(score, 4),
+            "retrieval": retrieval,
+        },
+    )
+
+
+def _lexical_fallback(query: str, points, *, limit: int) -> list[Document]:
+    query_tokens = _tokens(query)
+    if not query_tokens:
+        return []
+    matches: list[tuple[float, Document]] = []
+    for point in points:
+        payload = point.payload or {}
+        content = payload.get("content")
+        title = payload.get("title")
+        if not isinstance(content, str) or not isinstance(title, str):
+            continue
+        overlap = query_tokens.intersection(_tokens(f"{title} {content}"))
+        if len(overlap) < 2:
+            continue
+        score = len(overlap) / len(query_tokens)
+        document = _document_from_point(point, score=score, retrieval="lexical")
+        if document is not None:
+            matches.append((score, document))
+    matches.sort(key=lambda item: item[0], reverse=True)
+    return [document for _, document in matches[:limit]]
 
 
 def split_documents(
@@ -194,7 +271,7 @@ async def search_chunks(query: str, limit: int = 3) -> list[Document]:
     """Trả top-k chunk đủ điểm; score thấp nghĩa là không có context tin cậy."""
     if limit < 1:
         raise ValueError("limit phải lớn hơn hoặc bằng 1.")
-    query_vector = await embed_text(query)
+    query_vector = await embed_text(expand_knowledge_query(query))
     result = await asyncio.to_thread(
         get_qdrant_client().query_points,
         collection_name=RAG_COLLECTION_NAME,
@@ -207,34 +284,22 @@ async def search_chunks(query: str, limit: int = 3) -> list[Document]:
     chunks: list[Document] = []
     for point in result.points:
         score = float(point.score)
-        payload = point.payload or {}
-        content = payload.get("content")
-        document_id = payload.get("document_id")
-        title = payload.get("title")
-        source = payload.get("source")
-        chunk_index = payload.get("chunk_index")
-        if (
-            score < MIN_RETRIEVAL_SCORE
-            or not isinstance(content, str)
-            or not isinstance(document_id, str)
-            or not isinstance(title, str)
-            or not isinstance(source, str)
-            or not isinstance(chunk_index, int)
-        ):
+        if score < MIN_RETRIEVAL_SCORE:
             continue
-        chunks.append(
-            Document(
-                page_content=content,
-                metadata={
-                    "document_id": document_id,
-                    "title": title,
-                    "source": source,
-                    "chunk_index": chunk_index,
-                    "score": round(score, 4),
-                },
-            )
-        )
-    return chunks
+        document = _document_from_point(point, score=score, retrieval="semantic")
+        if document is not None:
+            chunks.append(document)
+    if chunks:
+        return chunks
+
+    candidates = await asyncio.to_thread(
+        get_qdrant_client().query_points,
+        collection_name=RAG_COLLECTION_NAME,
+        query=query_vector,
+        limit=max(limit, LEXICAL_FALLBACK_CANDIDATES),
+        with_payload=True,
+    )
+    return _lexical_fallback(query, candidates.points, limit=limit)
 
 
 def build_prompt(question: str, chunks: list[Document]) -> str:

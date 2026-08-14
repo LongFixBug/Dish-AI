@@ -147,6 +147,55 @@ async def test_knowledge_base_miss_does_not_ask_model_to_invent_an_answer(monkey
 
 
 @pytest.mark.asyncio
+async def test_component_question_cannot_stream_an_ungrounded_catalog_answer(monkeypatch) -> None:
+    plan_value = ChatPlan.model_validate(
+        {
+            "route": "catalog",
+            "calls": [{"tool": "search_catalog", "arguments": {"query": "phở bò"}}],
+        }
+    )
+    executed_tools = []
+
+    async def plan(*_args, **_kwargs):
+        return plan_value
+
+    async def execute(_session, _user_id, call, **_kwargs):
+        executed_tools.append(call.tool)
+        return ToolContext(
+            payload={
+                "query": "phở bò",
+                "chunks": [
+                    {
+                        "document_id": "pho-bo",
+                        "title": "Phở bò",
+                        "source": "foodai_demo",
+                        "chunk_index": 0,
+                        "content": "Phở bò có bánh phở và nước dùng.",
+                    }
+                ],
+            }
+        )
+
+    async def stream(*_args, **_kwargs):
+        yield "Phở bò có bánh phở và nước dùng."
+
+    monkeypatch.setattr(chat_service, "_plan", plan)
+    monkeypatch.setattr(chat_service, "_execute_tool", execute)
+    monkeypatch.setattr(chat_service.chat_llm, "stream_completion", stream)
+
+    events = await _events(
+        chat_service.stream_chat(
+            object(),
+            "user-a",
+            ChatRequest(message="Phở bò thường gồm những gì?"),
+        )
+    )
+
+    assert executed_tools == ["search_knowledge_base"]
+    assert events[0][1]["route"] == "knowledge"
+
+
+@pytest.mark.asyncio
 async def test_grounded_stream_deduplicates_sources(monkeypatch) -> None:
     plan_value = ChatPlan.model_validate(
         {

@@ -37,6 +37,9 @@ class _ChatLine {
       _ChatLine(role: role, text: text, sources: List.unmodifiable(value));
 }
 
+String _plainChatText(String value) =>
+    value.replaceAll('**', '').replaceAll('__', '');
+
 class _ChatScreenState extends State<ChatScreen> {
   static const _suggestedPrompts = [
     'Hôm qua bữa trưa tôi ăn gì?',
@@ -132,7 +135,9 @@ class _ChatScreenState extends State<ChatScreen> {
       final text = event.data['text'];
       if (text is String) {
         setState(() {
-          _lines[index] = _lines[index].withText(_lines[index].text + text);
+          _lines[index] = _lines[index].withText(
+            _plainChatText(_lines[index].text + text),
+          );
         });
         _scrollToEnd();
       }

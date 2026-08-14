@@ -69,6 +69,22 @@ class _DelayedRefreshGateway extends FakeAuthGateway {
   Future<AuthSession> refresh(String refreshToken) => refreshCompleter.future;
 }
 
+class _MarkdownChatApi extends _FakeChatApi {
+  @override
+  Stream<ChatEvent> streamChat({
+    required String message,
+    required List<ChatMessagePayload> history,
+    required String accessToken,
+    String timezone = 'Asia/Ho_Chi_Minh',
+  }) async* {
+    yield const ChatEvent(
+      name: 'delta',
+      data: {'text': '**Phở bò** có khoảng 480 kcal.'},
+    );
+    yield const ChatEvent(name: 'done', data: {});
+  }
+}
+
 Future<AppState> _signedInState({AuthGateway? authGateway}) async {
   final state = await AppState.restore(
     MemoryAppStorage(),
@@ -116,6 +132,27 @@ void main() {
 
     expect(find.text('Một tô phở bò có khoảng 480 kcal.'), findsOneWidget);
     expect(find.text('Nguồn: Phở bò (vnmeal)'), findsOneWidget);
+  });
+
+  testWidgets('không hiện ký tự Markdown thô trong câu trả lời', (
+    tester,
+  ) async {
+    final state = await _signedInState();
+    await tester.pumpWidget(
+      AppScope(
+        notifier: state,
+        child: MaterialApp(
+          theme: BalanceTheme.light,
+          home: ChatScreen(api: _MarkdownChatApi()),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Phở bò khác bún bò thế nào?'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Phở bò có khoảng 480 kcal.'), findsOneWidget);
+    expect(find.text('**Phở bò** có khoảng 480 kcal.'), findsNothing);
   });
 
   testWidgets('dừng trước khi refresh token xong không khởi động stream cũ', (

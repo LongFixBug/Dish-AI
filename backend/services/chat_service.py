@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import unicodedata
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -93,6 +95,10 @@ Arguments chính xác:
 Route personal chỉ có tool cá nhân; catalog chỉ có search_catalog; knowledge chỉ có
 search_knowledge_base; hybrid phải có tool cá nhân và ít nhất một tool truy xuất;
 general và out_of_scope phải có calls rỗng.
+Cần phân biệt loại dữ liệu, không dựa vào việc người dùng có nói "tài liệu" hay không:
+- "Phở bò gồm gì?", "có thành phần nào?", "món này là gì?" -> knowledge;
+- "Phở bò bao nhiêu kcal/protein/carb?" -> catalog.
+Catalog chỉ có số dinh dưỡng, không có thành phần, công thức hay mô tả món.
 """
 
 ANSWER_SYSTEM = """Bạn là Balance, trợ lý dinh dưỡng tiếng Việt.
@@ -104,6 +110,7 @@ kèm kcal/khẩu phần và hỏi họ muốn loại nào thay vì tự chọn m
 Không chẩn đoán, điều trị hay khẳng định an toàn cho bệnh nền/dị ứng.
 Trả lời ngắn gọn, thân thiện, nêu khoảng thời gian khi nói về nhật ký.
 Luôn nhắc rằng dinh dưỡng là ước tính/tham khảo khi câu hỏi cần khuyến nghị.
+Không dùng Markdown như **chữ đậm** hoặc tiêu đề #; viết văn bản thường.
 """
 
 
@@ -114,6 +121,53 @@ class ToolContext:
 
 
 _DATE_RANGE_TOOLS = frozenset({"get_meals", "get_summary", "count_dish", "compare_goal"})
+_NUTRITION_METRIC_TERMS = frozenset(
+    {"calo", "kcal", "calories", "protein", "dam", "carb", "chat beo", "gram", "bao nhieu"}
+)
+_KNOWLEDGE_CONTENT_TERMS = frozenset(
+    {
+        "thanh phan",
+        "nguyen lieu",
+        "bao gom",
+        "gom gi",
+        "gom nhung gi",
+        "thuong gom",
+        "co gi",
+        "la gi",
+        "cach lam",
+        "du lieu chinh thuc",
+        "lay tu dau",
+        "nguon du lieu",
+    }
+)
+
+
+def _normalized_text(value: str) -> str:
+    decomposed = unicodedata.normalize("NFD", value.casefold())
+    without_accents = "".join(char for char in decomposed if not unicodedata.combining(char))
+    return re.sub(r"\s+", " ", without_accents.replace("đ", "d")).strip()
+
+
+def ground_plan(request: ChatRequest, plan: ChatPlan) -> ChatPlan:
+    """Prevent a catalog-only context from answering descriptive questions."""
+    normalized_question = _normalized_text(request.message)
+    asks_for_metric = any(term in normalized_question for term in _NUTRITION_METRIC_TERMS)
+    asks_for_document_content = any(
+        term in normalized_question for term in _KNOWLEDGE_CONTENT_TERMS
+    )
+    if plan.route != "catalog" or asks_for_metric or not asks_for_document_content:
+        return plan
+    return ChatPlan.model_validate(
+        {
+            "route": "knowledge",
+            "calls": [
+                {
+                    "tool": "search_knowledge_base",
+                    "arguments": {"query": request.message},
+                }
+            ],
+        }
+    )
 
 
 def normalize_plan_dates(raw: dict[str, Any], *, today: date) -> dict[str, Any]:
@@ -653,7 +707,7 @@ async def stream_chat(
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Yield typed SSE payloads; errors are converted to safe user-facing events."""
     try:
-        plan = await _plan(request)
+        plan = ground_plan(request, await _plan(request))
         if plan.route == "out_of_scope":
             yield ("meta", ChatMeta(route=plan.route, sources=[]).model_dump(mode="json"))
             yield (
