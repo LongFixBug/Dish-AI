@@ -88,6 +88,23 @@ async def test_readiness_does_not_probe_optional_image_sidecars(monkeypatch) -> 
     assert "segmentation" not in report["components"]
 
 
+async def test_readiness_probes_food_gate_when_enforce_is_active(monkeypatch) -> None:
+    async def ok() -> None:
+        return None
+
+    monkeypatch.setattr(readiness, "_check_postgres", ok)
+    monkeypatch.setattr(readiness.object_storage, "healthcheck", ok)
+    monkeypatch.setattr(readiness, "_check_food_gate", ok)
+    monkeypatch.setattr(readiness.settings, "food_gate_mode", "enforce")
+    monkeypatch.setattr(readiness.settings, "qdrant_required", False)
+    monkeypatch.setattr(readiness.settings, "rate_limit_backend", "memory")
+    monkeypatch.setattr(readiness.settings, "vision_enabled", False)
+
+    report = await readiness._probe_components()
+
+    assert report["components"]["food_gate"] == {"ready": True, "detail": "ok"}
+
+
 async def test_lifespan_skips_optional_qdrant_initialization(monkeypatch) -> None:
     async def fail_if_called() -> None:
         raise AssertionError("optional Qdrant must not initialize")

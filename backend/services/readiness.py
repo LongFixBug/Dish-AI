@@ -6,6 +6,7 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 
+import httpx
 from redis.asyncio import Redis
 from sqlalchemy import text
 
@@ -50,6 +51,8 @@ async def _probe_components() -> dict[str, object]:
         checks["redis"] = _check_redis
     if settings.vision_enabled:
         checks["vision"] = _check_vision_config
+    if settings.food_gate_mode == "enforce":
+        checks["food_gate"] = _check_food_gate
     names = list(checks)
     results = await asyncio.gather(
         *(_run_check(checks[name]) for name in names),
@@ -95,3 +98,12 @@ async def _check_redis() -> None:
 async def _check_vision_config() -> None:
     if not settings.vision_api_key:
         raise RuntimeError("Vision API key is missing")
+
+
+async def _check_food_gate() -> None:
+    """Enforce mode is only ready when the gate sidecar answers readiness."""
+    if settings.food_gate_url is None:
+        raise RuntimeError("Food Gate URL is missing")
+    async with httpx.AsyncClient(timeout=settings.food_gate_timeout_seconds) as client:
+        response = await client.get(f"{str(settings.food_gate_url).rstrip('/')}/ready")
+        response.raise_for_status()
