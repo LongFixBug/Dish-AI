@@ -5,26 +5,34 @@ val keystoreProperties = Properties()
 val releaseTaskRequested = gradle.startParameter.taskNames.any {
     it.contains("release", ignoreCase = true)
 }
-val signingPropertyNames = listOf("keyAlias", "keyPassword", "storeFile", "storePassword")
 
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.inputStream().use(keystoreProperties::load)
 }
 
-val hasCompleteReleaseSigning = keystorePropertiesFile.exists() &&
-    signingPropertyNames.all { name ->
-        val value = keystoreProperties.getProperty(name)
-        !value.isNullOrBlank() && !value.startsWith("replace-")
-    }
-val releaseStoreFile = if (hasCompleteReleaseSigning) {
-    project.file(keystoreProperties.getProperty("storeFile"))
-} else {
-    null
+fun releaseSigningValue(environmentName: String, propertyName: String): String? {
+    val environmentValue = System.getenv(environmentName)?.trim()
+    if (!environmentValue.isNullOrBlank()) return environmentValue
+
+    val propertyValue = keystoreProperties.getProperty(propertyName)?.trim()
+    return propertyValue?.takeIf { it.isNotBlank() && !it.startsWith("replace-") }
 }
+
+val releaseKeyAlias = releaseSigningValue("FOODAI_ANDROID_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = releaseSigningValue("FOODAI_ANDROID_KEY_PASSWORD", "keyPassword")
+val releaseStorePath = releaseSigningValue("FOODAI_ANDROID_STORE_FILE", "storeFile")
+val releaseStorePassword = releaseSigningValue("FOODAI_ANDROID_STORE_PASSWORD", "storePassword")
+val hasCompleteReleaseSigning = listOf(
+    releaseKeyAlias,
+    releaseKeyPassword,
+    releaseStorePath,
+    releaseStorePassword,
+).all { it != null }
+val releaseStoreFile = releaseStorePath?.let(project::file)
 
 if (releaseTaskRequested && !hasCompleteReleaseSigning) {
     throw GradleException(
-        "Missing release signing values. Copy key.properties.example and provide real credentials."
+        "Missing release signing values. Use FOODAI_ANDROID_* environment variables or key.properties."
     )
 }
 if (releaseTaskRequested && releaseStoreFile?.exists() != true) {
@@ -61,10 +69,10 @@ android {
     signingConfigs {
         create("release") {
             if (hasCompleteReleaseSigning) {
-                keyAlias = keystoreProperties.getProperty("keyAlias")
-                keyPassword = keystoreProperties.getProperty("keyPassword")
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
                 storeFile = releaseStoreFile
-                storePassword = keystoreProperties.getProperty("storePassword")
+                storePassword = releaseStorePassword
             }
         }
     }

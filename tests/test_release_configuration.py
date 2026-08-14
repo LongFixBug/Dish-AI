@@ -29,6 +29,19 @@ def test_android_release_does_not_use_debug_signing() -> None:
     assert "key.properties" in gradle
 
 
+def test_android_release_can_read_signing_credentials_from_the_local_keychain_environment() -> None:
+    """A local release must not require an untracked plaintext key.properties file."""
+    gradle = (ROOT / "mobile/android/app/build.gradle.kts").read_text()
+
+    for name in (
+        "FOODAI_ANDROID_KEY_ALIAS",
+        "FOODAI_ANDROID_KEY_PASSWORD",
+        "FOODAI_ANDROID_STORE_FILE",
+        "FOODAI_ANDROID_STORE_PASSWORD",
+    ):
+        assert name in gradle
+
+
 def test_ci_covers_mobile_container_migrations_and_security() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text()
 
