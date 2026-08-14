@@ -27,6 +27,43 @@ DEMO_CANONICAL_COPIES = (
     ("Cá chày kho", "Cá kho tộ"),
 )
 
+DEMO_CANONICAL_COPY_SQL = text(
+    """
+    INSERT INTO vn_dishes (
+        dish_name,
+        total_calories,
+        total_protein_g,
+        total_fat_g,
+        total_carbs_g,
+        total_fiber_g,
+        typical_grams,
+        typical_grams_source,
+        typical_grams_confidence,
+        typical_grams_rule,
+        source
+    )
+    SELECT
+        CAST(:target_name AS VARCHAR),
+        source_row.total_calories,
+        source_row.total_protein_g,
+        source_row.total_fat_g,
+        source_row.total_carbs_g,
+        source_row.total_fiber_g,
+        source_row.typical_grams,
+        source_row.typical_grams_source,
+        source_row.typical_grams_confidence,
+        source_row.typical_grams_rule,
+        'demo_alias'
+    FROM vn_dishes AS source_row
+    WHERE source_row.dish_name = CAST(:source_name AS VARCHAR)
+      AND NOT EXISTS (
+          SELECT 1
+          FROM vn_dishes AS existing
+          WHERE lower(existing.dish_name) = lower(CAST(:target_name AS VARCHAR))
+      )
+    """
+)
+
 _HAS_EN = re.compile(r"[A-Za-z]{3,}")
 
 
@@ -84,42 +121,7 @@ async def apply_demo_canonical_copies(session) -> int:
     created = 0
     for source_name, target_name in DEMO_CANONICAL_COPIES:
         result = await session.execute(
-            text(
-                """
-                INSERT INTO vn_dishes (
-                    dish_name,
-                    total_calories,
-                    total_protein_g,
-                    total_fat_g,
-                    total_carbs_g,
-                    total_fiber_g,
-                    typical_grams,
-                    typical_grams_source,
-                    typical_grams_confidence,
-                    typical_grams_rule,
-                    source
-                )
-                SELECT
-                    :target_name,
-                    source_row.total_calories,
-                    source_row.total_protein_g,
-                    source_row.total_fat_g,
-                    source_row.total_carbs_g,
-                    source_row.total_fiber_g,
-                    source_row.typical_grams,
-                    source_row.typical_grams_source,
-                    source_row.typical_grams_confidence,
-                    source_row.typical_grams_rule,
-                    'demo_alias'
-                FROM vn_dishes AS source_row
-                WHERE source_row.dish_name = :source_name
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM vn_dishes AS existing
-                      WHERE lower(existing.dish_name) = lower(:target_name)
-                  )
-                """
-            ),
+            DEMO_CANONICAL_COPY_SQL,
             {"source_name": source_name, "target_name": target_name},
         )
         created += max(int(result.rowcount or 0), 0)

@@ -91,6 +91,19 @@ def test_api_image_includes_google_auth_used_during_startup() -> None:
     assert '"requests>=' in project
 
 
+def test_api_image_pins_security_dependencies_past_scanned_vulnerabilities() -> None:
+    requirements = (ROOT / "requirements.api.txt").read_text()
+    lockfile = (ROOT / "requirements.api.lock").read_text()
+    project = (ROOT / "pyproject.toml").read_text()
+
+    assert "cryptography>=50.0.0,<51" in requirements
+    assert "cryptography==50.0.0" in lockfile
+    assert '"cryptography>=50.0.0,<51"' in project
+    assert "h2>=4.4.1,<5" in requirements
+    assert "h2==4.4.1" in lockfile
+    assert '"h2>=4.4.1,<5"' in project
+
+
 def test_api_image_includes_rag_import_dependencies() -> None:
     requirements = (ROOT / "requirements.api.txt").read_text()
     lockfile = (ROOT / "requirements.api.lock").read_text()
