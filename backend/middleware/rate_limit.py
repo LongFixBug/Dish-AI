@@ -31,6 +31,7 @@ POLICIES = {
     ("POST", "/api/v1/analyze/vision-only"): RateLimitPolicy(3, 60),
     ("POST", "/api/v1/analyze"): RateLimitPolicy(10, 60),
     ("POST", "/api/v1/rag/chat"): RateLimitPolicy(10, 60),
+    ("POST", "/api/v1/chat/stream"): RateLimitPolicy(10, 60),
     ("POST", "/api/v1/feedback/training-data"): RateLimitPolicy(20, 3600),
     ("GET", "/ready"): RateLimitPolicy(30, 60),
 }

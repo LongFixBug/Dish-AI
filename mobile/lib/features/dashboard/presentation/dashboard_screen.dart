@@ -1,5 +1,6 @@
 import 'package:balance/core/state/app_scope.dart';
 import 'package:balance/core/theme/balance_theme.dart';
+import 'package:balance/core/widgets/balance_app_bar.dart';
 import 'package:balance/core/widgets/balance_page_route.dart';
 import 'package:balance/core/widgets/balance_screen_motion.dart';
 import 'package:balance/core/widgets/food_photo.dart';
@@ -7,6 +8,7 @@ import 'package:balance/core/widgets/graph_paper_background.dart';
 import 'package:balance/core/widgets/pressable_button.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
 import 'package:balance/features/analyze/presentation/analyze_screen.dart';
+import 'package:balance/features/chat/presentation/chat_screen.dart';
 import 'package:balance/features/journal/domain/journal_entry.dart';
 import 'package:balance/features/nutrition/presentation/nutrition_goal_screen.dart';
 import 'package:balance/features/rag/presentation/rag_chat_screen.dart';
@@ -112,6 +114,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       child: _DashboardHeader(
                         name: profile?.name ?? 'An',
                         date: state == null ? DateTime(2024, 5, 15, 9) : today,
+                        onChat: () => _open(context, const ChatScreen()),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -205,10 +208,15 @@ class _DashboardScreenState extends State<DashboardScreen>
 }
 
 class _DashboardHeader extends StatelessWidget {
-  const _DashboardHeader({required this.name, required this.date});
+  const _DashboardHeader({
+    required this.name,
+    required this.date,
+    required this.onChat,
+  });
 
   final String name;
   final DateTime date;
+  final VoidCallback onChat;
 
   @override
   Widget build(BuildContext context) {
@@ -232,6 +240,12 @@ class _DashboardHeader extends StatelessWidget {
               ),
             ],
           ),
+        ),
+        const SizedBox(width: 10),
+        BalanceIconButton(
+          tooltip: 'Hỏi Balance',
+          icon: Icons.chat_bubble_outline_rounded,
+          onPressed: onChat,
         ),
       ],
     );

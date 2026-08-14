@@ -234,3 +234,57 @@ flutter run
 - RAGAS/LLM-as-judge.
 
 Chỉ thêm các phần đó sau khi corpus lớn hơn và retrieval V0 có golden evaluation.
+
+## Nâng cấp Agentic chat: `POST /api/v1/chat/stream`
+
+RAG V0 vẫn giữ nguyên ở `/api/v1/rag/chat`. Chat nâng cao chạy **song song**
+ở `/api/v1/chat/stream`, vì vậy nếu có sự cố vẫn có thể quay về V0 ngay.
+
+Luồng của endpoint mới:
+
+```text
+message + tối đa 12 history messages
+-> planner LLM tạo plan JSON hợp lệ
+-> server kiểm tra route và tool allowlist
+-> tool lấy dữ liệu PostgreSQL / Qdrant
+-> LLM tạo câu trả lời theo từng token
+-> SSE: meta -> delta... -> sources -> done
+```
+
+- `backend/api/chat.py`: mở endpoint SSE đã yêu cầu đăng nhập.
+- `schemas/chat.py`: giới hạn kích thước message/history và chỉ chấp nhận các
+  route/tool đã định nghĩa trước.
+- `backend/services/chat_service.py`: điều phối planner, tool và câu trả lời.
+- `backend/services/chat_tools.py`: kiểm tra arguments của tool; LLM không thể
+  truyền `user_id` hay SQL.
+- `backend/services/chat_llm.py`: gọi llama.cpp theo hai cách: JSON cho planner,
+  stream cho câu trả lời.
+- `mobile/lib/features/chat/`: giữ history trong bộ nhớ của màn chat và hiển thị
+  token ngay khi SSE trả về.
+
+`search_catalog` có thể dùng Qdrant để tìm mờ, nhưng luôn đọc record và dinh
+dưỡng cuối từ PostgreSQL. Tool cá nhân cũng nhận `user_id` từ access token,
+không nhận từ planner. Vì vậy model chỉ *đề xuất việc cần tra*, còn server vẫn
+quyết định quyền và dữ liệu nào được trả về.
+
+Ví dụ request:
+
+```json
+{
+  "message": "Phở bò bao nhiêu calo?",
+  "history": [],
+  "timezone": "Asia/Ho_Chi_Minh"
+}
+```
+
+Client phải đọc các event SSE theo thứ tự:
+
+- `meta`: route planner chọn và nguồn ban đầu;
+- `delta`: nối `text` vào câu trả lời đang hiển thị;
+- `sources`: thay danh sách citation khi stream kết thúc;
+- `done`: đóng trạng thái đang trả lời;
+- `error`: hiển thị lỗi thân thiện, không lộ lỗi server.
+
+Đây là "agentic" ở mức có kiểm soát: planner được chọn tối đa 3 tool trong
+allowlist. Chưa dùng LangGraph vì workflow hiện tại chỉ là một plan tuyến tính,
+đọc và kiểm tra được bằng Python thường.
