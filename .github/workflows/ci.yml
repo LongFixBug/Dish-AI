@@ -33,7 +33,7 @@ jobs:
       QDRANT_URL: http://localhost:6333
       DEBUG: "false"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           version: "0.11.7"
@@ -76,7 +76,7 @@ jobs:
       run:
         working-directory: mobile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.44.8"
@@ -97,7 +97,7 @@ jobs:
   container:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker build --tag foodai-api:ci .
       - name: Smoke test live endpoint
         run: |
