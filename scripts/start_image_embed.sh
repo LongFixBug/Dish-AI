@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Khởi động SigLIP 2 image embedding sidecar (:8082) cho FoodAI
+# Khởi động image embedding sidecar (:8082) cho FoodAI
 # Usage: bash scripts/start_image_embed.sh
+# Mặc định SigLIP2; DINOv2 chỉ dùng thử nghiệm: IMAGE_EMBED_BACKEND=dinov2 \
+# bash scripts/start_image_embed.sh
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -17,15 +19,15 @@ fi
 echo "🚀 Starting image embedding server..."
 
 cd "$PROJECT_ROOT" || exit 1
-if [ ! -x "$PROJECT_ROOT/.venv/bin/uvicorn" ]; then
-    echo "❌ Chưa có .venv/bin/uvicorn — chạy 'uv sync' trước."
+if [ ! -x "$PROJECT_ROOT/.venv/bin/python" ]; then
+    echo "❌ Chưa có .venv/bin/python — chạy 'uv sync' trước."
     exit 1
 fi
 
 # Chạy binary trong venv trực tiếp để PID ghi lại chính là server. Nếu dùng
 # `uv run`, PID thuộc tiến trình bọc và có thể chết khi shell gọi script kết thúc,
 # trong khi tiến trình con không còn được dev_down.sh quản lý chính xác.
-nohup "$PROJECT_ROOT/.venv/bin/uvicorn" ml.serving.image_embed_server:app \
+nohup "$PROJECT_ROOT/.venv/bin/python" -m uvicorn ml.serving.image_embed_server:app \
     --host 0.0.0.0 \
     --port 8082 \
     > "$LOG_DIR/image-embed.log" 2>&1 < /dev/null &

@@ -19,7 +19,7 @@ fi
 echo "🚀 Starting subject segmentation server..."
 
 cd "$PROJECT_ROOT" || exit 1
-nohup uv run uvicorn ml.serving.segment_server:app \
+nohup "$PROJECT_ROOT/.venv/bin/python" -m uvicorn ml.serving.segment_server:app \
     --host 0.0.0.0 \
     --port 8083 \
     > "$LOG_DIR/segment.log" 2>&1 < /dev/null &

@@ -323,12 +323,18 @@ class AppState extends ChangeNotifier {
   Future<bool> syncJournalEntry(
     JournalEntry entry, {
     String source = 'manual',
+    String? analyzeSource,
   }) async {
     final gateway = _mealGateway;
     if (gateway == null || !_isSignedIn) return false;
     try {
       final token = await validAccessToken();
-      await gateway.upsert(entry, accessToken: token, source: source);
+      await gateway.upsert(
+        entry,
+        accessToken: token,
+        source: source,
+        analyzeSource: analyzeSource,
+      );
       return true;
     } on Object {
       return false;

@@ -1,8 +1,8 @@
-"""Index labelled dish photos into the derived Qdrant ``dish_images`` collection.
+"""Index labelled dish photos into the configured Qdrant image collection.
 
 The folder layout on disk is authoritative: ``<root>/<class_slug>/*.jpg``.
-Each image is embedded through the SigLIP sidecar and published with a
-deterministic uuid5 id so re-running the command stays idempotent.
+Each image is embedded through the configured image sidecar and published
+with a deterministic uuid5 id so re-running the command stays idempotent.
 
 Usage:
     uv run python scripts/index_dish_images.py
@@ -33,6 +33,7 @@ IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 EMBED_BATCH_SIZE = 16
 DEFAULT_CAP_PER_CLASS = 50
 DEFAULT_SOURCE = "seed"
+CANDIDATE_ROOT_NAME = "references_candidate"
 
 logger = logging.getLogger("index_dish_images")
 
@@ -111,6 +112,102 @@ def load_manifest_image_paths(root: Path, manifest_path: Path) -> dict[str, list
     return {slug: sorted(paths) for slug, paths in sorted(selected.items())}
 
 
+def require_reviewed_candidate_manifest(
+    root: Path,
+    manifest_path: Path | None,
+    *,
+    demo_unverified: bool = False,
+) -> None:
+    """Block accidental publication of an unreviewed crawl candidate.
+
+    Status flags alone are not evidence: every indexed path must also have a
+    review record and a source/license record.  This keeps a future operator
+    from changing two strings in the JSON and bypassing the candidate gate.
+    """
+    if root.name != CANDIDATE_ROOT_NAME:
+        return
+    if manifest_path is None:
+        raise ValueError(
+            "references_candidate chỉ được index khi có manifest review và provenance; "
+            "demo cần demo_only=true và --demo-unverified"
+        )
+    value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError("Candidate manifest phải là JSON object")
+    is_demo_manifest = (
+        value.get("demo_only") is True
+        and value.get("review_status") == "reviewed"
+        and value.get("provenance_status") == "unverified_demo"
+    )
+    if demo_unverified:
+        if not is_demo_manifest:
+            raise ValueError(
+                "--demo-unverified cần manifest demo_only=true, "
+                "review_status=reviewed và provenance_status=unverified_demo"
+            )
+    elif (
+        value.get("review_status") != "reviewed"
+        or value.get("provenance_status") != "reviewed"
+    ):
+        raise ValueError(
+            "references_candidate cần manifest có review_status=reviewed "
+            "và provenance_status=reviewed; nếu là demo phải dùng --demo-unverified"
+        )
+    approved_paths = value.get("approved_paths")
+    reviewed_paths = value.get("reviewed_paths")
+    if (
+        not isinstance(approved_paths, list)
+        or not all(isinstance(path, str) for path in approved_paths)
+        or not isinstance(reviewed_paths, list)
+        or not all(isinstance(path, str) for path in reviewed_paths)
+        or set(approved_paths) != set(reviewed_paths)
+    ):
+        raise ValueError(
+            "references_candidate cần reviewed_paths khớp toàn bộ approved_paths"
+        )
+
+    if demo_unverified:
+        return
+
+    records = value.get("provenance_records")
+    if not isinstance(records, list):
+        raise ValueError(
+            "references_candidate cần provenance_records cho toàn bộ approved_paths"
+        )
+    by_path: dict[str, dict] = {}
+    for record in records:
+        if not isinstance(record, dict) or not isinstance(record.get("path"), str):
+            raise ValueError("provenance_records có path không hợp lệ")
+        path = record["path"]
+        if path in by_path:
+            raise ValueError(f"provenance_records trùng path: {path}")
+        by_path[path] = record
+    if set(by_path) != set(approved_paths):
+        raise ValueError(
+            "provenance_records phải phủ đúng toàn bộ approved_paths"
+        )
+    allowed_license_statuses = {
+        "internal_permission",
+        "user_consent",
+        "public_domain",
+        "cc0",
+        "cc_by",
+        "licensed",
+    }
+    for path in approved_paths:
+        record = by_path[path]
+        source_url = record.get("source_url")
+        license_status = record.get("license_status")
+        if (
+            not isinstance(source_url, str)
+            or not source_url.startswith(("http://", "https://"))
+            or license_status not in allowed_license_statuses
+        ):
+            raise ValueError(
+                f"provenance chưa đủ source_url/license_status: {path}"
+            )
+
+
 def read_valid_image(path: Path) -> bytes | None:
     """Return the raw bytes of one decodable image, or None with a warning."""
     try:
@@ -147,6 +244,7 @@ async def _index_class(
     class_slug: str,
     source: str,
     embed_images,
+    batch_size: int,
 ) -> int:
     """Embed one class in batches and publish the vectors; return the count."""
     readable = [(path, read_valid_image(path)) for path in paths]
@@ -162,9 +260,9 @@ async def _index_class(
     ]
     payloads = [data for _, data in readable if data is not None]
     indexed = 0
-    for offset in range(0, len(entries), EMBED_BATCH_SIZE):
-        batch_entries = entries[offset : offset + EMBED_BATCH_SIZE]
-        batch_bytes = payloads[offset : offset + EMBED_BATCH_SIZE]
+    for offset in range(0, len(entries), batch_size):
+        batch_entries = entries[offset : offset + batch_size]
+        batch_bytes = payloads[offset : offset + batch_size]
         vectors = await embed_images(batch_bytes)
         indexed += await upsert_dish_image_vectors(batch_entries, vectors)
     return indexed
@@ -177,6 +275,7 @@ async def index_root(
     source: str,
     embed_images,
     selected_paths: dict[str, list[Path]] | None = None,
+    batch_size: int = EMBED_BATCH_SIZE,
 ) -> dict[str, int]:
     """Index every class folder under one root; return per-class counts."""
     per_class = selected_paths if selected_paths is not None else collect_image_paths(root, cap)
@@ -185,7 +284,7 @@ async def index_root(
     for class_slug, paths in per_class.items():
         dish_name = resolve_dish_name(class_slug, class_names)
         counts[class_slug] = await _index_class(
-            paths, dish_name, class_slug, source, embed_images,
+            paths, dish_name, class_slug, source, embed_images, batch_size,
         )
     return counts
 
@@ -205,16 +304,23 @@ async def run(
     force: bool = False,
     class_names_path: Path | None = None,
     manifest_path: Path | None = None,
+    demo_unverified: bool = False,
+    batch_size: int = EMBED_BATCH_SIZE,
 ) -> dict[str, int]:
-    """Index all roots into ``dish_images`` and print a per-class summary."""
+    """Index all roots into the configured image collection and print a summary."""
     if cap < 1:
         raise ValueError("--cap must be at least 1.")
+    if batch_size < 1:
+        raise ValueError("--batch-size must be at least 1.")
     missing = [str(root) for root in roots if not root.is_dir()]
     if missing:
         raise FileNotFoundError(f"Image root(s) not found: {', '.join(missing)}")
 
     if manifest_path is not None and len(roots) != 1:
         raise ValueError("--manifest chỉ hỗ trợ một album root")
+    require_reviewed_candidate_manifest(
+        roots[0], manifest_path, demo_unverified=demo_unverified,
+    )
     selected_paths = (
         load_manifest_image_paths(roots[0], manifest_path)
         if manifest_path is not None
@@ -233,6 +339,7 @@ async def run(
             source,
             embed_images,
             selected_paths=selected_paths if index == 0 else None,
+            batch_size=batch_size,
         )
         totals = _merge_counts(totals, counts)
 
@@ -245,7 +352,7 @@ async def run(
 def build_parser() -> argparse.ArgumentParser:
     """Build the image indexing command line interface."""
     parser = argparse.ArgumentParser(
-        description="Index labelled dish photos into the Qdrant dish_images collection",
+        description="Index labelled dish photos into the configured Qdrant image collection",
     )
     parser.add_argument(
         "roots",
@@ -261,6 +368,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum images per class per root.",
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=EMBED_BATCH_SIZE,
+        help="Number of images embedded per request (reduce on low-memory machines).",
+    )
+    parser.add_argument(
         "--source",
         default=DEFAULT_SOURCE,
         help='Payload source tag for the indexed points (default "seed").',
@@ -268,13 +381,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Recreate the dish_images collection before indexing.",
+        help="Recreate the configured image collection before indexing.",
     )
     parser.add_argument(
         "--manifest",
         type=Path,
         default=None,
         help="JSON manifest of explicitly reviewed relative album paths.",
+    )
+    parser.add_argument(
+        "--demo-unverified",
+        action="store_true",
+        dest="demo_unverified",
+        help=(
+            "Allow an explicitly reviewed candidate manifest marked demo_only; "
+            "does not satisfy production provenance requirements."
+        ),
     )
     return parser
 
@@ -290,6 +412,8 @@ def main() -> None:
         source=arguments.source,
         force=arguments.force,
         manifest_path=arguments.manifest,
+        demo_unverified=arguments.demo_unverified,
+        batch_size=arguments.batch_size,
     ))
 
 

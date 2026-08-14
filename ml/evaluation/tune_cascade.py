@@ -1,8 +1,9 @@
 """Offline tuner cho ngưỡng cascade nhận diện bằng ảnh (Phase 2).
 
 Với mỗi ảnh trong ``--images-dir`` (layout ``<class_slug>/*.jpg``), embed qua
-sidecar SigLIP (``backend.services.image_embeddings``) rồi lấy top dish
-candidates từ Qdrant (``backend.services.dish_image_index``). Sau đó sweep
+image sidecar (mặc định DINOv2-S/14, ``backend.services.image_embeddings``)
+rồi lấy top dish candidates từ Qdrant (``backend.services.dish_image_index``).
+Sau đó sweep
 cặp ngưỡng (t1 = best_score, t2 = margin top1−top2):
 
 - coverage  = % ảnh có top1.best_score ≥ t1 và margin ≥ t2
@@ -11,7 +12,8 @@ cặp ngưỡng (t1 = best_score, t2 = margin top1−top2):
 Phần sweep là pure function trên tuple (truth, top1_name, top1_score, margin)
 đã tính sẵn — unit test không cần Qdrant/sidecar.
 
-Cần hạ tầng khi chạy thật: sidecar embedding (8082) + Qdrant có dish_images.
+Cần hạ tầng khi chạy thật: image sidecar (8082) + Qdrant có collection theo
+``IMAGE_EMBED_COLLECTION``.
 
 Usage:
     python -m ml.evaluation.tune_cascade --images-dir data/images/val
@@ -190,6 +192,7 @@ async def collect_observations(
     *,
     limit_per_class: int = 0,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    score_mode: str = "best",
 ) -> list[CascadeObservation]:
     """Embed từng batch ảnh rồi truy vấn Qdrant lấy candidates.
 
@@ -218,7 +221,7 @@ async def collect_observations(
                 f"Embed batch ảnh thất bại (bắt đầu từ {batch[0][1]}): {exc}"
             ) from exc
         for (slug, _path), vector in zip(batch, vectors, strict=True):
-            candidates = await top_dish_candidates(vector)
+            candidates = await top_dish_candidates(vector, score_mode=score_mode)
             observations.append(build_observation(truths[slug], candidates))
     return observations
 
@@ -232,6 +235,7 @@ def build_report(
     recommended: ThresholdResult | None,
     *,
     images_dir: str,
+    score_mode: str,
     min_precision: float,
     timestamp: str,
 ) -> dict:
@@ -240,6 +244,7 @@ def build_report(
         "timestamp": timestamp,
         "suite": "cascade_tuning",
         "images_dir": images_dir,
+        "score_mode": score_mode,
         "min_precision": min_precision,
         "n_images": len(observations),
         "n_no_candidates": sum(1 for o in observations if o.top1_name is None),
@@ -277,6 +282,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--min-precision", type=float, default=DEFAULT_MIN_PRECISION)
     parser.add_argument("--limit-per-class", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
+    parser.add_argument(
+        "--score-mode",
+        choices=("best", "top3_blend"),
+        default="best",
+        help="Album score to evaluate; promotion still requires a passing report.",
+    )
     return parser.parse_args(argv)
 
 
@@ -290,6 +301,7 @@ async def main(argv: Sequence[str] | None = None) -> None:
             truths,
             limit_per_class=args.limit_per_class,
             batch_size=max(1, args.batch_size),
+            score_mode=args.score_mode,
         )
     finally:
         # Best-effort: đóng client sidecar nếu module đã import được.
@@ -323,6 +335,7 @@ async def main(argv: Sequence[str] | None = None) -> None:
     report = build_report(
         observations, frontier, recommended,
         images_dir=str(args.images_dir),
+        score_mode=args.score_mode,
         min_precision=args.min_precision,
         timestamp=timestamp,
     )

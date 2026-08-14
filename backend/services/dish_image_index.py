@@ -1,21 +1,23 @@
 """Qdrant index of reviewed reference dish images.
 
 The image files and their labels remain the source of truth. Qdrant stores
-only derived SigLIP vectors plus the minimum payload needed to vote for a
-dish name at recognition time.
+only derived image-encoder vectors plus the minimum payload needed to vote for
+a dish name at recognition time.
 """
 
 import asyncio
 from dataclasses import dataclass
+from typing import Literal
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
 
 from backend.config import settings
 
-DISH_IMAGES_COLLECTION = "dish_images"
-IMAGE_VECTOR_SIZE = 768
+DISH_IMAGES_COLLECTION = settings.image_embed_collection
+IMAGE_VECTOR_SIZE = settings.image_embed_dim
 SCROLL_PAGE_SIZE = 256
+CandidateScoreMode = Literal["best", "top3_blend"]
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,31 @@ class DishCandidateScore:
     dish_name: str
     best_score: float
     votes: int
+    class_slug: str | None = None
+
+
+def aggregate_candidate_score(
+    scores: list[float],
+    *,
+    mode: CandidateScoreMode,
+) -> float:
+    """Return one calibrated album score from a dish's nearest references.
+
+    ``best`` is the existing production metric. ``top3_blend`` gives a small
+    reward to repeated, independent-looking matches without using raw vote
+    counts: classes with more indexed photos must not win simply because they
+    have a larger album. The returned score stays in the cosine-score range.
+    """
+    if not scores:
+        return 0.0
+    ordered = sorted((float(score) for score in scores), reverse=True)
+    best = ordered[0]
+    if mode == "best":
+        return best
+    if mode == "top3_blend":
+        mean_top3 = sum(ordered[:3]) / min(3, len(ordered))
+        return round(0.75 * best + 0.25 * mean_top3, 4)
+    raise ValueError(f"Unsupported dish image score mode: {mode!r}")
 
 
 @dataclass(frozen=True)
@@ -146,16 +173,25 @@ async def top_dish_candidates(
     vector: list[float],
     point_limit: int = 30,
     dish_limit: int = 8,
+    score_mode: CandidateScoreMode | None = None,
 ) -> list[DishCandidateScore]:
-    """Group image hits by dish and rank dishes by their best score."""
+    """Group image hits by dish and rank them with the configured score mode."""
     hits = await search_dish_images(vector, limit=point_limit)
-    grouped: dict[str, tuple[float, int]] = {}
+    grouped: dict[str, tuple[list[float], str | None]] = {}
     for hit in hits:
-        best_score, votes = grouped.get(hit.dish_name, (hit.score, 0))
-        grouped[hit.dish_name] = (max(best_score, hit.score), votes + 1)
+        scores, class_slug = grouped.setdefault(hit.dish_name, ([], hit.class_slug))
+        scores.append(hit.score)
+        if class_slug is None:
+            grouped[hit.dish_name] = (scores, hit.class_slug)
+    mode = score_mode or settings.image_match_score_mode
     candidates = [
-        DishCandidateScore(dish_name=dish_name, best_score=best_score, votes=votes)
-        for dish_name, (best_score, votes) in grouped.items()
+        DishCandidateScore(
+            dish_name=dish_name,
+            best_score=aggregate_candidate_score(scores, mode=mode),
+            votes=len(scores),
+            class_slug=class_slug,
+        )
+        for dish_name, (scores, class_slug) in grouped.items()
     ]
     ranked = sorted(candidates, key=lambda item: item.best_score, reverse=True)
     return ranked[:dish_limit]

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "role": "efficientnet_tier_a_ood",
-  "reviewed_at": "2026-07-30",
+  "reviewed_at": "2026-08-02",
   "reason": "Excluded from Tier A because web-crawled labels are noisy or class data is too small; keep for open-set calibration and album review.",
   "classes": [
     "banh_trang_tron",

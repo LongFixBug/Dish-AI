@@ -1,0 +1,2783 @@
+{
+  "created_at": "2026-08-07T02:34:55.992816+00:00",
+  "moved_count": 462,
+  "moves": [
+    {
+      "source": "data/images/reference_backups",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/reference_backups",
+      "reason": "inactive_backup_all_1160_images_exactly_duplicate_of_current_flow",
+      "kind": "directory"
+    },
+    {
+      "source": "data/images/references_candidate/hu_tieu/hu_tieu_commons_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/references_candidate/hu_tieu/hu_tieu_commons_0.jpg",
+      "reason": "exact_duplicate_of_published_reference",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/references_candidate/pho_bo/pho_bo_commons_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/references_candidate/pho_bo/pho_bo_commons_0.jpg",
+      "reason": "exact_duplicate_of_published_reference",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_beo/banh_beo_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_beo/banh_beo_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_bot_loc/banh_bot_loc_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_bot_loc/banh_bot_loc_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_can/banh_can_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_can/banh_can_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_canh/banh_canh_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_canh/banh_canh_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_chung/banh_chung_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_chung/banh_chung_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_cuon/banh_cuon_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_cuon/banh_cuon_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_gio/banh_gio_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_gio/banh_gio_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_khot/banh_khot_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_khot/banh_khot_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_mi_kep_thit/banh_mi_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_mi_kep_thit/banh_mi_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_pia/banh_pia_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_pia/banh_pia_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_tet/banh_tet_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_tet/banh_tet_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_trang_nuong/banh_trang_nuong_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_trang_nuong/banh_trang_nuong_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/banh_xeo/banh_xeo_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/banh_xeo/banh_xeo_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_bo_hue/bun_bo_hue_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_bo_hue/bun_bo_hue_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_dau_mam_tom/bun_dau_mam_tom_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_mam/bun_mam_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_mam/bun_mam_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_rieu/bun_rieu_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_rieu/bun_rieu_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/bun_thit_nuong/bun_thit_nuong_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/bun_thit_nuong/bun_thit_nuong_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_kho_to/ca_kho_to_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_kho_to/ca_kho_to_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/ca_phe_sua_da/ca_phe_sua_da_108.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/ca_phe_sua_da/ca_phe_sua_da_108.jpg",
+      "reason": "exact_duplicate_same_label:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/canh_chua/canh_chua_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/canh_chua/canh_chua_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/cao_lau/cao_lau_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/cao_lau/cao_lau_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/chao_long/chao_long_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/chao_long/chao_long_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/com_tam/com_tam_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/com_tam/com_tam_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/goi_cuon/goi_cuon_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/goi_cuon/goi_cuon_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/hu_tieu/hu_tieu_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/hu_tieu/hu_tieu_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/mi_quang/mi_quang_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/mi_quang/mi_quang_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/nem_chua/nem_chua_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/nem_chua/nem_chua_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_14.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_14.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/pho_bo/pho_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/pho_bo/pho_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_0.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_0.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_1.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_1.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_10.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_10.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_11.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_11.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_12.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_12.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_13.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_13.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_2.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_2.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_3.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_3.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_4.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_4.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_5.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_5.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_6.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_6.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_7.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_7.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_8.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_8.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/test/xoi_xeo/xoi_xeo_9.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/test/xoi_xeo/xoi_xeo_9.jpg",
+      "reason": "exact_duplicate_of_golden:test",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/banh_chung/banh_chung_266.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/banh_chung/banh_chung_266.jpg",
+      "reason": "exact_duplicate_of_golden:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/banh_xeo/482780074_17868450339325541_4768177913551819654_n (1).jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/banh_xeo/482780074_17868450339325541_4768177913551819654_n (1).jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/banh_xeo/501663227_17908847853114337_5040378470045681934_n (1).jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/banh_xeo/501663227_17908847853114337_5040378470045681934_n (1).jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/banh_xeo/501777626_17908847874114337_4561345475160835951_n (1).jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/banh_xeo/501777626_17908847874114337_4561345475160835951_n (1).jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/banh_xeo/569227994_17904358503271206_572151931015086440_n (1).jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/banh_xeo/569227994_17904358503271206_572151931015086440_n (1).jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/banh_xeo/610902964_17910724860289435_8970169180330034446_n (1).jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/banh_xeo/610902964_17910724860289435_8970169180330034446_n (1).jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/banh_xeo/615245466_17910724839289435_6695627554354520408_n (1).jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/banh_xeo/615245466_17910724839289435_6695627554354520408_n (1).jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/banh_xeo/704097108_17968941105106893_5572446541786828943_n (1).jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/banh_xeo/704097108_17968941105106893_5572446541786828943_n (1).jpg",
+      "reason": "exact_duplicate_of_feedback",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/banh_xeo/723208259_17969694876119798_8619827830288891131_n (1).jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/banh_xeo/723208259_17969694876119798_8619827830288891131_n (1).jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_101.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_101.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_106.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_106.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_109.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_109.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_121.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_121.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_150.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_150.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_151.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_151.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_152.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_152.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_153.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_153.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_154.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_154.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_155.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_155.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_173.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_173.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_182.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_182.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_185.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_185.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_190.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_190.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_213.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_213.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_232.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_232.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_242.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_242.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_254.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_254.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_260.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_260.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_265.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_265.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/ca_phe_sua_da/ca_phe_sua_da_301.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/ca_phe_sua_da/ca_phe_sua_da_301.jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/com_tam/580485863_17902202517298973_4528385643779851740_n.webp",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/com_tam/580485863_17902202517298973_4528385643779851740_n.webp",
+      "reason": "exact_duplicate_of_feedback",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/com_tam/662239605_17893887840441895_565227845419533397_n (1).jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/com_tam/662239605_17893887840441895_565227845419533397_n (1).jpg",
+      "reason": "exact_duplicate_same_label:train",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/xoi_xeo/535899631_17921572989110436_4565619011835190466_n.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/xoi_xeo/535899631_17921572989110436_4565619011835190466_n.jpg",
+      "reason": "exact_duplicate_of_feedback",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/train/xoi_xeo/705194311_17930606877289131_3001736963985431145_n.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/train/xoi_xeo/705194311_17930606877289131_3001736963985431145_n.jpg",
+      "reason": "exact_duplicate_of_feedback",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/val/banh_pia/banh_pia_40.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/val/banh_pia/banh_pia_40.jpg",
+      "reason": "exact_duplicate_of_golden:val",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/val/ca_phe_sua_da/ca_phe_sua_da_28.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/val/ca_phe_sua_da/ca_phe_sua_da_28.jpg",
+      "reason": "exact_duplicate_same_label:val",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/val/ca_phe_sua_da/ca_phe_sua_da_33.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/val/ca_phe_sua_da/ca_phe_sua_da_33.jpg",
+      "reason": "exact_duplicate_same_label:val",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/val/ca_phe_sua_da/ca_phe_sua_da_49.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/val/ca_phe_sua_da/ca_phe_sua_da_49.jpg",
+      "reason": "exact_duplicate_same_label:val",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/val/ca_phe_sua_da/ca_phe_sua_da_51.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/val/ca_phe_sua_da/ca_phe_sua_da_51.jpg",
+      "reason": "exact_duplicate_same_label:val",
+      "kind": "file"
+    },
+    {
+      "source": "data/images/val/ca_phe_sua_da/ca_phe_sua_da_52.jpg",
+      "destination": "data/quarantine/duplicate_cleanup_20260807T023445Z/data/images/val/ca_phe_sua_da/ca_phe_sua_da_52.jpg",
+      "reason": "exact_duplicate_same_label:val",
+      "kind": "file"
+    }
+  ],
+  "preserved_for_review": [
+    "same-byte images with conflicting labels",
+    "all candidate-to-candidate duplicates",
+    "cross_split_duplicates_backup because 37 of 60 images are not exact duplicates"
+  ]
+}

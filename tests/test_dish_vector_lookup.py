@@ -42,6 +42,33 @@ async def test_dish_lookup_resolves_qdrant_uuid_through_postgres(monkeypatch) ->
     assert result.dish_name == "Cơm tấm sườn bì chả"
 
 
+async def test_dish_lookup_prefers_more_specific_token_overlap(monkeypatch) -> None:
+    candidates = [
+        SimpleNamespace(id="short-id", dish_name="Bún bò nhừ"),
+        SimpleNamespace(id="hue-id", dish_name="Bún bò giò heo (Huế)"),
+    ]
+
+    class FakeSession:
+        async def execute(self, _statement):
+            return SimpleNamespace(
+                scalars=lambda: SimpleNamespace(all=lambda: candidates)
+            )
+
+    async def fake_search(query, catalog_type, limit):
+        return [
+            CatalogHit("short-id", "Bún bò nhừ", 0.90),
+            CatalogHit("hue-id", "Bún bò giò heo (Huế)", 0.88),
+        ]
+
+    monkeypatch.setattr(dishes, "search_catalog", fake_search)
+
+    result = await dishes._lookup_institute_by_vector(
+        FakeSession(), "Bún bò Huế"
+    )
+
+    assert result.dish_name == "Bún bò giò heo (Huế)"
+
+
 async def test_ingredient_lookup_resolves_qdrant_uuid_through_postgres(monkeypatch) -> None:
     ingredient = SimpleNamespace(id="ingredient-id", ingredient_name="Sữa bò")
 

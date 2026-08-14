@@ -1,4 +1,16 @@
 services:
+  food-gate:
+    profiles: ["food-gate"]
+    build:
+      context: .
+      dockerfile: Dockerfile.food-gate
+    environment:
+      FOOD_GATE_CHECKPOINT_PATH: /app/checkpoints/food_gate/siglip2_food_gate_best.pt
+      FOOD_GATE_BLOCK_THRESHOLD: ${FOOD_GATE_BLOCK_THRESHOLD:-0.90}
+      FOOD_GATE_SERVICE_TOKEN: ${FOOD_GATE_SERVICE_TOKEN:-}
+    ports:
+      - "127.0.0.1:8084:8084"
+
   postgres:
     image: pgvector/pgvector:pg16
     environment:

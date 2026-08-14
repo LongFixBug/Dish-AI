@@ -1,0 +1,9 @@
+schemaVersion: 1
+sessionDefaults:
+  workspacePath: /Users/nguyenhailong/Documents/project/food-ai/mobile/ios/Runner.xcworkspace
+  scheme: Runner
+  configuration: Debug
+  simulatorId: AE123CAD-68AB-4DB4-867E-61A471A94DFF
+  useLatestOS: true
+  simulatorName: iPhone 17 Pro
+  simulatorPlatform: iOS Simulator

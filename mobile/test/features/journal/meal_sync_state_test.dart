@@ -61,6 +61,7 @@ class _FakeMealGateway implements MealGateway {
     JournalEntry entry, {
     required String accessToken,
     required String source,
+    String? analyzeSource,
   }) async {
     entries.add(entry);
     sources.add(source);

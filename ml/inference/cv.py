@@ -1,8 +1,15 @@
-"""Local EfficientNet inference for Vietnamese food classification."""
+"""Legacy EfficientNet inference kept only for offline rollback/evaluation.
 
+The online API no longer imports this module; current image recognition uses
+the Vision API directly.
+"""
+
+import base64
 import json
 from pathlib import Path
 from typing import Any, Optional
+
+import httpx
 
 from backend.config import settings
 from ml.model_registry import load_manifest, validate_manifest
@@ -236,5 +243,88 @@ class CVModel:
         }
 
 
-# Singleton instance. Production refuses unmanifested local weights.
-cv_model = CVModel(require_manifest=settings.is_production)
+class RemoteCVModel:
+    """EfficientNet proxy backed by the private Local-Vision service.
+
+    It intentionally mirrors the small surface used by ``analyze.py`` so the
+    fusion logic is identical whether CV runs in-process or in another Railway
+    container. ``load`` warms both CV and SigLIP; a half-ready sidecar stays
+    disabled and the request safely falls back to Vision.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        client: httpx.Client | None = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self._client = client or httpx.Client(timeout=300.0)
+        self._loaded = False
+        self.model_version = "unavailable"
+        self.serving_threshold = DEFAULT_SERVING_THRESHOLD
+        self.classes: list[str] = []
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._loaded
+
+    def load(self) -> None:
+        """Warm both remote recognizers and publish their serving metadata."""
+        self._loaded = False
+        response = self._client.post(f"{self.base_url}/v1/warmup")
+        response.raise_for_status()
+        payload = response.json()
+        if not (
+            payload.get("cv_loaded") is True
+            and payload.get("image_embed_loaded") is True
+        ):
+            return
+        self.model_version = str(
+            payload.get("cv_model_version") or "remote-unversioned"
+        )
+        self.serving_threshold = min(
+            1.0,
+            max(
+                0.5,
+                float(
+                    payload.get(
+                        "cv_serving_threshold",
+                        DEFAULT_SERVING_THRESHOLD,
+                    )
+                ),
+            ),
+        )
+        self._loaded = True
+
+    def predict(self, image_path: str | Path) -> dict:
+        """Classify one image through the remote EfficientNet endpoint."""
+        if not self._loaded:
+            return {
+                "dish_name": None,
+                "confidence": 0.0,
+                "all_predictions": [],
+                "source": "fallback_required",
+            }
+        encoded = base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
+        response = self._client.post(
+            f"{self.base_url}/v1/classify",
+            json={"image": encoded},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("Remote CV response must be a JSON object")
+        return payload
+
+    def close(self) -> None:
+        self._client.close()
+
+
+# Production can keep Torch in a separate service; local development preserves
+# the original in-process model and therefore the exact same fusion behavior.
+cv_model = (
+    RemoteCVModel(settings.cv_url)
+    if settings.cv_url.strip()
+    else CVModel(require_manifest=settings.is_production)
+)

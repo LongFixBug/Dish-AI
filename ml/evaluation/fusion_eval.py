@@ -1,9 +1,9 @@
-"""Pure evaluation logic for the EfficientNet + image-album fusion policy.
+"""Legacy offline evaluation for the retired EfficientNet + album policy.
 
 The online API resolves labels to PostgreSQL UUIDs before calling
 ``decide_local_fusion``.  An offline labelled dataset can use stable class slugs
-as the same canonical identity, which lets us measure every auto-local branch
-without calling Vision, PostgreSQL, or an HTTP API.
+as the same canonical identity, which lets us measure the consensus auto-local
+branch without calling Vision, PostgreSQL, or an HTTP API.
 """
 
 from __future__ import annotations
@@ -11,32 +11,55 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from backend.config import settings
-from backend.services.recognition_cascade import (
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from backend.config import settings  # noqa: E402
+from backend.services.recognition_cascade import (  # noqa: E402
     LocalEvidence,
     decide_local_fusion,
-    is_name_refinement,
-)
-from ml.evaluation.recognition_eval import (
+    is_catalog_identity_safe,
+)  # noqa: E402
+from ml.evaluation.recognition_eval import (  # noqa: E402
     PROJECT_ROOT,
     REPORTS_DIR,
     ClassTruth,
     collect_images,
     load_ground_truth,
     normalize_name,
-)
+)  # noqa: E402
 
-AUTO_ACTIONS: tuple[str, ...] = ("local_consensus", "cv_local", "image_knn")
-Action = Literal["local_consensus", "cv_local", "image_knn", "vision"]
+AUTO_ACTIONS: tuple[str, ...] = ("local_consensus",)
+Action = Literal["local_consensus", "vision"]
 DEFAULT_IMAGES_DIR = PROJECT_ROOT / "data" / "images" / "golden"
 DEFAULT_CHECKPOINT = PROJECT_ROOT / "checkpoints" / "best_model.pth"
 _DEFAULT_CV_SOLO = object()
+DEFAULT_FUSION_CV_MIN_THRESHOLD = 0.90
+
+
+def fusion_cv_thresholds(
+    minimum: float,
+    maximum: float,
+) -> tuple[float, ...]:
+    """Build an inclusive millesimal sweep without excluding raw-CV evidence.
+
+    Unlike the serving setting, this is evaluation-only. A result below the
+    current threshold is never activated until the resulting report passes the
+    same consensus precision gate as every other candidate.
+    """
+    if not 0.0 <= minimum <= maximum <= 1.0:
+        raise ValueError("Fusion CV thresholds must be within [0, 1]")
+    lower = int(round(minimum * 1000))
+    upper = int(round(maximum * 1000))
+    return tuple(index / 1000 for index in range(lower, upper + 1))
 
 
 @dataclass(frozen=True)
@@ -130,7 +153,7 @@ async def resolve_runtime_catalog_identity(
     if key in cache:
         return cache[key]
     row = await lookup(session, dish_name)
-    if row is None or not is_name_refinement(dish_name, row.dish_name):
+    if row is None or not is_catalog_identity_safe(dish_name, row.dish_name):
         cache[key] = None
         return None
     identity = str(getattr(row, "id", "") or row.dish_name.casefold())
@@ -146,7 +169,7 @@ def decide_observation(
     cv_solo_threshold: float | None | object = _DEFAULT_CV_SOLO,
     album_solo_enabled: bool = True,
 ) -> FusionResult:
-    """Apply the production decision matrix to one offline observation."""
+    """Apply the production consensus-only decision matrix offline."""
     cv_canonical_id = observation.cv_canonical_id or observation.cv_slug
     album_canonical_id = observation.album_canonical_id or observation.album_slug
     truth_canonical_id = observation.truth_canonical_id or observation.truth_slug
@@ -337,6 +360,7 @@ async def collect_live_observations(
     device: str | None,
     limit_per_class: int,
     batch_size: int,
+    album_score_mode: Literal["best", "top3_blend"],
 ) -> tuple[list[FusionObservation], float]:
     """Collect serving-equivalent local evidence without calling Vision.
 
@@ -375,7 +399,10 @@ async def collect_live_observations(
             images = [await asyncio.to_thread(path.read_bytes) for _slug, path in batch]
             vectors = await embed_images(images)
             for (truth_slug, path), vector in zip(batch, vectors, strict=True):
-                candidates = await top_dish_candidates(vector)
+                candidates = await top_dish_candidates(
+                    vector,
+                    score_mode=album_score_mode,
+                )
                 album_slug, album_name, album_score, album_margin = _album_evidence(
                     candidates, dish_slug_index
                 )
@@ -458,6 +485,7 @@ def build_report(
     cv_threshold: float,
     album_threshold: float,
     album_margin: float,
+    album_score_mode: Literal["best", "top3_blend"],
     cv_model_serving_threshold: float,
     cv_solo_threshold: float | None,
     album_solo_enabled: bool,
@@ -482,6 +510,7 @@ def build_report(
             "album_solo_enabled": album_solo_enabled,
             "album_score": album_threshold,
             "album_margin": album_margin,
+            "album_score_mode": album_score_mode,
         },
         "actions": actions,
         "auto_coverage": round(
@@ -522,16 +551,31 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--album-threshold", type=float, default=settings.image_match_threshold)
     parser.add_argument("--album-margin", type=float, default=settings.image_match_margin)
     parser.add_argument(
+        "--album-score-mode",
+        choices=("best", "top3_blend"),
+        default=settings.image_match_score_mode,
+        help="Album aggregation to measure; this does not change serving config.",
+    )
+    parser.add_argument(
         "--cv-fusion-threshold",
         type=float,
         default=settings.local_fusion_cv_threshold,
         help="CV confidence required to join fusion consensus/disagreement.",
     )
     parser.add_argument(
+        "--cv-fusion-min-threshold",
+        type=float,
+        default=DEFAULT_FUSION_CV_MIN_THRESHOLD,
+        help=(
+            "Lowest raw CV top-1 confidence considered during --tune; "
+            "evaluation only, never a direct serving switch."
+        ),
+    )
+    parser.add_argument(
         "--cv-solo-threshold",
         type=float,
         default=settings.cv_solo_confidence_threshold,
-        help="Enable CV-only auto answers at this threshold; omitted keeps CV solo off.",
+        help="Deprecated compatibility option; CV-only answers remain disabled.",
     )
     parser.add_argument("--min-precision", type=float, default=0.98)
     parser.add_argument("--min-accepted", type=int, default=30)
@@ -551,6 +595,7 @@ async def main(argv: Sequence[str] | None = None) -> None:
         device=args.device,
         limit_per_class=max(0, args.limit_per_class),
         batch_size=max(1, args.batch_size),
+        album_score_mode=args.album_score_mode,
     )
     cv_threshold = args.cv_fusion_threshold or cv_model_serving_threshold
     results = [
@@ -565,10 +610,6 @@ async def main(argv: Sequence[str] | None = None) -> None:
         for item in observations
     ]
     required_actions = ["local_consensus"]
-    if args.cv_solo_threshold is not None:
-        required_actions.append("cv_local")
-    if settings.local_fusion_album_solo_enabled:
-        required_actions.append("image_knn")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     report = build_report(
         observations,
@@ -578,6 +619,7 @@ async def main(argv: Sequence[str] | None = None) -> None:
         cv_threshold=cv_threshold,
         album_threshold=args.album_threshold,
         album_margin=args.album_margin,
+        album_score_mode=args.album_score_mode,
         cv_model_serving_threshold=cv_model_serving_threshold,
         cv_solo_threshold=args.cv_solo_threshold,
         album_solo_enabled=settings.local_fusion_album_solo_enabled,
@@ -587,9 +629,9 @@ async def main(argv: Sequence[str] | None = None) -> None:
         timestamp=timestamp,
     )
     if args.tune:
-        cv_values = tuple(
-            index / 1000
-            for index in range(int(round(cv_threshold * 1000)), 1000)
+        cv_values = fusion_cv_thresholds(
+            min(args.cv_fusion_min_threshold, cv_threshold),
+            0.999,
         )
         album_values = tuple(index / 100 for index in range(73, 91))
         margin_values = tuple(index / 100 for index in range(4, 11))

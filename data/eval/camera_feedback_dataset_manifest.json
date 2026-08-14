@@ -1,0 +1,48 @@
+{
+  "suite": "camera_feedback_dataset",
+  "camera_images": 0,
+  "minimum_total": 200,
+  "minimum_per_class": 20,
+  "by_class": {},
+  "required_hard_classes": [
+    "banh_can",
+    "banh_canh",
+    "banh_chung",
+    "banh_khot",
+    "banh_tet",
+    "banh_trang_nuong",
+    "banh_xeo",
+    "bun_bo_hue",
+    "hu_tieu",
+    "pho_bo"
+  ],
+  "classes_below_minimum": [
+    "banh_can",
+    "banh_canh",
+    "banh_chung",
+    "banh_khot",
+    "banh_tet",
+    "banh_trang_nuong",
+    "banh_xeo",
+    "bun_bo_hue",
+    "hu_tieu",
+    "pho_bo"
+  ],
+  "missing_by_class": {
+    "banh_can": 20,
+    "banh_canh": 20,
+    "banh_chung": 20,
+    "banh_khot": 20,
+    "banh_tet": 20,
+    "banh_trang_nuong": 20,
+    "banh_xeo": 20,
+    "bun_bo_hue": 20,
+    "hu_tieu": 20,
+    "pho_bo": 20
+  },
+  "ready": false,
+  "blocking_reasons": [
+    "camera_images_below_minimum",
+    "hard_classes_below_minimum"
+  ]
+}

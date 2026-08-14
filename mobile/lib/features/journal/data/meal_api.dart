@@ -12,6 +12,7 @@ abstract interface class MealGateway {
     JournalEntry entry, {
     required String accessToken,
     required String source,
+    String? analyzeSource,
   });
 }
 
@@ -33,6 +34,7 @@ class MealApi implements MealGateway {
     JournalEntry entry, {
     required String accessToken,
     required String source,
+    String? analyzeSource,
   }) async {
     final response = await _request('/api/v1/meals', {
       'client_entry_id': entry.id,
@@ -46,6 +48,7 @@ class MealApi implements MealGateway {
       'carbs_g': entry.carbsGrams,
       'fiber_g': entry.fiberGrams,
       'source': source,
+      'analyze_source': ?analyzeSource,
     }, accessToken: accessToken);
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw MealApiException(

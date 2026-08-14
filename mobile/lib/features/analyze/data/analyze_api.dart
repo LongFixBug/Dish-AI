@@ -95,6 +95,76 @@ class AnalyzeApi {
     }
   }
 
+  Future<AnalyzeResult> analyzeText({
+    required String foodName,
+    double grams = 100.0,
+  }) async {
+    final normalizedName = foodName.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (normalizedName.isEmpty || normalizedName.length > 300) {
+      throw const AnalyzeApiException('Tên món phải có từ 1 đến 300 ký tự.');
+    }
+    if (!grams.isFinite || grams <= 0 || grams > 10000) {
+      throw const AnalyzeApiException('Khối lượng phải từ 1 đến 10.000 gram.');
+    }
+    final accessToken = await _tokenSource.read();
+    if (accessToken == null || accessToken.isEmpty) {
+      throw const AnalyzeApiException('Phiên đăng nhập đã kết thúc.');
+    }
+
+    try {
+      final response = await _client
+          .post(
+            _baseUrl.resolve('/api/v1/analyze/text'),
+            headers: {
+              'content-type': 'application/json',
+              'authorization': 'Bearer $accessToken',
+            },
+            body: jsonEncode({'food_name': normalizedName, 'grams': grams}),
+          )
+          .timeout(_timeout);
+      Map<String, dynamic>? json;
+      try {
+        json = _decodeObject(response.bodyBytes);
+      } on FormatException {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw AnalyzeApiException(
+            'Backend tạm thời không phục vụ được yêu cầu '
+            '(HTTP ${response.statusCode}).',
+          );
+        }
+        rethrow;
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AnalyzeApiException(_extractError(json, response.statusCode));
+      }
+      final result = AnalyzeResult.fromJson(json);
+      if (result.error case final String message when message.isNotEmpty) {
+        throw AnalyzeApiException(message);
+      }
+      return result;
+    } on AnalyzeApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const AnalyzeApiException(
+        'Phân tích hơi lâu. Hãy kiểm tra backend rồi thử lại.',
+      );
+    } on http.ClientException {
+      throw AnalyzeApiException(
+        'Không kết nối được backend tại $_baseUrl. '
+        'Hãy kiểm tra API đang chạy và địa chỉ API_BASE_URL.',
+      );
+    } on SocketException {
+      throw AnalyzeApiException(
+        'Không kết nối được backend tại $_baseUrl. '
+        'Hãy kiểm tra API đang chạy và địa chỉ API_BASE_URL.',
+      );
+    } on FormatException {
+      throw const AnalyzeApiException(
+        'Backend trả về dữ liệu không đúng định dạng.',
+      );
+    }
+  }
+
   void close() {
     if (_ownsClient) _client.close();
   }
@@ -146,6 +216,10 @@ Map<String, dynamic> _decodeObject(Uint8List bytes) {
 String _extractError(Map<String, dynamic> json, int statusCode) {
   final detail = json['detail'];
   if (detail is String && detail.isNotEmpty) return detail;
+  if (detail is Map) {
+    final message = detail['message'];
+    if (message is String && message.isNotEmpty) return message;
+  }
   if (detail is List && detail.isNotEmpty) {
     final first = detail.first;
     if (first is Map && first['msg'] is String) return first['msg'] as String;

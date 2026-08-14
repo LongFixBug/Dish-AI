@@ -1,0 +1,50 @@
+{
+  "reason": "User-reviewed: whole banh_can candidate folder has poor/mislabeled data; retained recoverably for re-check.",
+  "source": "data/images/references_candidate/banh_can",
+  "files": [
+    {
+      "name": "banh_can_12.jpg",
+      "sha256": "d9b4650f85c4c932e3c1cb50253f4edbf85010e02e0368572c84386f3cedf3ad"
+    },
+    {
+      "name": "banh_can_13.jpg",
+      "sha256": "cd0ee0c3a2ebf94ea7e77a878da365f5db0b5f7d60f105843d264f608b9e9673"
+    },
+    {
+      "name": "banh_can_14.jpg",
+      "sha256": "1c3e91582c10133a652e1d5e943881f14a325825d1f26d02c005983bf1812a2b"
+    },
+    {
+      "name": "banh_can_15.jpg",
+      "sha256": "c478ae5ded7da5a08c1968530c9db76a66a5d915a7336abefa175d93b0e1809b"
+    },
+    {
+      "name": "banh_can_2.jpg",
+      "sha256": "011d73c69b8217afb6364dda71de4af409a1e21969fab928b5e7c2bce6e48845"
+    },
+    {
+      "name": "banh_can_3.jpg",
+      "sha256": "c6a6c5a1dc2227011694b97b02adac292e7c3df2982ba43a20dbd0fafb857536"
+    },
+    {
+      "name": "banh_can_4.jpg",
+      "sha256": "82f61099466f28b98d2909880493b2960fc98f3edb6f4485b5c230a8a5ee120b"
+    },
+    {
+      "name": "banh_can_6.jpg",
+      "sha256": "4285114f1ee95ff707e5653f577c63ede608cafac0a94e3a5f1380d7309c5d3f"
+    },
+    {
+      "name": "banh_can_7.jpg",
+      "sha256": "dc8fcefb2b88585c4f325be05627a93d180e4fc0daf23fc5d29e8d2ce9a61741"
+    },
+    {
+      "name": "banh_can_8.jpg",
+      "sha256": "a6f56ddea4b87a99751e55ca41e9e4610fd161c652e998563ccb6d18fb0800d5"
+    },
+    {
+      "name": "banh_can_9.jpg",
+      "sha256": "61523934a7efd6fb71992003d39f0e2977acb57cf7997f39346e4cb659e93481"
+    }
+  ]
+}

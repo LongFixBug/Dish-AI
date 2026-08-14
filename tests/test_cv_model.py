@@ -1,6 +1,9 @@
 """Regression tests for local CV model loading."""
 
+import base64
 import json
+from pathlib import Path
+from types import SimpleNamespace
 
 from ml.inference import cv
 
@@ -36,3 +39,73 @@ def test_checkpoint_keeps_high_calibrated_threshold_above_point_99() -> None:
     )
 
     assert threshold == 0.996
+
+
+def test_remote_cv_model_warms_up_and_predicts_without_local_torch(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, str, dict | None]] = []
+
+    class FakeResponse:
+        def __init__(self, payload: dict) -> None:
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return self._payload
+
+    class FakeClient:
+        def post(self, url: str, *, json: dict | None = None) -> FakeResponse:
+            calls.append(("POST", url, json))
+            if url.endswith("/v1/warmup"):
+                return FakeResponse({
+                    "cv_loaded": True,
+                    "cv_model_version": "cv-remote-v1",
+                    "cv_serving_threshold": 0.996,
+                    "image_embed_loaded": True,
+                })
+            return FakeResponse({
+                "dish_name": "Bun Bo Hue",
+                "confidence": 0.999,
+                "all_predictions": [],
+                "source": "local",
+                "model_version": "cv-remote-v1",
+            })
+
+        def close(self) -> None:
+            return None
+
+    image_path = tmp_path / "food.jpg"
+    image_path.write_bytes(b"jpeg-bytes")
+    model = cv.RemoteCVModel(
+        "http://local-vision.railway.internal:8082",
+        client=FakeClient(),
+    )
+
+    model.load()
+    result = model.predict(image_path)
+
+    assert model.is_loaded is True
+    assert model.model_version == "cv-remote-v1"
+    assert model.serving_threshold == 0.996
+    assert result["dish_name"] == "Bun Bo Hue"
+    assert calls[0][1].endswith("/v1/warmup")
+    assert base64.b64decode(calls[1][2]["image"]) == b"jpeg-bytes"
+
+
+def test_remote_cv_model_stays_disabled_when_warmup_is_incomplete() -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"cv_loaded": True, "image_embed_loaded": False}
+
+    client = SimpleNamespace(post=lambda *_args, **_kwargs: FakeResponse())
+    model = cv.RemoteCVModel("http://local-vision:8082", client=client)
+
+    model.load()
+
+    assert model.is_loaded is False

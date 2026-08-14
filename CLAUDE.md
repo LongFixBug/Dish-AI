@@ -22,18 +22,19 @@ Quy trình DB/seed: `alembic upgrade head` → `parse_*.py` → `data/*.json` �
 
 - `backend/main.py` — FastAPI app + router: auth, chat, analyze, dishes, feedback, meals, nutrition goals, suggestions.
 - `backend/api/` — endpoint mỏng, dùng `Depends(get_session)` và chuyển business logic xuống service.
-- `backend/services/` — business logic cho auth, catalog/Qdrant, image cascade, chat, meal log, nutrition goal và suggestion.
+- `backend/services/` — business logic cho auth, catalog/Qdrant, Vision catalog resolution, chat, meal log, nutrition goal và suggestion.
 - `backend/db/models.py` — ORM cho user/auth, catalog dinh dưỡng, candidate chờ duyệt, feedback, nutrition goal và meal log; không lưu vector trong PostgreSQL.
 - `backend/db/postgres.py` — `get_session()` async, `async_session`.
 - `schemas/` — Pydantic ở ROOT (không trong backend/). `nutrition.py` giữ các hàm toán dùng chung; `analyze.py` là contract nhận diện ảnh.
-- `ml/inference/` — `cv.py` (EfficientNet-B0 local), `vision.py` (Qwen3.7 cloud, output tối đa 3 món + gram + nutrition estimate).
+- `ml/inference/` — `vision.py` (Qwen cloud, output tối đa 3 món + gram + nutrition estimate). `cv.py` và image-embedding sidecar chỉ còn archive offline.
 - `alembic/` — nơi duy nhất chứa migration schema chính thức; lịch sử cũ xem qua Git.
 - `data/` — `usda_ingredients.json` (8060), `vn_foods.json` (2088: 838 `vnfood` + 1250 `vnmeal`).
   - `vnfood` là per-gram; `vnmeal` là **tổng dinh dưỡng cho một khẩu phần**. Không đổi tổng `vnmeal` thành per-100g khi chưa có khối lượng đo thực tế.
 
 ## Luồng nhận diện và tra catalog hiện tại
 
-- `POST /api/v1/analyze`: image-kNN có thể tự chốt; nếu chưa đủ chắc thì local CV tạo prior/candidate và Qwen Vision quyết định fallback.
+- `POST /api/v1/analyze`: Qwen Vision nhận diện ảnh, sau đó resolve tên món qua
+  catalog PostgreSQL để tính dinh dưỡng; không gọi EfficientNet/SigLIP.
 - Mỗi tên món được resolve qua PostgreSQL exact trước, Qdrant semantic sau; mọi hit Qdrant phải quay lại PostgreSQL bằng UUID.
 - Món chưa có catalog chỉ dùng estimate trong response hiện tại và được đưa vào `dish_candidates`; không tự ghi thành dữ liệu tin cậy.
 - `GET /api/v1/dishes/lookup` là endpoint read-only cho catalog món đã duyệt.

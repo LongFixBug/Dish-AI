@@ -6,6 +6,55 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
 void main() {
+  test('sends a food name and grams to the text analysis endpoint', () async {
+    late http.Request capturedRequest;
+    final client = _RecordingClient((request) async {
+      capturedRequest = request as http.Request;
+      return _jsonResponse({
+        'dish_name': 'Sữa bò tươi',
+        'source': 'text_catalog',
+        'dishes': <Object>[],
+      });
+    });
+    final api = AnalyzeApi(
+      client: client,
+      baseUrl: Uri.parse('http://10.0.2.2:8000'),
+      accessToken: 'access-token',
+    );
+
+    final result = await api.analyzeText(foodName: 'Sữa bò tươi', grams: 200);
+
+    expect(capturedRequest.method, 'POST');
+    expect(
+      capturedRequest.url.toString(),
+      'http://10.0.2.2:8000/api/v1/analyze/text',
+    );
+    expect(capturedRequest.headers['authorization'], 'Bearer access-token');
+    expect(jsonDecode(capturedRequest.body), {
+      'food_name': 'Sữa bò tươi',
+      'grams': 200.0,
+    });
+    expect(result.source, 'text_catalog');
+  });
+
+  test('uses 100 grams by default for text analysis', () async {
+    final client = _RecordingClient((request) async {
+      expect(jsonDecode((request as http.Request).body)['grams'], 100.0);
+      return _jsonResponse({
+        'dish_name': 'Phở bò',
+        'source': 'text_catalog',
+        'dishes': <Object>[],
+      });
+    });
+    final api = AnalyzeApi(
+      client: client,
+      baseUrl: Uri.parse('http://localhost:8000'),
+      accessToken: 'access-token',
+    );
+
+    await api.analyzeText(foodName: 'Phở bò');
+  });
+
   test(
     'uploads the selected image to the FastAPI multipart endpoint',
     () async {
@@ -65,6 +114,38 @@ void main() {
             (error) => error.message,
             'message',
             contains('Chỉ chấp nhận file ảnh'),
+          ),
+        ),
+      );
+    },
+  );
+
+  test(
+    'shows the Food Gate message from a structured non-food response',
+    () async {
+      final api = AnalyzeApi(
+        client: _RecordingClient(
+          (_) async => _jsonResponse({
+            'detail': {
+              'code': 'non_food_image',
+              'message': 'Ảnh này chưa thấy món ăn. Hãy chụp gần món hơn.',
+            },
+          }, statusCode: 422),
+        ),
+        baseUrl: Uri.parse('http://localhost:8000'),
+        accessToken: 'access-token',
+      );
+
+      expect(
+        () => api.analyzeImage(
+          bytes: Uint8List.fromList([0xff, 0xd8, 0xff]),
+          filename: 'cat.jpg',
+        ),
+        throwsA(
+          isA<AnalyzeApiException>().having(
+            (error) => error.message,
+            'message',
+            'Ảnh này chưa thấy món ăn. Hãy chụp gần món hơn.',
           ),
         ),
       );

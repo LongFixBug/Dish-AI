@@ -207,14 +207,15 @@ def test_build_report_shape_is_json_serializable():
     report = build_report(
         observations, frontier, recommended,
         images_dir="data/images/val", min_precision=0.95,
-        timestamp="20260726_120000",
+        timestamp="20260726_120000", score_mode="top3_blend",
     )
 
     assert set(report) == {
-        "timestamp", "suite", "images_dir", "min_precision",
+        "timestamp", "suite", "images_dir", "score_mode", "min_precision",
         "n_images", "n_no_candidates", "frontier", "recommended",
     }
     assert report["suite"] == "cascade_tuning"
+    assert report["score_mode"] == "top3_blend"
     assert report["n_images"] == 2
     assert report["n_no_candidates"] == 1
     assert report["recommended"]["precision"] == pytest.approx(1.0)
@@ -224,7 +225,7 @@ def test_build_report_shape_is_json_serializable():
 def test_build_report_handles_missing_recommendation():
     report = build_report(
         [], (), None,
-        images_dir="x", min_precision=0.95, timestamp="ts",
+        images_dir="x", min_precision=0.95, timestamp="ts", score_mode="best",
     )
     assert report["recommended"] is None
     assert report["n_images"] == 0

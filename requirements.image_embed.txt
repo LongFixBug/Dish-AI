@@ -1,0 +1,5 @@
+--find-links https://download.pytorch.org/whl/cpu/torch/
+-r requirements.api.lock
+# SigLIP2/DINO image-embedding sidecar; no classifier/timm dependency.
+torch==2.13.0+cpu
+transformers==5.14.1

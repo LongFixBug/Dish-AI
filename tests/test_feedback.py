@@ -1,17 +1,19 @@
 """Regression tests cho chức năng lưu ảnh training từ client."""
 
-import uuid
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
 from PIL import Image
+from fastapi.testclient import TestClient
 from sqlalchemy import delete
 
-import backend.services.dish_image_index as dish_image_index
-import backend.services.image_embeddings as image_embeddings
 from backend.api import feedback
+from backend.config import settings
 from backend.db.models import FeedbackSubmission, RecognitionEvent, User
+from backend.main import app
+from backend.services.auth import TokenManager
 from backend.services.object_storage import FilesystemObjectStorage
 
 
@@ -63,6 +65,7 @@ async def test_feedback_accepts_label_as_multipart_form(
                 "correct_dish_name": (None, original_name),
                 "consent_to_training": (None, "true"),
                 "recognition_event_id": (None, event.id),
+                "capture_source": (None, "camera"),
             },
         )
 
@@ -76,6 +79,7 @@ async def test_feedback_accepts_label_as_multipart_form(
         submission = await db_session.get(FeedbackSubmission, data["submission_id"])
         assert submission is not None
         assert submission.recognition_event_id == event.id
+        assert submission.capture_source == "camera"
         stored_path = feedback_dir / Path(data["saved_path"])
         assert stored_path.exists()
 
@@ -164,85 +168,13 @@ def test_feedback_slug_removes_vietnamese_d_stroke() -> None:
     assert feedback._normalize_dish_name("Đậu hũ") == "dau_hu"
 
 
-async def test_index_feedback_image_upserts_feedback_entry(monkeypatch) -> None:
-    """Ảnh feedback được embed và upsert vào album với payload đúng contract."""
-    monkeypatch.setattr(feedback.settings, "image_embed_enabled", True)
-    captured: dict = {}
-
-    async def fake_embed(data: bytes) -> list[float]:
-        captured["bytes"] = data
-        return [0.25] * 4
-
-    async def fake_upsert(entries, vectors) -> int:
-        captured["entries"] = entries
-        captured["vectors"] = vectors
-        return len(entries)
-
-    monkeypatch.setattr(image_embeddings, "embed_image", fake_embed)
-    monkeypatch.setattr(dish_image_index, "upsert_dish_image_vectors", fake_upsert)
-
-    object_key = "feedback/2026/07/user-1/abc123.webp"
-    await feedback._index_feedback_image(
-        object_key=object_key,
-        image_bytes=b"webp-bytes",
-        dish_name="Phở bò",
-        class_slug="pho_bo",
-    )
-
-    assert captured["bytes"] == b"webp-bytes"
-    assert captured["vectors"] == [[0.25] * 4]
-    entry = captured["entries"][0]
-    assert entry.record_id == str(uuid.uuid5(uuid.NAMESPACE_URL, object_key))
-    assert entry.dish_name == "Phở bò"
-    assert entry.class_slug == "pho_bo"
-    assert entry.source == "feedback"
-
-
-async def test_index_feedback_image_swallows_album_failure(monkeypatch) -> None:
-    """Album sập (embed OK nhưng Qdrant lỗi) → helper nuốt lỗi, không raise."""
-
-    async def fake_embed(_data: bytes) -> list[float]:
-        return [0.0] * 4
-
-    async def failing_upsert(_entries, _vectors) -> int:
-        raise RuntimeError("qdrant down")
-
-    monkeypatch.setattr(image_embeddings, "embed_image", fake_embed)
-    monkeypatch.setattr(
-        dish_image_index, "upsert_dish_image_vectors", failing_upsert
-    )
-
-    await feedback._index_feedback_image(
-        object_key="feedback/2026/07/user-1/def456.webp",
-        image_bytes=b"webp-bytes",
-        dish_name="Phở bò",
-        class_slug="pho_bo",
-    )
-
-
-async def test_index_feedback_image_disabled_skips_album(monkeypatch) -> None:
-    async def embed_must_not_run(_data: bytes) -> list[float]:
-        raise AssertionError("Không được embed khi image_embed_enabled=False")
-
-    monkeypatch.setattr(feedback.settings, "image_embed_enabled", False)
-    monkeypatch.setattr(image_embeddings, "embed_image", embed_must_not_run)
-
-    await feedback._index_feedback_image(
-        object_key="feedback/2026/07/user-1/ghi789.webp",
-        image_bytes=b"webp-bytes",
-        dish_name="Phở bò",
-        class_slug="pho_bo",
-    )
-
-
-async def test_feedback_still_succeeds_when_album_upsert_raises(
+async def test_feedback_still_succeeds_without_local_image_indexer(
     client,
     db_session,
     tmp_path,
     monkeypatch,
 ) -> None:
-    """Endpoint vẫn 2xx khi index album thất bại — lưu phản hồi là ưu tiên."""
-    monkeypatch.setattr(feedback.settings, "image_embed_enabled", True)
+    """Feedback vẫn lưu được khi runtime không còn image-indexing sidecar."""
     test_user_id = "00000000-0000-0000-0000-000000000001"
     created_test_user = await db_session.get(User, test_user_id) is None
     if created_test_user:
@@ -262,16 +194,6 @@ async def test_feedback_still_succeeds_when_album_upsert_raises(
         FilesystemObjectStorage(feedback_dir),
     )
 
-    async def fake_embed(_data: bytes) -> list[float]:
-        return [0.0] * 4
-
-    async def failing_upsert(_entries, _vectors) -> int:
-        raise RuntimeError("qdrant down")
-
-    monkeypatch.setattr(image_embeddings, "embed_image", fake_embed)
-    monkeypatch.setattr(
-        dish_image_index, "upsert_dish_image_vectors", failing_upsert
-    )
     original_name = f"Cơm sườn {uuid4().hex[:8]}"
     normalized = feedback._normalize_dish_name(original_name)
 
@@ -298,4 +220,150 @@ async def test_feedback_still_succeeds_when_album_upsert_raises(
         )
         if created_test_user:
             await db_session.execute(delete(User).where(User.id == test_user_id))
+        await db_session.commit()
+
+
+def test_feedback_review_request_requires_a_reviewed_label_for_approval() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    from backend.api.feedback import FeedbackReviewRequest
+
+    with pytest.raises(ValidationError):
+        FeedbackReviewRequest(status="approved")
+
+    request = FeedbackReviewRequest(
+        status="approved",
+        reviewed_dish_name=" Phở bò ",
+        reviewer_note="Ảnh rõ, nhãn đã kiểm tra",
+    )
+    assert request.reviewed_dish_name == "Phở bò"
+
+
+async def test_admin_can_approve_feedback_with_canonical_label(db_session) -> None:
+    admin_id = str(uuid4())
+    submission_id = str(uuid4())
+    db_session.add(
+        User(
+            id=admin_id,
+            email=f"admin-{admin_id}@example.com",
+            display_name="Feedback Admin",
+            password_hash="not-used",
+            role="admin",
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        FeedbackSubmission(
+            id=submission_id,
+            submitted_by=admin_id,
+            dish_name_slug="pho",
+            original_name="Phở",
+            object_key=f"feedback/test/{submission_id}.jpg",
+            content_type="image/jpeg",
+            file_size_bytes=10,
+            width=10,
+            height=10,
+            capture_source="camera",
+            consent_to_training=True,
+            retention_until=datetime(2027, 1, 1, tzinfo=timezone.utc),
+        )
+    )
+    await db_session.commit()
+    token, _ = TokenManager.from_settings(settings).create_access_token(
+        user_id=admin_id,
+        role="admin",
+    )
+
+    try:
+        with TestClient(
+            app,
+            headers={"Authorization": f"Bearer {token}"},
+        ) as admin_client:
+            response = admin_client.patch(
+                f"/api/v1/feedback/training-data/{submission_id}/review",
+                json={
+                    "status": "approved",
+                    "reviewed_dish_name": "Phở bò",
+                    "reviewer_note": "Ảnh camera rõ",
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["status"] == "approved"
+        assert payload["reviewed_label"] == "pho_bo"
+        assert payload["capture_source"] == "camera"
+    finally:
+        await db_session.execute(
+            delete(FeedbackSubmission).where(FeedbackSubmission.id == submission_id)
+        )
+        await db_session.execute(delete(User).where(User.id == admin_id))
+        await db_session.commit()
+
+
+async def test_admin_can_open_feedback_image_for_review(
+    db_session,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    admin_id = str(uuid4())
+    submission_id = str(uuid4())
+    storage = FilesystemObjectStorage(tmp_path)
+    monkeypatch.setattr(feedback, "object_storage", storage)
+    await storage.put(
+        f"feedback/test/{submission_id}.jpg",
+        b"review-image",
+        "image/jpeg",
+    )
+    db_session.add(
+        User(
+            id=admin_id,
+            email=f"admin-image-{admin_id}@example.com",
+            display_name="Feedback Image Admin",
+            password_hash="not-used",
+            role="admin",
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        FeedbackSubmission(
+            id=submission_id,
+            submitted_by=admin_id,
+            dish_name_slug="pho_bo",
+            original_name="Phở bò",
+            object_key=f"feedback/test/{submission_id}.jpg",
+            content_type="image/jpeg",
+            file_size_bytes=len(b"review-image"),
+            width=10,
+            height=10,
+            capture_source="camera",
+            consent_to_training=True,
+            retention_until=datetime(2027, 1, 1, tzinfo=timezone.utc),
+        )
+    )
+    await db_session.commit()
+    token, _ = TokenManager.from_settings(settings).create_access_token(
+        user_id=admin_id,
+        role="admin",
+    )
+
+    try:
+        with TestClient(
+            app,
+            headers={"Authorization": f"Bearer {token}"},
+        ) as admin_client:
+            response = admin_client.get(
+                f"/api/v1/feedback/training-data/{submission_id}/image"
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.content == b"review-image"
+        assert response.headers["content-type"] == "image/jpeg"
+        assert response.headers["cache-control"] == "no-store"
+    finally:
+        await db_session.execute(
+            delete(FeedbackSubmission).where(FeedbackSubmission.id == submission_id)
+        )
+        await db_session.execute(delete(User).where(User.id == admin_id))
         await db_session.commit()

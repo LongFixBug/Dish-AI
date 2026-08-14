@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 def _write_image(path: Path, color: str = "red") -> None:
@@ -60,3 +60,23 @@ def test_load_allowed_classes_accepts_the_versioned_tier_a_contract(tmp_path) ->
     )
 
     assert load_allowed_classes(classes) == {"pho_bo", "banh_xeo"}
+
+
+def test_audit_can_include_reviewed_album_only_class(tmp_path) -> None:
+    from scripts.audit_reference_album import audit_reference_album
+
+    root = tmp_path / "references"
+    _write_image(root / "pho_bo" / "approved.jpg")
+    image = Image.new("RGB", (120, 120), color="blue")
+    ImageDraw.Draw(image).ellipse((20, 20, 100, 100), fill="yellow")
+    root.joinpath("ha_cao", "album_only.jpg").parent.mkdir(parents=True)
+    image.save(root / "ha_cao" / "album_only.jpg")
+
+    audit = audit_reference_album(
+        root,
+        {"pho_bo"},
+        extra_classes={"ha_cao"},
+    )
+
+    assert audit.counts_by_class == {"ha_cao": 1, "pho_bo": 1}
+    assert "ha_cao/album_only.jpg" in audit.approved_paths

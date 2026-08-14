@@ -4,7 +4,6 @@ from io import BytesIO
 from types import SimpleNamespace
 
 from PIL import Image
-from starlette.datastructures import Headers, UploadFile
 
 from backend.api import analyze
 from ml.inference.vision import UNKNOWN_CONFIDENCE, _normalize_dishes
@@ -34,174 +33,6 @@ def _jpeg_bytes() -> bytes:
     output = BytesIO()
     Image.new("RGB", (16, 16), (180, 120, 60)).save(output, format="JPEG")
     return output.getvalue()
-
-
-def test_cv_family_queries_include_a_plausible_second_prediction() -> None:
-    queries = analyze._cv_family_queries(
-        "Com Tam",
-        [
-            {"class_name": "Com Tam", "probability": 0.68},
-            {"class_name": "Banh Mi Kep Thit", "probability": 0.2797},
-            {"class_name": "Banh Xeo", "probability": 0.0144},
-        ],
-    )
-
-    assert queries == ["Cơm tấm", "Bánh mì"]
-
-
-async def test_high_confidence_cv_uses_db_and_skips_vision(monkeypatch) -> None:
-    """CV chỉ tạo prior; Vision chốt tên trong shortlist catalog."""
-    offloaded: list[str] = []
-    db_dish = SimpleNamespace(
-        dish_name="Bánh mì thập cẩm",
-        typical_grams=150.0,
-        total_calories=678.8,
-        total_protein_g=25.0,
-        total_fat_g=24.0,
-        total_carbs_g=80.0,
-        total_fiber_g=3.0,
-        source="vnmeal",
-    )
-
-    async def fake_candidates(_session, family_name):
-        assert family_name == "Bánh mì"
-        return [db_dish]
-
-    async def fake_lookup(_session, name):
-        assert name == "Bánh mì thập cẩm"
-        return db_dish
-
-    async def fake_vision(_path, *, candidate_names):
-        assert candidate_names == ["Bánh mì thập cẩm"]
-        return {
-            "dish_name": "Bánh mì thập cẩm",
-            "confidence": 0.93,
-            "dishes": [
-                {
-                    "dish_name": "Bánh mì thập cẩm",
-                    "gram": 150.0,
-                    "is_side": False,
-                    "confidence": 0.93,
-                    "total_calories": 0.0,
-                    "total_protein_g": 0.0,
-                    "total_fat_g": 0.0,
-                    "total_carbs_g": 0.0,
-                    "total_fiber_g": 0.0,
-                }
-            ],
-            "reasoning": None,
-        }
-
-    monkeypatch.setattr(analyze.cv_model, "_loaded", True)
-
-    async def fake_to_thread(function, /, *args, **kwargs):
-        offloaded.append(function.__name__)
-        return function(*args, **kwargs)
-
-    monkeypatch.setattr(analyze.asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr(
-        analyze.cv_model,
-        "predict",
-        lambda _path: {
-            "dish_name": "Bánh mì chảo",
-            "confidence": 0.95,
-            "all_predictions": [],
-            "source": "local",
-        },
-    )
-    monkeypatch.setattr(analyze, "lookup_dish_candidates", fake_candidates)
-    monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
-    monkeypatch.setattr(analyze, "identify_dish", fake_vision)
-
-    upload = UploadFile(
-        BytesIO(_jpeg_bytes()),
-        filename="banh-mi.jpg",
-        headers=Headers({"content-type": "image/jpeg"}),
-    )
-    response = await analyze.analyze_food(upload, FakeSession())
-
-    assert response.source == "cv_local_not_found_vision"
-    assert response.dish_name == "Bánh mì thập cẩm"
-    assert response.cv_confidence == 0.95
-    assert response.recognition_confidence == 0.93
-    assert response.nutrition is not None
-    assert response.nutrition.total_grams == 150.0
-    assert response.nutrition.total_calories == 678.8
-    assert response.dishes[0].dish_name == "Bánh mì thập cẩm"
-    assert "<lambda>" in offloaded
-
-
-async def test_high_confidence_cv_falls_back_when_db_misses(monkeypatch) -> None:
-    """CV chắc chắn nhưng DB miss thì Vision vẫn chịu trách nhiệm kết quả."""
-    vision_dish = SimpleNamespace(
-        dish_name="Phở bò",
-        typical_grams=500.0,
-        total_calories=450.0,
-        total_protein_g=30.0,
-        total_fat_g=12.0,
-        total_carbs_g=60.0,
-        total_fiber_g=3.0,
-        source="vnmeal",
-    )
-    vision_calls = 0
-
-    async def fake_lookup(_session, name):
-        return vision_dish if name == "Phở bò" else None
-
-    async def fake_vision(_path):
-        nonlocal vision_calls
-        vision_calls += 1
-        return {
-            "dish_name": "Phở bò",
-            "confidence": 0.88,
-            "dishes": [
-                {
-                    "dish_name": "Phở bò",
-                    "gram": 500.0,
-                    "is_side": False,
-                    "confidence": 0.9,
-                    "total_calories": 0.0,
-                    "total_protein_g": 0.0,
-                    "total_fat_g": 0.0,
-                    "total_carbs_g": 0.0,
-                    "total_fiber_g": 0.0,
-                }
-            ],
-            "reasoning": None,
-        }
-
-    monkeypatch.setattr(analyze.cv_model, "_loaded", True)
-    monkeypatch.setattr(
-        analyze.cv_model,
-        "predict",
-        lambda _path: {
-            "dish_name": "Mon La",
-            "confidence": 0.95,
-            "all_predictions": [],
-            "source": "local",
-        },
-    )
-    async def no_candidates(*_args, **_kwargs):
-        return []
-
-    monkeypatch.setattr(analyze, "lookup_dish_candidates", no_candidates)
-    monkeypatch.setattr(analyze, "lookup_dish", fake_lookup)
-    monkeypatch.setattr(analyze, "identify_dish", fake_vision)
-
-    upload = UploadFile(
-        BytesIO(_jpeg_bytes()),
-        filename="unknown.jpg",
-        headers=Headers({"content-type": "image/jpeg"}),
-    )
-    response = await analyze.analyze_food(upload, FakeSession())
-
-    assert vision_calls == 1
-    assert response.source == "cv_local_not_found_vision"
-    assert response.dish_name == "Phở bò"
-    assert response.recognition_confidence == 0.88
-    assert response.dishes[0].recognition_confidence == 0.9
-    assert response.dishes[0].portion_source == "catalog_default"
-    assert response.nutrition is not None
 
 
 async def test_db_match_uses_canonical_name_and_ignores_vision_nutrition(
@@ -692,11 +523,11 @@ async def test_staging_failure_counts_the_item_once(monkeypatch) -> None:
 
 
 async def test_vision_dish_rejects_catalog_row_that_morphs_the_name(monkeypatch) -> None:
-    """Nhánh Vision cũng phải soi tên như nhánh album, không tin bừa catalog.
+    """Nhánh Vision phải soi tên, không tin bừa catalog.
 
     Semantic search trả "Bánh cuốn thịt" cho "Bánh mì kẹp thịt": tên rơi mất
-    "mì", tức món khác hẳn. Nhánh album đã chặn bằng is_name_refinement, nhánh
-    Vision thì chưa nên số liệu bánh cuốn từng hiện lên app kèm nhãn
+    "mì", tức món khác hẳn. Nếu không có lexical guard, số liệu bánh cuốn sẽ
+    hiện lên app kèm nhãn
     "Dữ liệu catalog: 100%".
     """
     morphed = SimpleNamespace(

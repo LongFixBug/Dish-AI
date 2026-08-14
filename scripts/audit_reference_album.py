@@ -59,10 +59,12 @@ def audit_reference_album(
     allowed_classes: set[str],
     *,
     phash_distance: int = DEFAULT_PHASH_DISTANCE,
+    extra_classes: set[str] | None = None,
 ) -> ReferenceAlbumAudit:
     """Return a stable, non-mutating approval decision for every selected image."""
     if phash_distance < 0:
         raise ValueError("phash_distance phải >= 0")
+    selected_classes = set(allowed_classes) | set(extra_classes or ())
     files = sorted(
         path for path in root.rglob("*")
         if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
@@ -70,7 +72,7 @@ def audit_reference_album(
     invalid: list[str] = []
     accepted: list[tuple[Path, imagehash.ImageHash]] = []
     for path in files:
-        if path.parent.name not in allowed_classes:
+        if path.parent.name not in selected_classes:
             continue
         try:
             accepted.append((path, _read_hash(path)))
@@ -99,7 +101,7 @@ def audit_reference_album(
         approved.append(path)
 
     relative_approved = tuple(_relative(root, path) for path in approved)
-    counts = {slug: 0 for slug in sorted(allowed_classes)}
+    counts = {slug: 0 for slug in sorted(selected_classes)}
     for path in approved:
         counts[path.parent.name] += 1
     return ReferenceAlbumAudit(
@@ -146,6 +148,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--tier-name", default="tier_a")
     parser.add_argument("--phash-distance", type=int, default=DEFAULT_PHASH_DISTANCE)
+    parser.add_argument(
+        "--include-class",
+        action="append",
+        default=[],
+        help="Include a reviewed album-only class without adding it to the CV allow-list.",
+    )
     return parser.parse_args()
 
 
@@ -155,6 +163,7 @@ def main() -> None:
         args.root,
         load_allowed_classes(args.classes_file),
         phash_distance=args.phash_distance,
+        extra_classes=set(args.include_class),
     )
     manifest = write_manifest(args.manifest, args.root, audit, tier_name=args.tier_name)
     print(f"Approved: {len(audit.approved_paths)}/{audit.total_files}")

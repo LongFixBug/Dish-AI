@@ -1,4 +1,4 @@
-"""Contracts for the derived Qdrant dish_images collection."""
+"""Contracts for the derived Qdrant image-reference collection."""
 
 from types import SimpleNamespace
 
@@ -44,7 +44,7 @@ async def _passthrough_to_thread(function, /, *args, **kwargs):
     return function(*args, **kwargs)
 
 
-def test_init_creates_collection_with_cosine_768_and_payload_indexes(monkeypatch):
+def test_init_creates_collection_with_configured_dimension_and_payload_indexes(monkeypatch):
     client = FakeInitClient(existing=False)
     monkeypatch.setattr(dish_image_index, "_get_client", lambda: client)
 
@@ -156,9 +156,44 @@ async def test_top_dish_candidates_groups_votes_sorts_and_truncates(monkeypatch)
 
     assert captured["limit"] == 12
     assert candidates == [
-        DishCandidateScore(dish_name="Cơm tấm", best_score=0.97, votes=1),
-        DishCandidateScore(dish_name="Phở bò", best_score=0.95, votes=2),
+        DishCandidateScore(
+            dish_name="Cơm tấm",
+            best_score=0.97,
+            votes=1,
+            class_slug="com_tam",
+        ),
+        DishCandidateScore(
+            dish_name="Phở bò",
+            best_score=0.95,
+            votes=2,
+            class_slug="pho_bo",
+        ),
     ]
+
+
+async def test_top3_blend_prefers_consistent_hits_over_a_lucky_single_hit(monkeypatch):
+    async def fake_search(_vector, *, limit):
+        return [
+            DishImageHit("Bánh căn", "banh_can", "seed", 0.96),
+            DishImageHit("Bánh căn", "banh_can", "seed", 0.60),
+            DishImageHit("Bánh căn", "banh_can", "feedback", 0.58),
+            DishImageHit("Bánh khọt", "banh_khot", "seed", 0.93),
+            DishImageHit("Bánh khọt", "banh_khot", "feedback", 0.92),
+            DishImageHit("Bánh khọt", "banh_khot", "licensed", 0.91),
+        ]
+
+    monkeypatch.setattr(dish_image_index, "search_dish_images", fake_search)
+
+    candidates = await dish_image_index.top_dish_candidates(
+        [0.0] * IMAGE_VECTOR_SIZE,
+        score_mode="top3_blend",
+    )
+
+    assert [candidate.dish_name for candidate in candidates] == [
+        "Bánh khọt",
+        "Bánh căn",
+    ]
+    assert candidates[0].votes == 3
 
 
 async def test_upsert_publishes_reviewed_payload_and_waits(monkeypatch):

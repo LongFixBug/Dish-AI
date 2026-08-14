@@ -119,6 +119,19 @@ async def test_embeds_in_batches_of_sixteen(tmp_path, pipeline):
     assert len(pipeline["vectors"]) == 18
 
 
+async def test_accepts_smaller_embedding_batch_for_memory_limited_machine(
+    tmp_path, pipeline,
+):
+    root = tmp_path / "train"
+    for index in range(11):
+        _write_image(root / "com_tam" / f"{index:03d}.jpg")
+
+    totals = await index_dish_images.run([root], batch_size=4)
+
+    assert totals == {"com_tam": 11}
+    assert [len(batch) for batch in pipeline["embed_batches"]] == [4, 4, 3]
+
+
 async def test_force_flag_recreates_collection(tmp_path, pipeline):
     root = tmp_path / "train"
     _write_image(root / "pho_bo" / "a.jpg")
@@ -147,6 +160,109 @@ async def test_manifest_indexes_only_explicitly_approved_relative_paths(
     assert pipeline["entries"][0].record_id == _expected_record_id(
         root / "pho_bo" / "approved.jpg"
     )
+
+
+async def test_candidate_root_requires_reviewed_manifest_before_indexing(
+    tmp_path, pipeline,
+):
+    root = tmp_path / "references_candidate"
+    _write_image(root / "pho_bo" / "candidate.jpg")
+    manifest = tmp_path / "candidate-audit.json"
+    manifest.write_text(
+        json.dumps({"approved_paths": ["pho_bo/candidate.jpg"]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="review.*provenance"):
+        await index_dish_images.run([root], manifest_path=manifest)
+
+    assert pipeline["init_force"] == []
+
+
+async def test_candidate_root_requires_review_and_provenance_for_every_path(
+    tmp_path, pipeline,
+):
+    root = tmp_path / "references_candidate"
+    _write_image(root / "pho_bo" / "candidate.jpg")
+    manifest = tmp_path / "candidate-audit.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "approved_paths": ["pho_bo/candidate.jpg"],
+                "review_status": "reviewed",
+                "provenance_status": "reviewed",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="reviewed_paths|provenance_records"):
+        await index_dish_images.run([root], manifest_path=manifest)
+
+    assert pipeline["init_force"] == []
+
+
+async def test_candidate_root_accepts_complete_review_provenance_manifest(
+    tmp_path, pipeline,
+):
+    root = tmp_path / "references_candidate"
+    _write_image(root / "pho_bo" / "candidate.jpg")
+    manifest = tmp_path / "candidate-audit.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "approved_paths": ["pho_bo/candidate.jpg"],
+                "reviewed_paths": ["pho_bo/candidate.jpg"],
+                "review_status": "reviewed",
+                "provenance_status": "reviewed",
+                "provenance_records": [
+                    {
+                        "path": "pho_bo/candidate.jpg",
+                        "source_url": "https://example.com/pho.jpg",
+                        "license_status": "internal_permission",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    totals = await index_dish_images.run([root], manifest_path=manifest)
+
+    assert totals == {"pho_bo": 1}
+
+
+async def test_candidate_root_accepts_explicit_demo_manifest_without_provenance(
+    tmp_path, pipeline,
+):
+    root = tmp_path / "references_candidate"
+    _write_image(root / "pho_bo" / "candidate.jpg")
+    manifest = tmp_path / "candidate-demo.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "demo_only": True,
+                "approved_paths": ["pho_bo/candidate.jpg"],
+                "reviewed_paths": ["pho_bo/candidate.jpg"],
+                "review_status": "reviewed",
+                "provenance_status": "unverified_demo",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="demo"):
+        await index_dish_images.run([root], manifest_path=manifest)
+
+    totals = await index_dish_images.run(
+        [root],
+        manifest_path=manifest,
+        demo_unverified=True,
+        source="demo_unverified",
+    )
+
+    assert totals == {"pho_bo": 1}
+    assert pipeline["entries"][0].source == "demo_unverified"
 
 
 def test_manifest_rejects_path_outside_album_root(tmp_path):
@@ -181,6 +297,7 @@ def test_parser_defaults_match_contract():
     assert arguments.cap == 50
     assert arguments.source == "seed"
     assert arguments.force is False
+    assert arguments.demo_unverified is False
 
 
 def test_default_roots_use_only_the_curated_reference_album():

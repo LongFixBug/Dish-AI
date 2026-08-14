@@ -23,6 +23,10 @@ def test_import_does_not_load_icrawler():
 def test_new_dishes_keep_requested_names_as_canonical_classes():
     from scripts.build_new_dish_classes import NEW_DISHES
 
+    assert NEW_DISHES["banh_canh"] == "Bánh canh"
+    assert NEW_DISHES["hu_tieu"] == "Hủ tiếu"
+    assert NEW_DISHES["bun_bo_hue"] == "Bún bò Huế"
+    assert NEW_DISHES["chao_long"] == "Cháo lòng"
     assert NEW_DISHES["xien_que_chien"] == "Xiên que chiên"
     assert NEW_DISHES["rau_muong_xao_toi"] == "Rau muống xào tỏi"
     assert NEW_DISHES["khoai_lang_nuong"] == "Khoai lang nướng"

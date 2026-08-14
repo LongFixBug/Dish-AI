@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:balance/core/theme/balance_theme.dart';
 import 'package:balance/core/widgets/sketch_card.dart';
+import 'package:balance/features/analyze/data/analyze_api.dart';
 import 'package:balance/features/analyze/domain/analyze_result.dart';
 import 'package:balance/features/analyze/presentation/analyze_screen.dart';
 import 'package:balance/features/analyze/presentation/analysis_result_screen.dart';
@@ -11,6 +12,133 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 
 void main() {
+  testWidgets('user can analyze a food name without an image', (tester) async {
+    String? receivedName;
+    double? receivedGrams;
+    final result = AnalyzeResult.fromJson({
+      'dish_name': 'Sữa bò tươi',
+      'source': 'text_catalog',
+      'nutrition': {
+        'dish_name': 'Sữa bò tươi',
+        'total_calories': 120,
+        'total_protein_g': 6.4,
+        'total_fat_g': 7,
+        'total_carbs_g': 9.6,
+        'total_fiber_g': 0,
+        'total_grams': 200,
+        'confidence_score': 1,
+      },
+      'dishes': <Object>[],
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalyzeScreen(
+          analyzeText: ({required foodName, required grams}) async {
+            receivedName = foodName;
+            receivedGrams = grams;
+            return result;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Nhập món'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('text-food-name')), findsOneWidget);
+    expect(find.byKey(const ValueKey('text-food-grams')), findsOneWidget);
+    expect(find.text('100'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('text-food-name')),
+      'Sữa bò tươi',
+    );
+    await tester.tap(find.text('Phân tích món'));
+    await tester.pumpAndSettle();
+
+    expect(receivedName, 'Sữa bò tươi');
+    expect(receivedGrams, 100.0);
+    expect(find.byType(AnalysisResultScreen), findsOneWidget);
+  });
+
+  testWidgets('ambiguous food names show catalog candidates to choose', (
+    tester,
+  ) async {
+    var calls = 0;
+    final result = AnalyzeResult.fromJson({
+      'dish_name': 'Gạo tẻ',
+      'source': 'text_catalog',
+      'nutrition': {
+        'dish_name': 'Gạo tẻ',
+        'total_calories': 350,
+        'total_grams': 100,
+      },
+      'dishes': <Object>[],
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalyzeScreen(
+          analyzeText: ({required foodName, required grams}) async {
+            if (calls++ == 0) {
+              return AnalyzeResult.fromJson({
+                'dish_name': foodName,
+                'source': 'text_ambiguous',
+                'warning': 'Có nhiều món phù hợp.',
+                'matches': [
+                  {
+                    'record_id': 'dish-1',
+                    'canonical_name': 'Gạo tẻ',
+                    'catalog_type': 'vn_dish',
+                    'source': 'vnmeal',
+                    'nutrition_basis': 'per_gram',
+                    'review_status': 'reviewed',
+                  },
+                  {
+                    'record_id': 'nri-1',
+                    'canonical_name': 'Gạo tẻ lứt',
+                    'catalog_type': 'nrihcm_food',
+                    'source': 'nrihcm_raw',
+                    'nutrition_basis': 'per_100g',
+                    'review_status': 'raw',
+                  },
+                ],
+              });
+            }
+            return result;
+          },
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Nhập món'));
+    await tester.pump();
+    await tester.enterText(find.byKey(const ValueKey('text-food-name')), 'gạo');
+    await tester.tap(find.byKey(const ValueKey('text-analyze-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Có nhiều món phù hợp.'), findsOneWidget);
+    expect(find.text('Gạo tẻ'), findsOneWidget);
+    expect(
+      find.textContaining('Dữ liệu Viện Dinh dưỡng đã craw'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Gạo tẻ'));
+    await tester.pump();
+    final field = tester.widget<TextField>(
+      find.byKey(const ValueKey('text-food-name')),
+    );
+    expect(field.controller!.text, 'Gạo tẻ');
+
+    await tester.tap(find.byKey(const ValueKey('text-analyze-submit')));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.byType(AnalysisResultScreen), findsOneWidget);
+  });
+
   testWidgets('selected photos require confirmation before AI analysis', (
     tester,
   ) async {
@@ -122,6 +250,48 @@ void main() {
     expect(find.textContaining('Không kết nối được backend'), findsNothing);
     expect(find.text('Thử lại'), findsOneWidget);
   });
+
+  testWidgets(
+    'shows the backend analysis error instead of calling it a network failure',
+    (tester) async {
+      final image = XFile.fromData(
+        Uint8List.fromList([0xff, 0xd8]),
+        name: 'food.jpg',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: BalanceTheme.light,
+          home: AnalyzeScreen(
+            pickImage: (_) async => image,
+            analyzeImage: ({required bytes, required filename}) async {
+              throw const AnalyzeApiException(
+                'Dịch vụ nhận diện đang tạm gián đoạn. Vui lòng thử lại sau.',
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('camera-shutter')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dùng ảnh này'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Dịch vụ nhận diện đang tạm gián đoạn. Vui lòng thử lại sau.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Chưa kết nối được để phân tích ảnh. Kiểm tra mạng rồi thử lại.',
+        ),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets('camera tips are available without leaving the capture screen', (
     tester,

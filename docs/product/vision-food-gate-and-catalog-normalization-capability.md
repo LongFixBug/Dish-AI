@@ -1,7 +1,7 @@
-# Kế hoạch Food Gate và chuẩn hóa tên món cho flow Vision-only
+# Kế hoạch Food Gate, chuẩn hóa catalog và SigLIP candidate hints
 
-Trạng thái: **Planned — chưa triển khai Food Gate; catalog resolver hiện đã có
-exact match, reviewed alias, Qdrant fallback và identity guard**
+Trạng thái: **Planned — runtime hiện là Vision-only; chưa triển khai Food Gate;
+SigLIP candidate hints mới là challenger offline, chưa được bật lại trong API**
 
 Phạm vi runtime: `POST /api/v1/analyze`
 
@@ -14,13 +14,16 @@ Mục tiêu business:
 3. Không vì chuẩn hóa tên hiển thị mà gắn nhầm dòng dinh dưỡng trong PostgreSQL.
 4. Tạo đầy đủ dataset, evaluator, telemetry và release report để kết quả có thể
    kiểm chứng và trình bày trung thực trên CV.
+5. Đánh giá SigLIP/Qdrant ảnh như nguồn candidate hints để tăng đúng family cho
+   các nhóm dễ nhầm, nhưng không đổi nutrition identity và không promote nếu nó
+   gây regression so với Vision-only control.
 
 ---
 
 ## CAPABILITY
 
 Sau khi capability này hoàn thành, người dùng gửi một ảnh lên FoodAI sẽ đi qua
-hai tầng kiểm soát:
+hai tầng kiểm soát bắt buộc và một nguồn gợi ý tùy chọn:
 
 1. **Food Gate local** phân loại ảnh thành `food`, `non_food` hoặc `uncertain`.
    Ảnh `non_food` đủ chắc chắn bị chặn trước Vision; ảnh `food` và `uncertain`
@@ -28,6 +31,9 @@ hai tầng kiểm soát:
 2. **Catalog Normalizer** nhận tên tự do từ Vision, tìm family hiển thị và các
    dòng dinh dưỡng phù hợp trong PostgreSQL. Hệ thống chỉ tự chốt khi bằng chứng
    đủ an toàn; ca mơ hồ phải abstain/chờ duyệt thay vì lấy nutrition của món khác.
+3. **SigLIP Candidate Hints** (chỉ sau khi được promote) lấy top-k family từ
+   album ảnh/Qdrant để gợi ý cho Vision. Nó không tự cấp nutrition, không được
+   âm thầm sửa raw name của Vision và phải có kill switch quay về Vision-only.
 
 Luồng mục tiêu:
 
@@ -51,6 +57,22 @@ flowchart TD
     N --> P["Estimate tham khảo trong response hiện tại"]
 ```
 
+Challenger chạy song song trong evaluation/shadow, không thay control hiện tại:
+
+```mermaid
+flowchart LR
+    A["Ảnh đã sanitize"] --> B["SigLIP2 image embedding"]
+    B --> C["Qdrant image collection có version"]
+    C --> D["Top-k candidate family"]
+    A --> E["Qwen Vision"]
+    D --> E
+    E --> F["Cùng Catalog Normalizer và PostgreSQL truth"]
+```
+
+Trong offline A/B, cùng một ảnh được chạy cả control và challenger để so sánh.
+Trong production sau promotion, request bình thường chỉ chạy policy đã chọn;
+không mặc định trả tiền hai lần cho Vision.
+
 ### Trạng thái checkout hiện tại
 
 | Thành phần | Trạng thái |
@@ -64,6 +86,9 @@ flowchart TD
 | Food/non-food model | Chưa có |
 | Dataset và evaluator Food Gate | Chưa có |
 | Golden set chuẩn hóa tên món | Chưa có |
+| Golden intake family | 15 ảnh đã được user review; nutrition UUID còn pending, chưa sealed |
+| SigLIP/Qdrant hints | A/B offline 15 ảnh: 10/15 family match so với Vision-only 6/15; chưa đủ để promote |
+| Versioned SigLIP image collection | Config có tên versioned nhưng collection chưa được dựng; A/B dùng legacy `dish_images` 1.760 vector |
 | Telemetry `p_food`, gate decision, raw → canonical | Chưa đủ |
 | Shadow/canary/rollback cho Food Gate | Chưa có |
 | Release report đủ số liệu để ghi CV | Chưa có |
@@ -87,6 +112,18 @@ flowchart TD
   sự cố. Rate limit tiếp tục là lớp bảo vệ chi phí khi gate hỏng.
 - Vision output là input không tin cậy; phải validate, normalize và giới hạn như
   flow hiện tại.
+- SigLIP/Qdrant ảnh chỉ là candidate generator. Điểm cosine, top-1 hoặc tên ảnh
+  gần nhất không được dùng trực tiếp làm nutrition identity.
+- Encoder, checkpoint, preprocessing, reference album, Qdrant collection,
+  vector dimension và thresholds là một recognition release; thay một thành
+  phần phải re-index sang collection version mới, không trộn vector cũ/mới.
+- Vision-only luôn là control/rollback. Challenger chỉ được promote sau sealed
+  evaluation; A/B 15 ảnh hiện tại chỉ là tín hiệu định hướng.
+- Candidate hints có thể neo Vision vào đáp án sai. Evaluator phải báo cả uplift
+  và regression theo từng family, không chỉ accuracy tổng.
+- SigLIP hints không giảm số lượt Vision của ảnh food; nó tăng chất lượng với
+  đổi lại local latency/RAM. Food Gate mới là nhánh chịu trách nhiệm giảm chi phí
+  Vision bằng cách chặn non-food đủ chắc chắn.
 - Không biến tên family hiển thị thành nutrition identity nếu hai khái niệm đó
   không thật sự tương đương.
 - Không viết code đặc biệt cho từng family. Family, alias, variant và member
@@ -404,24 +441,113 @@ Artifact bắt buộc:
 - Golden rows đều có provenance và không lấy từ test output đã bị chỉnh tay sau
   khi xem prediction.
 
-#### Tiến độ Pha 0 — 09/08/2026
+#### Tiến độ Pha 0 — cập nhật 10/08/2026
 
 - Đã tạo `data/eval/food_gate_label_policy.md`: chốt default cho `food`,
   `non_food`, `uncertain`, consent và ranh giới family hiển thị/nutrition item.
 - Đã tạo intake 15 ảnh tại `data/eval/catalog_name_resolution_golden.jsonl`.
-  Đây **chưa là sealed golden set** vì source folder cũ không phải ground truth.
-- Đã capture Vision pilot 6/15 ảnh tại
-  `data/eval/catalog_name_resolution_phase0_raw_capture.jsonl`; provider thành
-  công 6/6, latency p50 4.957,4 ms và p95 nearest-rank 5.355,5 ms.
-- Pilot phát hiện raw name Vision khác source label ở 6/6 case. Visual review
-  xác nhận ít nhất hai ảnh folder `banh_canh` không rõ là bánh canh; dừng các
-  call còn lại để không tiêu tiền trên bộ test chưa review.
+  User đã review và xác nhận đúng family cho đủ 15/15 ảnh; expected PostgreSQL
+  nutrition UUID vẫn pending nên đây **chưa là sealed golden set**.
+- Đã capture Vision-only đủ 15/15 ảnh tại
+  `data/eval/catalog_name_resolution_phase0_raw_capture.jsonl`: family match
+  6/15 (40%). Breakdown nhỏ: Bánh canh 0/5, Há cảo 1/5, Phở bò 5/5.
+- Đã chạy offline challenger SigLIP/Qdrant top-5 → Vision hints trên cùng 15 ảnh:
+  family match 10/15 (66,7%). Breakdown: Bánh canh 1/5, Há cảo 5/5, Phở bò
+  4/5. Challenger tăng ròng 4 case nhưng gây một regression Phở bò.
+- SigLIP retrieval chứa expected family trong top-5 ở 15/15 case, nhưng đây chỉ
+  là candidate recall trên 3 family, không phải bằng chứng đủ để tự chốt local.
+- A/B dùng legacy collection `dish_images` có 1.760 vector, dimension 768. Active
+  config đang trỏ sang collection versioned chưa tồn tại; phải re-index sạch
+  trước mọi integration/shadow chính thức.
+- Raw challenger được lưu tại
+  `data/eval/catalog_name_resolution_siglip_hints_capture.jsonl`; report tại
+  `ml/evaluation/reports/siglip_hints_ab_20260810.md`.
 - Đã khởi động local datastore; PostgreSQL có 834 `vn_dishes`, Qdrant healthz
   pass. Có exact row cho `Phở bò chín`, `Bánh canh thịt heo`, `Há cảo`.
 - Baseline catalog precision/coverage, unresolved rate, dangerous mismatch,
   Vision call rate production và cost/request vẫn **pending** cho đến khi có
-  human-reviewed golden rows và full run. Không được dùng pilot này làm metric
-  cuối hoặc đưa vào CV.
+  expected nutrition UUID, larger golden và full resolver run. Không được dùng
+  A/B 15 ảnh này làm metric cuối, chọn threshold hoặc đưa vào CV.
+
+### Nhánh song song S — SigLIP candidate hints challenger
+
+Mục tiêu: kiểm tra liệu album ảnh local có tăng đúng family của Vision trên các
+confusion pair thật, trong khi Catalog Normalizer và PostgreSQL truth giữ nguyên.
+Nhánh này chạy song song với Pha 1–4 của Food Gate; nó không thay thế Food Gate.
+
+#### S1 — Mở rộng dữ liệu và khóa control
+
+1. Giữ Vision-only làm control cố định: cùng model, prompt, catalog snapshot và
+   preprocessing trong một A/B release.
+2. Mở rộng golden theo traffic và confusion pair thật; không chỉ ba family hiện
+   tại. Mỗi family phải có nhiều góc, ánh sáng, camera và source group.
+3. Với các nhóm dễ nhầm do evaluator phát hiện, thu positive cùng family và hard
+   negative khác family nhưng gần hình thức. Danh sách nhóm là dữ liệu trong
+   manifest/report, không hardcode trong Python.
+4. Review family label trước prediction; review nutrition UUID riêng sau đó.
+5. Deduplicate và split theo original/source group để ảnh gần trùng không lọt
+   qua train/val/sealed test.
+
+#### S2 — Dựng recognition release có version
+
+1. Chốt encoder/checkpoint/preprocessing/vector dimension/reference album.
+2. Re-index toàn bộ album vào collection mới, ví dụ tên chứa encoder + release
+   version; không dùng chung legacy `dish_images` trong release chính thức.
+3. Manifest phải ghi image path, class/family UUID, source, review status,
+   checksum và split/provenance.
+4. Kiểm tra point count, dimension, payload indexes và mapping về PostgreSQL.
+5. API runtime vẫn để hints disabled; collection build không tự bật traffic.
+
+#### S3 — Evaluator A/B trước fine-tune
+
+Evaluator phải chạy cùng một sealed input qua hai flow:
+
+```text
+control:    image → Vision-only → Catalog Normalizer
+challenger: image → SigLIP top-k → Vision with hints → Catalog Normalizer
+```
+
+Report tối thiểu:
+
+- candidate Recall@1/3/5, MRR và top-1/top-2 margin;
+- family accuracy control/challenger và uplift tuyệt đối;
+- số case `fixed`, `unchanged_correct`, `unchanged_wrong`, `regressed`;
+- breakdown theo family/confusion pair/source/camera;
+- catalog auto-resolution precision, nutrition identity precision và dangerous
+  mismatch sau cùng, không chỉ raw-name match;
+- SigLIP latency/RSS, Vision latency, end-to-end p50/p95 và Vision call count;
+- encoder/checkpoint/album/collection/prompt/catalog hashes.
+
+Không promote chỉ vì candidate Recall@5 cao: A/B hiện tại đã cho thấy expected
+family nằm top-5 15/15 nhưng hinted Vision vẫn chỉ đúng 10/15 và có regression.
+
+#### S4 — Fine-tune SigLIP theo hard pair, chỉ khi baseline chưa đủ
+
+1. Dùng supervised contrastive hoặc metric-learning objective: ảnh cùng family
+   là positive; confusion family khác là hard negative.
+2. Bắt đầu bằng adapter/LoRA hoặc mở các block vision cuối với learning rate nhỏ;
+   không dùng QLoRA mặc định cho bài toán vision embedding này.
+3. Không fine-tune bằng sealed test và không thêm hàng trăm class chỉ để “biết
+   toàn bộ món Việt”. Tập trung vào family có traffic/confusion đủ bằng chứng.
+4. Mỗi checkpoint phải re-embed toàn album sang collection mới rồi chạy lại S3;
+   vector checkpoint cũ và mới không được trộn.
+5. Mục tiêu fine-tune là tăng Recall@1 và margin của đúng family, đồng thời giảm
+   regression của Vision-with-hints; không tối ưu mỗi train accuracy.
+
+#### S5 — Promotion, shadow và rollback
+
+Challenger chỉ sẵn sàng integration khi:
+
+- thắng Vision-only trên larger sealed set, không chỉ 15 ảnh;
+- không có regression material ở priority/hard-positive group;
+- catalog/nutrition safety gate vẫn pass;
+- latency/RAM phù hợp production target;
+- versioned collection đã dựng và có rollback về control;
+- threshold/top-k/policy nằm trong config/release manifest, không hardcode.
+
+Shadow production chỉ chạy trên sample có giới hạn để tránh nhân đôi chi phí.
+Sau promotion, local retrieval chỉ cung cấp hints theo policy đã chọn; nếu
+sidecar/Qdrant lỗi thì fail-open về Vision-only và ghi telemetry.
 
 ### Pha 1 — Thu thập và làm sạch dataset Food Gate
 
@@ -909,6 +1035,9 @@ Metrics cần bổ sung ở Prometheus hoặc report pipeline:
 - `catalog_resolution_total{method,outcome,resolver_version}`
 - `catalog_resolution_latency_seconds{method}`
 - `non_food_override_total`
+- `image_hint_requests_total{mode,outcome,release_version}`
+- `image_hint_latency_seconds{release_version}`
+- `image_hint_fail_open_total{reason,release_version}`
 
 Không đưa `dish_name`, user ID hoặc raw text có cardinality cao vào Prometheus
 label. Các giá trị này nằm trong PostgreSQL event/report có kiểm soát.
@@ -949,6 +1078,8 @@ export, không hardcode vào metric code.
 | Vision timeout/quota lỗi | Trả lỗi Vision hiện tại, không bịa local result |
 | PostgreSQL lỗi | Không dùng Qdrant làm nutrition truth |
 | Qdrant text lỗi | Exact/alias PostgreSQL vẫn chạy, semantic fallback bỏ qua |
+| SigLIP sidecar/Qdrant image lỗi | Bỏ candidate hints, fail-open về Vision-only |
+| SigLIP hint xung đột | Vision + normalizer phải abstain an toàn; ghi regression telemetry |
 | Candidate khác family | Abstain + stage, không auto-resolve |
 | Family taxonomy thiếu | Giữ tên resolved item hiện tại, không chặn nutrition hợp lệ |
 | Telemetry lỗi | Best-effort; không làm request chính thất bại |
@@ -989,6 +1120,9 @@ export, không hardcode vào metric code.
 - [ ] Per-group metrics không có nhóm critical bị che bởi average.
 - [ ] Confusion examples được review.
 - [ ] Champion/challenger dùng cùng evaluator.
+- [ ] SigLIP report có Recall@1/3/5, MRR, margin và breakdown theo family.
+- [ ] Hinted-Vision report có `fixed`, `unchanged`, `regressed` so với control.
+- [ ] Mỗi checkpoint SigLIP dùng album/collection được re-index cùng version.
 
 ### Runtime/release
 
@@ -1000,6 +1134,8 @@ export, không hardcode vào metric code.
 - [ ] Dashboard/alert hiển thị đúng model version.
 - [ ] Vision billing/call count đối soát được.
 - [ ] Full backend/mobile regression pass.
+- [ ] Nếu bật hints: sidecar/Qdrant image failure fail-open về Vision-only.
+- [ ] Nếu bật hints: kill switch và rollback về Vision-only đã được thử thật.
 
 ---
 
@@ -1071,6 +1207,11 @@ production block:
    nào thuộc từng family và item nào đã có nutrition đủ tin cậy?
 7. Provider billing export nào là nguồn truth cho cost/call?
 8. Ai là reviewer có quyền approve family alias và nutrition-equivalent alias?
+9. Production budget cho SigLIP hints là bao nhiêu RAM và bao nhiêu ms p95?
+10. Hints chạy cho toàn bộ ảnh food hay chỉ một policy có bằng chứng từ
+    evaluator/shadow?
+11. Mức regression tối đa theo family nào được phép khi promote challenger?
+12. Tỷ lệ traffic shadow cho hints là bao nhiêu để không vượt ngân sách Vision?
 
 Khuyến nghị mặc định:
 
@@ -1080,31 +1221,40 @@ Khuyến nghị mặc định:
 - Dùng PyTorch cho POC; chỉ đổi ONNX khi benchmark chứng minh cần thiết.
 - Bắt đầu family taxonomy bằng PostgreSQL migration + admin review API tối thiểu,
   không hardcode Python.
+- Cho phép Food Gate + Catalog Normalizer ship độc lập nếu SigLIP challenger
+  không thắng control; SigLIP không phải dependency bắt buộc.
 
 ---
 
 ## HANDOFF VÀ THỨ TỰ THỰC THI
 
 Capability này **chưa sẵn sàng bật production ngay**, nhưng đã đủ contract để
-bắt đầu triển khai theo TDD sau khi chốt label policy và bốn câu hỏi runtime
-quan trọng: override UX, serving format, hardware SLO và reviewer authority.
+bắt đầu triển khai theo TDD. Food Gate/Catalog Normalizer là lane chính; SigLIP
+candidate hints là lane challenger chạy song song và có quyền bị loại nếu không
+qua release gate.
 
-Thứ tự không được đảo:
+Thứ tự triển khai chung:
 
-1. Chốt label/family policy.
-2. Tạo golden set và baseline report.
-3. Thu thập, review, deduplicate và split dataset.
-4. Xây evaluator + metric tests.
-5. Fine-tune Food Gate.
-6. Chọn threshold bằng validation.
-7. Khóa release và chạy sealed test/OOD.
-8. Tạo PostgreSQL family taxonomy và hoàn thiện resolver.
-9. Viết TDD cho backend/API/mobile.
-10. Tích hợp gate ở sau sanitize, trước Vision.
-11. Bổ sung telemetry/dashboard/cost report.
-12. Chạy shadow.
-13. Chạy canary 5% → 25% → 50% → 100%.
-14. Lưu release evidence và chỉ sau đó mới ghi metric vào CV.
+1. Hoàn tất Pha 0: review expected nutrition UUID, mở rộng golden và khóa
+   Vision-only control/catalog snapshot.
+2. Dựng evaluator chung trước khi train hoặc đổi prompt.
+3. Chạy hai lane song song:
+   - **Lane A — Food Gate:** Pha 1–4, thu/làm sạch/split dữ liệu, baseline,
+     fine-tune, threshold validation và sealed test/OOD.
+   - **Lane S — SigLIP hints:** S1–S4, mở rộng hard pairs, tạo release manifest,
+     re-index collection version mới, A/B với Vision-only và chỉ fine-tune khi
+     retrieval baseline chưa đạt.
+4. Song song hoàn thiện PostgreSQL family taxonomy và Catalog Normalizer; cùng
+   một resolver/safety gate dùng cho control và challenger.
+5. TDD backend/API/mobile và telemetry. Food Gate tích hợp sau sanitize, trước
+   Vision. SigLIP vẫn disabled nếu chưa đạt S5.
+6. Shadow Food Gate. Shadow SigLIP riêng trên sample giới hạn, không mặc định
+   nhân đôi mọi Vision request.
+7. Chỉ promote SigLIP khi S5 pass; nếu fail thì giữ Vision-only mà không chặn
+   rollout Food Gate/Catalog Normalizer.
+8. Canary từng capability bằng feature flag/kill switch, kiểm tra rollback rồi
+   mới nâng 5% → 25% → 50% → 100%.
+9. Lưu release evidence; chỉ sau đó mới ghi metric vào CV.
 
 Definition of Done cuối cùng:
 
@@ -1120,3 +1270,10 @@ Definition of Done cuối cùng:
 - [ ] Rollback đã được thử.
 - [ ] Report có dataset/model/catalog/threshold version và checksum.
 - [ ] CV chỉ dùng số đã được report xác nhận.
+- [ ] Vision-only control vẫn chạy độc lập và là rollback path.
+- [ ] Nếu SigLIP được promote: collection/checkpoint/album/preprocessing cùng
+      một release version và toàn bộ album đã re-index.
+- [ ] Nếu SigLIP được promote: hinted flow thắng control trên larger sealed set,
+      không có regression material ở priority family và pass nutrition safety.
+- [ ] Nếu SigLIP không pass: capability vẫn hoàn thành với Food Gate + Catalog
+      Normalizer + Vision-only, không ép bật challenger.

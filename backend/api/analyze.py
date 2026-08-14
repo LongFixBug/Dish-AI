@@ -12,7 +12,15 @@ from pathlib import Path
 
 import httpx
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Response,
+    UploadFile,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.postgres import get_session
@@ -28,28 +36,37 @@ from backend.metrics import ANALYSIS_RESULTS
 from backend.services.dishes import (
     _has_nutrition,
     _has_weight,
+    _nrihcm_food_to_per_gram,
     _vn_dish_to_per_gram,
     _vn_ingredient_to_per_gram,
     lookup_dish,
     lookup_dish_exact,
     lookup_ingredient_text,
+    lookup_nrihcm_food_exact,
     resolve_catalog_portion_grams,
 )
-from backend.services.catalog_identity import is_catalog_identity_safe
-from backend.services.food_gate import observe_food_gate_shadow, predict_food_gate
-from backend.services.siglip_food_hints import observe_siglip_food_hint_shadow, predict_siglip_food_hints
 from backend.services.dish_candidates import stage_dish_candidate
+from backend.services.text_analysis import analyze_text_food
 from backend.services.image_segmentation import cut_out_subject
 from backend.services.recognition_events import record_recognition_event
+from backend.services.catalog_identity import is_catalog_identity_safe
+from backend.services.siglip_food_hints import (
+    observe_siglip_food_hint_shadow,
+    predict_siglip_food_hints,
+)
+from backend.services.food_gate import (
+    observe_food_gate_shadow,
+    predict_food_gate,
+)
+
 from ml.inference.vision import VisionError, identify_dish
-from schemas.analyze import AnalyzeDish, AnalyzeResponse
+from schemas.analyze import AnalyzeDish, AnalyzeResponse, TextAnalyzeRequest
 from schemas.nutrition import (
     NutritionPerIngredient,
     calculate_item_nutrition,
     calculate_totals,
     create_item_nutrition_from_vision,
 )
-
 # ─── Constants ─────────────────────────────────────────────────────────────
 
 MAX_UPLOAD_BYTES = MAX_IMAGE_UPLOAD_BYTES
@@ -123,7 +140,7 @@ async def _resolve_dish_item(
 ) -> tuple[NutritionPerIngredient | None, str, str]:
     """Resolve 1 dish vision → NutritionPerIngredient.
 
-    Tra vn_dishes trước → nếu miss + is_side → tra vn_ingredients → nếu vẫn miss → None.
+    Tra vn_dishes trước → rồi nguyên liệu/raw source → nếu vẫn miss → None.
 
     Returns:
         (nutrition_item | None, canonical_name, portion_source).
@@ -167,30 +184,48 @@ async def _resolve_dish_item(
             # Không gán gram của Vision vào đây: con số đó không tham gia phép
             # tính, gán vào sẽ tạo ra mật độ calo vô nghĩa và làm hỏng bộ chỉnh
             # khẩu phần (calculate_adjusted_totals từ chối basis này).
-            return NutritionPerIngredient(
-                item_name=vn.dish_name,
-                grams=0.0,
-                calories=round(vn.total_calories, 1),
-                protein_g=round(vn.total_protein_g, 1),
-                fat_g=round(vn.total_fat_g, 1),
-                carbs_g=round(vn.total_carbs_g, 1),
-                fiber_g=round(vn.total_fiber_g, 1),
-                found_in_db=True,
-                nutrition_basis="source_serving",
-            ), vn.dish_name, "unknown"
+            return (
+                NutritionPerIngredient(
+                    item_name=vn.dish_name,
+                    grams=0.0,
+                    calories=round(vn.total_calories, 1),
+                    protein_g=round(vn.total_protein_g, 1),
+                    fat_g=round(vn.total_fat_g, 1),
+                    carbs_g=round(vn.total_carbs_g, 1),
+                    fiber_g=round(vn.total_fiber_g, 1),
+                    found_in_db=True,
+                    nutrition_basis="source_serving",
+                ),
+                vn.dish_name,
+                "unknown",
+            )
         # Catalog rows without nutrition fall back to the Vision estimate.
 
-    # ── Tier 2: vn_ingredients (chỉ khi is_side — đồ uống/món kèm) ───────
-    # Nguyên liệu chỉ có số liệu theo gram, không có khẩu phần chuẩn để fallback.
+    # ── Tier 2: vn_ingredients ──────────────────────────────────────────
+    # Ảnh và text đều có thể nhận ra một nguyên liệu/sản phẩm (ví dụ sữa,
+    # xoài, nước đóng chai), nên không giới hạn bảng này ở món phụ. Chỉ dùng
+    # exact normalized match để không biến một semantic hit thành món khác.
     # Thiếu gram thì coi như chưa tra được, để caller đưa vào "missing" — nếu
     # không sẽ sinh ra item 0 kcal nhưng vẫn gắn cờ found_in_db=True.
-    if is_side and gram > 0:
-        ing = await lookup_ingredient_text(session, dish_name)
-        if ing is not None:
-            per_gram = _vn_ingredient_to_per_gram(ing)
+    ing = await lookup_ingredient_text(session, dish_name)
+    if ing is not None and gram > 0:
+        per_gram = _vn_ingredient_to_per_gram(ing)
+        return (
+            calculate_item_nutrition(ing.ingredient_name, gram, per_gram),
+            ing.ingredient_name,
+            "vision",
+        )
+
+    # ── Tier 3: raw NRIHCM crawl ────────────────────────────────────────
+    # The crawled table is a 100g basis snapshot. It is a nutrition source,
+    # but does not become a reviewed FoodAI catalog row by being matched here.
+    if gram > 0:
+        nri_food = await lookup_nrihcm_food_exact(session, dish_name)
+        if nri_food is not None:
+            per_gram = _nrihcm_food_to_per_gram(nri_food)
             return (
-                calculate_item_nutrition(ing.ingredient_name, gram, per_gram),
-                ing.ingredient_name,
+                calculate_item_nutrition(nri_food.name_vi, gram, per_gram),
+                nri_food.name_vi,
                 "vision",
             )
 
@@ -198,14 +233,35 @@ async def _resolve_dish_item(
     return None, resolved_name, "unknown"
 
 
+@router.post("/analyze/text", response_model=AnalyzeResponse)
+async def analyze_text(
+    payload: TextAnalyzeRequest,
+    session: AsyncSession = Depends(get_session),
+    _current_user: CurrentUser = Depends(require_user),
+) -> AnalyzeResponse:
+    """Analyze a user-provided food name without requiring an image."""
+    response = await analyze_text_food(session, payload.food_name, payload.grams)
+    ANALYSIS_RESULTS.labels(
+        source=response.source,
+        outcome="error" if response.error else "success",
+    ).inc()
+    logger.info(
+        "Text analysis food=%r grams=%.1f source=%s",
+        payload.food_name,
+        payload.grams,
+        response.source,
+    )
+    return response
+
+
 async def _analyze_vision_dishes(
     session: AsyncSession,
     vision_dishes: list[dict],
 ) -> tuple[
-    list[NutritionPerIngredient],   # items đã tính
-    list[AnalyzeDish],              # dishes response (với is_side)
-    list[str],                       # món mới staged để duyệt
-    list[str],                       # missing items
+    list[NutritionPerIngredient],  # items đã tính
+    list[AnalyzeDish],  # dishes response (với is_side)
+    list[str],  # món mới staged để duyệt
+    list[str],  # missing items
 ]:
     """Resolve Vision dishes and stage unknown labels for later review."""
     items: list[NutritionPerIngredient] = []

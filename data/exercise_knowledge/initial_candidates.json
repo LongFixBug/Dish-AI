@@ -1,0 +1,118 @@
+{
+  "documents": [
+    {
+      "title": "Physical activity",
+      "publisher": "World Health Organization",
+      "source_url": "https://www.who.int/news-room/fact-sheets/detail/physical-activity",
+      "license_note": "Candidate reference: verify current terms and attribution before approval.",
+      "language": "en",
+      "version": "2026-08-07",
+      "status": "pending",
+      "content": "Candidate reference for general adult physical activity guidance. It is not a prescription for injury, disease, pregnancy, medication use, or a personal training programme.",
+      "chunks": [
+        {
+          "heading": "General physical activity boundary",
+          "language": "en",
+          "content": "For FoodAI, use this source only for general physical-activity education. Do not turn it into medical advice or an individual exercise prescription. Ask users with pain, injury, chronic conditions, pregnancy, or disabilities to consult a qualified professional."
+        }
+      ]
+    },
+    {
+      "title": "What Counts as Physical Activity for Adults",
+      "publisher": "Centers for Disease Control and Prevention",
+      "source_url": "https://www.cdc.gov/physical-activity-basics/adding-adults/what-counts.html",
+      "license_note": "Candidate reference: verify current terms and attribution before approval.",
+      "language": "en",
+      "version": "2025-12-06",
+      "status": "pending",
+      "content": "Candidate reference for adult aerobic and muscle-strengthening activity. FoodAI must display the source and keep recommendations general.",
+      "chunks": [
+        {
+          "heading": "Weekly activity overview",
+          "language": "en",
+          "content": "Candidate summary: adult activity guidance combines aerobic activity with muscle-strengthening work across major muscle groups. This is an educational weekly overview, not a personalised gym prescription."
+        }
+      ]
+    },
+    {
+      "title": "ACSM Resistance Training Position Stands",
+      "publisher": "American College of Sports Medicine",
+      "source_url": "https://acsm.org/education-resources/pronouncements-scientific-communications/position-stands/",
+      "license_note": "Candidate reference: verify current terms and attribution before approval.",
+      "language": "en",
+      "version": "2026",
+      "status": "pending",
+      "content": "Candidate evidence source for general resistance-training education in healthy adults. This does not authorise copying full text or providing rehabilitation advice.",
+      "chunks": [
+        {
+          "heading": "Resistance training boundary",
+          "language": "en",
+          "content": "Candidate summary: explain resistance training at a general level for healthy adults, cite the source, and avoid diagnosing injuries or prescribing individual loads."
+        }
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "document_source_url": "https://acsm.org/education-resources/pronouncements-scientific-communications/position-stands/",
+      "slug": "cable-triceps-pushdown",
+      "name_vi": "Duỗi tay sau với cáp",
+      "name_en": "Cable triceps pushdown",
+      "primary_muscles": ["triceps"],
+      "secondary_muscles": [],
+      "equipment": ["cable machine", "rope or bar attachment"],
+      "level": "beginner",
+      "cues": ["Giữ thân người ổn định.", "Duỗi khuỷu tay có kiểm soát.", "Không dùng quán tính để kéo cáp."],
+      "common_mistakes": ["Đung đưa người.", "Để khuỷu tay trôi quá xa khỏi thân người."],
+      "safety_note": "Dừng bài và hỏi chuyên gia nếu có đau cấp tính ở khuỷu tay hoặc vai.",
+      "status": "pending"
+    },
+    {
+      "document_source_url": "https://acsm.org/education-resources/pronouncements-scientific-communications/position-stands/",
+      "slug": "close-grip-push-up",
+      "name_vi": "Hít đất tay hẹp",
+      "name_en": "Close-grip push-up",
+      "primary_muscles": ["triceps"],
+      "secondary_muscles": ["chest", "shoulders"],
+      "equipment": ["bodyweight"],
+      "level": "beginner",
+      "cues": ["Giữ thân người thẳng.", "Hạ người có kiểm soát.", "Chọn biến thể kê cao tay nếu cần giảm độ khó."],
+      "common_mistakes": ["Võng lưng.", "Hạ quá nhanh và mất kiểm soát vai."],
+      "safety_note": "Dừng bài và hỏi chuyên gia nếu đau cổ tay, vai hoặc khuỷu tay.",
+      "status": "pending"
+    }
+  ],
+  "templates": [
+    {
+      "document_source_url": "https://www.cdc.gov/physical-activity-basics/adding-adults/what-counts.html",
+      "slug": "two-day-general-strength",
+      "name_vi": "Lịch sức mạnh cơ bản 2 buổi/tuần",
+      "name_en": "Two-day general strength template",
+      "training_days": 2,
+      "schedule": {
+        "days": [
+          {"label": "Buổi A", "focus": ["legs", "push", "pull", "core"]},
+          {"label": "Buổi B", "focus": ["legs", "push", "pull", "core"]}
+        ],
+        "rest_guidance": "Để ngày nghỉ giữa hai buổi và điều chỉnh theo khả năng."
+      },
+      "status": "pending"
+    },
+    {
+      "document_source_url": "https://www.cdc.gov/physical-activity-basics/adding-adults/what-counts.html",
+      "slug": "three-day-general-strength",
+      "name_vi": "Lịch sức mạnh cơ bản 3 buổi/tuần",
+      "name_en": "Three-day general strength template",
+      "training_days": 3,
+      "schedule": {
+        "days": [
+          {"label": "Buổi 1", "focus": ["full body"]},
+          {"label": "Buổi 2", "focus": ["full body"]},
+          {"label": "Buổi 3", "focus": ["full body"]}
+        ],
+        "rest_guidance": "Xen kẽ ngày nghỉ; đây là khung tham khảo cho người trưởng thành khỏe mạnh."
+      },
+      "status": "pending"
+    }
+  ]
+}

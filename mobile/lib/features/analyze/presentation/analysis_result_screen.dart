@@ -23,6 +23,7 @@ class AnalysisResultScreen extends StatefulWidget {
     required this.result,
     this.imageBytes,
     this.stickerBytes,
+    this.captureSource = 'upload',
     this.feedbackGateway,
     super.key,
   });
@@ -35,6 +36,7 @@ class AnalysisResultScreen extends StatefulWidget {
 
   final AnalyzeResult result;
   final Uint8List? imageBytes;
+  final String captureSource;
 
   @override
   State<AnalysisResultScreen> createState() => _AnalysisResultScreenState();
@@ -73,7 +75,11 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         await state.removeJournalEntry(previousId);
       }
       await state.addJournalEntry(entry, stickerBytes: widget.stickerBytes);
-      final synced = await state.syncJournalEntry(entry, source: 'analyze');
+      final synced = await state.syncJournalEntry(
+        entry,
+        source: 'analyze',
+        analyzeSource: _result.isTextAnalysis ? 'text' : 'image',
+      );
       if (!mounted) return;
       _savedEntryId = entry.id;
       setState(() => _saved = true);
@@ -115,8 +121,41 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     });
   }
 
-  void _markRecognitionGood() {
+  Future<void> _markRecognitionGood() async {
     setState(() => _verdict = QuickVerdict.good);
+    final bytes = widget.imageBytes;
+    final state = AppScope.maybeOf(context);
+    final dishName = _result.dishName;
+    if (bytes == null || state == null || dishName == null || dishName.isEmpty) {
+      return;
+    }
+    final consent = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _TrainingConsentDialog(),
+    );
+    if (consent != true || !mounted) return;
+    try {
+      final token = await state.validAccessToken();
+      final gateway = widget.feedbackGateway ?? FeedbackApi();
+      await gateway.submitCorrection(
+        imageBytes: bytes,
+        filename: 'camera-correction.jpg',
+        correctDishName: dishName,
+        consentToTraining: true,
+        accessToken: token,
+        recognitionEventId: _result.recognitionEventId,
+        captureSource: widget.captureSource,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Đã gửi ảnh đúng. Cảm ơn bạn!')),
+      );
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chưa gửi được ảnh góp ý.')),
+      );
+    }
   }
 
   /// Người dùng bảo nhận diện sai: hỏi tên đúng, sửa ngay trên máy, và chỉ
@@ -147,6 +186,8 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
         correctDishName: input.dishName,
         consentToTraining: true,
         accessToken: token,
+        recognitionEventId: _result.recognitionEventId,
+        captureSource: widget.captureSource,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -211,6 +252,31 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _TrainingConsentDialog extends StatelessWidget {
+  const _TrainingConsentDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Cho phép cải thiện AI?'),
+      content: const Text(
+        'Ảnh này và nhãn món sẽ được lưu để người duyệt kiểm tra trước khi '
+        'dùng huấn luyện. Bạn có đồng ý gửi ảnh không?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Không gửi'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Đồng ý gửi'),
+        ),
+      ],
     );
   }
 }
@@ -299,19 +365,24 @@ class _ResultContent extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
+        if (result.warning case final warning?) ...[
+          BalanceReveal(index: 1, child: _AnalysisWarning(message: warning)),
+          const SizedBox(height: 12),
+        ],
         if (nutrition != null)
-          BalanceReveal(index: 1, child: _MacroRow(nutrition: nutrition)),
+          BalanceReveal(index: 2, child: _MacroRow(nutrition: nutrition)),
         const SizedBox(height: 12),
-        BalanceReveal(
-          index: 2,
-          child: QuickFeedbackCard(
-            verdict: verdict,
-            onGood: onRecognitionGood,
-            onWrong: onRecognitionWrong,
+        if (!result.isTextAnalysis)
+          BalanceReveal(
+            index: 3,
+            child: QuickFeedbackCard(
+              verdict: verdict,
+              onGood: onRecognitionGood,
+              onWrong: onRecognitionWrong,
+            ),
           ),
-        ),
         const SizedBox(height: 12),
-        const BalanceReveal(index: 3, child: _NutritionDisclaimer()),
+        BalanceReveal(index: 4, child: _NutritionDisclaimer(result: result)),
         const SizedBox(height: 20),
         BalanceReveal(
           index: 4,
@@ -344,8 +415,42 @@ class _ResultContent extends StatelessWidget {
   }
 }
 
+class _AnalysisWarning extends StatelessWidget {
+  const _AnalysisWarning({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('analysis-warning'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3CD),
+        border: Border.all(color: BalanceColors.ink, width: 2.2),
+        borderRadius: BorderRadius.circular(BalanceRadii.card),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline_rounded, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _NutritionDisclaimer extends StatelessWidget {
-  const _NutritionDisclaimer();
+  const _NutritionDisclaimer({required this.result});
+
+  final AnalyzeResult result;
 
   @override
   Widget build(BuildContext context) {
@@ -361,15 +466,14 @@ class _NutritionDisclaimer extends StatelessWidget {
             BoxShadow(color: BalanceColors.ink, offset: Offset(3, 3)),
           ],
         ),
-        child: const Row(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.health_and_safety_outlined, size: 20),
+            const Icon(Icons.health_and_safety_outlined, size: 20),
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Dinh dưỡng được AI ước tính và không thay thế tư vấn y tế '
-                'hoặc chuyên gia dinh dưỡng.',
+                _disclaimerText(result),
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
               ),
             ),
@@ -378,6 +482,22 @@ class _NutritionDisclaimer extends StatelessWidget {
       ),
     );
   }
+}
+
+String _disclaimerText(AnalyzeResult result) {
+  if (result.referenceOnly || result.source == 'text_ai_estimate') {
+    return 'Dinh dưỡng được AI ước tính và không thay thế tư vấn y tế '
+        'hoặc chuyên gia dinh dưỡng.';
+  }
+  if (result.source == 'text_nrihcm_raw') {
+    return 'Dữ liệu lấy từ bảng craw Viện Dinh dưỡng và được scale theo '
+        'khối lượng bạn nhập; chưa qua review catalog.';
+  }
+  if (result.isTextAnalysis) {
+    return 'Dữ liệu được lấy từ catalog và scale theo khối lượng bạn nhập.';
+  }
+  return 'Dinh dưỡng được AI ước tính và không thay thế tư vấn y tế '
+      'hoặc chuyên gia dinh dưỡng.';
 }
 
 class _ResultSummary extends StatelessWidget {
@@ -488,7 +608,21 @@ class _ResultFacts extends StatelessWidget {
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 7),
-        const _AiBadge(),
+        // Debug visibility: giữ riêng dòng này để có thể comment/xóa sau khi
+        // hoàn tất việc kiểm chứng nguồn nhận diện ảnh.
+        if (!result.isTextAnalysis) ...[
+          Text(
+            _recognitionSourceLabel(result),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: BalanceColors.ink,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 5),
+        ],
+        result.isTextAnalysis
+            ? _TextSourceBadge(source: result.source)
+            : const _AiBadge(),
         const SizedBox(height: 14),
         Text(
           // Chưa tra được món nào thì hiện "—", không hiện "0 kcal": con số 0
@@ -515,6 +649,12 @@ class _ResultFacts extends StatelessWidget {
       ],
     );
   }
+}
+
+String _recognitionSourceLabel(AnalyzeResult result) {
+  return result.source == 'local_consensus'
+      ? 'Nguồn nhận diện: CV local'
+      : 'Nguồn nhận diện: Vision';
 }
 
 class _MacroRow extends StatelessWidget {
@@ -615,6 +755,49 @@ class _AiBadge extends StatelessWidget {
         '✓ AI nhận diện',
         style: TextStyle(
           color: Color(0xFF146A2B),
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _TextSourceBadge extends StatelessWidget {
+  const _TextSourceBadge({required this.source});
+
+  final String source;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (source) {
+      'text_catalog' => '✓ Dữ liệu catalog',
+      'text_nrihcm_raw' => 'Dữ liệu Viện Dinh dưỡng đã craw',
+      'text_ai_estimate' => 'Thông tin mang tính tham khảo',
+      _ => 'Dữ liệu nhập món',
+    };
+    final isReference = source == 'text_ai_estimate';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: isReference ? const Color(0xFFFFF3CD) : const Color(0xFFD9F6D9),
+        border: Border.all(
+          color: isReference
+              ? const Color(0xFF8B6B00)
+              : const Color(0xFF198736),
+          width: 2,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [
+          BoxShadow(color: BalanceColors.ink, offset: Offset(2, 2)),
+        ],
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isReference
+              ? const Color(0xFF6C5300)
+              : const Color(0xFF146A2B),
           fontWeight: FontWeight.w800,
           fontSize: 12,
         ),

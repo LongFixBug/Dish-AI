@@ -14,7 +14,11 @@ def _sidecar_response(
 ) -> httpx.Response:
     return httpx.Response(
         status_code,
-        json={"model": "fake-siglip2", "dim": 768, "data": items},
+        json={
+            "model": "fake-dinov2",
+            "dim": image_embeddings.settings.image_embed_dim,
+            "data": items,
+        },
         request=httpx.Request("POST", image_embeddings.IMAGE_EMBEDDING_API),
     )
 
@@ -127,3 +131,21 @@ async def test_incomplete_response_batch_raises_value_error(
 
     with pytest.raises(ValueError):
         await image_embeddings.embed_images([b"a", b"b"])
+
+
+async def test_embed_images_rejects_a_sidecar_dimension_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = httpx.Response(
+        200,
+        json={
+            "model": "fake-siglip2",
+            "dim": 384,
+            "data": [{"index": 0, "embedding": [0.1]}],
+        },
+        request=httpx.Request("POST", image_embeddings.IMAGE_EMBEDDING_API),
+    )
+    _patch_post(monkeypatch, response)
+
+    with pytest.raises(ValueError, match="dimension 384"):
+        await image_embeddings.embed_images([b"a"])

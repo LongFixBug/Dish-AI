@@ -1,4 +1,4 @@
-"""Embed dish photos through the SigLIP 2 sidecar (port 8082).
+"""Embed dish photos through the configured image sidecar (port 8082).
 
 The client mirrors ``backend/services/embeddings.py`` so image vectors go
 through the same resilience layer (retry + circuit breaker + concurrency cap)
@@ -21,7 +21,7 @@ image_embedding_http_client = ResilientHttpClient(
 
 
 async def embed_image(data: bytes) -> list[float]:
-    """Return the 768-dimensional L2-normalized vector for one image.
+    """Return the configured L2-normalized vector for one image.
 
     Raises:
         httpx.HTTPError: The sidecar is unavailable or rejects the request.
@@ -45,7 +45,16 @@ async def embed_images(batch: list[bytes]) -> list[list[float]]:
         json={"images": encoded},
     )
     response.raise_for_status()
-    items = response.json()["data"]
+    payload = response.json()
+    reported_dim = payload.get("dim")
+    if reported_dim != settings.image_embed_dim:
+        raise ValueError(
+            "Image embedding sidecar returned dimension "
+            f"{reported_dim}; expected {settings.image_embed_dim}"
+        )
+    items = payload.get("data")
+    if not isinstance(items, list):
+        raise ValueError("Image embedding response is missing a data list")
     ordered = sorted(items, key=lambda item: item["index"])
     if [item["index"] for item in ordered] != list(range(len(batch))):
         raise ValueError(

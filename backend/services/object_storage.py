@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import mimetypes
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 
@@ -14,6 +15,8 @@ from backend.config import Settings
 
 class ObjectStorage(Protocol):
     async def put(self, key: str, content: bytes, content_type: str) -> None: ...
+
+    async def get(self, key: str) -> tuple[bytes, str]: ...
 
     async def delete(self, key: str) -> None: ...
 
@@ -38,6 +41,15 @@ class FilesystemObjectStorage:
 
     async def delete(self, key: str) -> None:
         await asyncio.to_thread(self._target(key).unlink, missing_ok=True)
+
+    async def get(self, key: str) -> tuple[bytes, str]:
+        target = self._target(key)
+
+        def read() -> tuple[bytes, str]:
+            content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+            return target.read_bytes(), content_type
+
+        return await asyncio.to_thread(read)
 
     async def healthcheck(self) -> None:
         await asyncio.to_thread(self.root.mkdir, parents=True, exist_ok=True)
@@ -89,6 +101,15 @@ class S3ObjectStorage:
             Bucket=self._bucket,
             Key=key,
         )
+
+    async def get(self, key: str) -> tuple[bytes, str]:
+        response = await asyncio.to_thread(
+            self._client.get_object,
+            Bucket=self._bucket,
+            Key=key,
+        )
+        content = await asyncio.to_thread(response["Body"].read)
+        return content, response.get("ContentType") or "application/octet-stream"
 
     async def healthcheck(self) -> None:
         await asyncio.to_thread(self._client.head_bucket, Bucket=self._bucket)

@@ -50,9 +50,6 @@ async def _probe_components() -> dict[str, object]:
         checks["redis"] = _check_redis
     if settings.vision_enabled:
         checks["vision"] = _check_vision_config
-    if settings.chat_enabled:
-        checks["llm"] = _check_chat_llm
-
     names = list(checks)
     results = await asyncio.gather(
         *(_run_check(checks[name]) for name in names),
@@ -98,9 +95,3 @@ async def _check_redis() -> None:
 async def _check_vision_config() -> None:
     if not settings.vision_api_key:
         raise RuntimeError("Vision API key is missing")
-
-
-async def _check_chat_llm() -> None:
-    from backend.services.chat_llm import check_chat_health
-
-    await check_chat_health()

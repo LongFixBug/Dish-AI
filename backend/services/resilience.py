@@ -100,6 +100,8 @@ class ResilientHttpClient:
         timeout_seconds: float,
         max_concurrency: int,
         max_attempts: int = 2,
+        failure_threshold: int = 5,
+        recovery_seconds: float = 30,
         client_factory: Callable[[], AsyncHttpClient] | None = None,
     ) -> None:
         self._service = service
@@ -110,8 +112,8 @@ class ResilientHttpClient:
             lambda: httpx.AsyncClient(timeout=self._timeout)
         )
         self._breaker = CircuitBreaker(
-            failure_threshold=5,
-            recovery_seconds=30,
+            failure_threshold=failure_threshold,
+            recovery_seconds=recovery_seconds,
         )
         self._client: AsyncHttpClient | None = None
         self._client_lock: asyncio.Lock | None = None
@@ -140,7 +142,10 @@ class ResilientHttpClient:
                     async with self._semaphore:
                         client = await self._get_client()
                         response = await client.post(url, **kwargs)
-                        if response.status_code >= 500:
+                        # 429 is a quota/rate-limit signal. Raise it through the
+                        # breaker, but never retry it in the caller configured
+                        # with max_attempts=1 (Vision).
+                        if response.status_code == 429 or response.status_code >= 500:
                             response.raise_for_status()
                         return response
 

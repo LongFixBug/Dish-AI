@@ -9,11 +9,15 @@ from backend.services.resilience import ResilientHttpClient
 
 
 EMBEDDING_API = f"{settings.embedding_url}/v1/embeddings"
-TIMEOUT = 30.0
+# Semantic vectors are an optional derived-index accelerator. Exact PostgreSQL
+# lookup and Vision remain authoritative, so a contended local model must fail
+# fast instead of holding an image request for minutes.
+TIMEOUT = 3.0
 embedding_http_client = ResilientHttpClient(
     service="embedding",
     timeout_seconds=TIMEOUT,
     max_concurrency=settings.embedding_max_concurrency,
+    max_attempts=1,
 )
 
 

@@ -30,6 +30,11 @@ vision_http_client = ResilientHttpClient(
     service="vision",
     timeout_seconds=30,
     max_concurrency=settings.vision_max_concurrency,
+    # Vision quota errors must never be retried: one user action = at most one
+    # paid provider request. The analyze endpoint falls back to local evidence.
+    max_attempts=1,
+    failure_threshold=1,
+    recovery_seconds=600,
 )
 
 INCLUDED_ACCOMPANIMENTS = (

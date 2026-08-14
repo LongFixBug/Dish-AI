@@ -32,6 +32,7 @@ from scripts.download_datasets import (  # noqa: E402
     JPEG_QUALITY,
     is_duplicate_phash,
     is_min_size,
+    is_quality_photo,
     next_image_path,
 )
 
@@ -132,7 +133,7 @@ def select_survivors(
         if image is None:
             rejected_invalid += 1
             continue
-        if not is_min_size(image):
+        if not (is_min_size(image) and is_quality_photo(image)):
             rejected_small += 1
             continue
         candidate = imagehash.phash(image)

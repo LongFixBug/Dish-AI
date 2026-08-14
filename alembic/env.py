@@ -20,6 +20,7 @@ target_metadata = Base.metadata
 MANAGED_TABLES = {
     "vn_ingredients",
     "vn_dishes",
+    "nrihcm_foods",
     "dish_candidates",
     "catalog_cleanup_log",
     "users",

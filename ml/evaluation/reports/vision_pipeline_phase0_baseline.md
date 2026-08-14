@@ -14,7 +14,7 @@ Git commit at capture: `c8002c3`
 | Vision prompt SHA-256 | `0bcda60e995ee0f5965f8f1304f2cf91e78fa93adf3e2b6e15069da8abbe563e` |
 | Vision prompt length | 3.305 characters |
 | Baseline golden intake | `data/eval/catalog_name_resolution_golden.jsonl` (15 cases, 3 source families) |
-| Golden status | Intake only; `pending` human + PostgreSQL review, not sealed |
+| Golden status | Family labels reviewed by user on 2026-08-10; PostgreSQL nutrition identities still pending; not sealed |
 | PostgreSQL/Qdrant local runtime | Not available at capture because Colima is not running |
 | API listener on port 8000 | Not observed at capture |
 
@@ -32,9 +32,9 @@ Source code snapshot:
 | Metric | Status | Reason |
 | --- | --- | --- |
 | Vision call rate | Pending | Requires request-level baseline run |
-| Catalog auto-resolution precision | Pending | Golden items have not completed human/DB identity review |
+| Catalog auto-resolution precision | Pending | Expected PostgreSQL nutrition identities have not been reviewed |
 | Catalog coverage | Pending | Same as above |
-| Unresolved rate | Pending | Requires Vision raw output on reviewed golden images |
+| Unresolved rate | Pending | Requires resolver output against expected PostgreSQL identities |
 | Dangerous mismatch rate | Pending | Requires expected PostgreSQL UUIDs and resolver output |
 | Vision p50/p95 latency | Pending | Requires timed live calls to configured provider |
 | Cost per request | Pending | Requires provider billing price/source at measurement time |
@@ -49,24 +49,24 @@ After the snapshot, Colima and the local PostgreSQL/Qdrant services were started
 PostgreSQL contained 834 `vn_dishes` rows; exact catalog rows `Phở bò chín`,
 `Bánh canh thịt heo` and `Há cảo` were present. Qdrant `/healthz` passed.
 
-A pilot called Vision once for the first six intake images. Raw output is saved
-in `data/eval/catalog_name_resolution_phase0_raw_capture.jsonl`.
+A raw-name capture called Vision once for every intake image. Raw output is
+saved in `data/eval/catalog_name_resolution_phase0_raw_capture.jsonl`.
 
 | Pilot measure | Observed value |
 | --- | ---: |
 | Planned intake | 15 images |
-| Images sent to Vision | 6 |
-| Provider success | 6 / 6 |
-| Pilot latency p50 | 4.957,4 ms |
-| Pilot latency p95, nearest-rank | 5.355,5 ms |
-| Raw-name disagreement with source folder | 6 / 6; requires human review |
+| Images sent to Vision | 15 |
+| Provider success | 15 / 15 |
+| Timed-call latency p50 (first six only) | 4.957,4 ms |
+| Timed-call latency p95, nearest-rank (first six only) | 5.355,5 ms |
+| Raw-name family agreement with user-reviewed label | 6 / 15 (40%) |
 
-The pilot stopped before the remaining nine calls. Visual inspection confirms
-that at least the first two inputs from the legacy `banh_canh` folder do not
-plainly show the folder's named dish, while the first `ha_cao` input is a noodle
-meal containing dumplings. Therefore the legacy folder name cannot become
-golden truth automatically. This is a data-quality finding, not evidence that
-Vision is wrong.
+On 2026-08-10, the user reviewed all 15 intake images and confirmed that their
+source family labels are correct. In this small set, Vision matched all five
+Phở bò inputs and one Há cảo chiên variant; it mismatched all five Bánh canh
+inputs and four Há cảo inputs. The final nine calls were intentionally not
+repeated solely to collect latency, so their latency is recorded as unknown.
+This remains a small, non-sealed baseline, not a final Vision accuracy result.
 
 The pilot confidence was `0.92` for all six cases. It must not be interpreted
 as a calibrated accuracy measure.
@@ -74,13 +74,12 @@ as a calibrated accuracy measure.
 ## Completion conditions for the remaining baseline run
 
 1. Start local PostgreSQL/Qdrant and verify the intended catalog snapshot.
-2. Human-review every image in the intake: source folder is only a hint, not
-   final ground truth.
-3. Resolve expected family and expected nutrition item UUIDs from PostgreSQL.
-4. Freeze reviewed cases as a sealed golden version; do not mutate it while
+2. Resolve expected nutrition item UUIDs from PostgreSQL for every reviewed
+   family label.
+3. Freeze reviewed cases as a sealed golden version; do not mutate it while
    tuning a later resolver/model.
-5. Execute Vision once per golden input, persist raw names, resolver outcome,
+4. Execute Vision once per golden input, persist raw names, resolver outcome,
    latency and model/prompt/catalog versions.
-6. Compute the metrics listed above and save a machine-readable JSON report.
+5. Compute the metrics listed above and save a machine-readable JSON report.
 
 The next phase must not treat this snapshot as a completed performance result.

@@ -79,6 +79,20 @@ def test_api_image_includes_google_auth_used_during_startup() -> None:
     assert '"requests>=' in project
 
 
+def test_api_image_does_not_package_retired_image_model_config() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text()
+
+    assert "COPY data/config" not in dockerfile
+
+
+def test_ci_does_not_build_retired_local_image_model_services() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+
+    assert "Dockerfile.cv" not in workflow
+    assert "Dockerfile.local-vision" not in workflow
+    assert "foodai-cv" not in workflow
+
+
 def test_release_build_passes_every_compile_time_secret() -> None:
     """Client ID là hằng số compile-time: thiếu nó thì nút Google hỏng vĩnh viễn.
 
@@ -112,32 +126,54 @@ def test_dependency_and_toolchain_versions_are_reproducible() -> None:
     assert "uv sync --all-groups --frozen" in workflow
     assert "--hash=sha256:" in lockfile
     assert "python:3.12-slim@sha256:" in dockerfile
-    # Image CV cũng chạy production nên phải pin digest như image API.
+    # Archived local image-model Dockerfiles remain reproducible for offline use.
     assert "python:3.12-slim@sha256:" in (ROOT / "Dockerfile.cv").read_text()
 
 
-def test_cv_image_installs_a_complete_hashed_lockfile() -> None:
-    dockerfile = (ROOT / "Dockerfile.cv").read_text()
-    lockfile = (ROOT / "requirements.cv.lock").read_text()
-    requirements = (ROOT / "requirements.cv.txt").read_text()
+def test_image_embedding_sidecar_installs_a_complete_hashed_lockfile() -> None:
+    dockerfile = (ROOT / "Dockerfile.local-vision").read_text()
+    lockfile = (ROOT / "requirements.image_embed.lock").read_text()
+    requirements = (ROOT / "requirements.image_embed.txt").read_text()
 
-    assert "COPY requirements.cv.lock" in dockerfile
-    assert "-r requirements.cv.lock" in dockerfile
-    for package in ("torch==2.13.0+cpu", "torchvision==0.28.0+cpu", "timm=="):
+    assert "COPY requirements.image_embed.lock" in dockerfile
+    assert "pip install --no-cache-dir -r requirements.image_embed.lock" in dockerfile
+    for package in ("torch==2.13.0+cpu",):
         assert package in lockfile
+    assert "timm==" not in lockfile
     assert "--hash=sha256:" in lockfile
     assert "--find-links https://download.pytorch.org/whl/cpu/torch/" in requirements
-    assert "--find-links https://download.pytorch.org/whl/cpu/torchvision/" in requirements
     assert "--find-links https://download.pytorch.org/whl/cpu/torch/" in lockfile
-    assert "--find-links https://download.pytorch.org/whl/cpu/torchvision/" in lockfile
-    for package in (r"torch==2\.13\.0\+cpu", r"torchvision==0\.28\.0\+cpu"):
+    for package in (r"torch==2\.13\.0\+cpu",):
         assert re.search(rf"{package} \\\n(?:    --hash=sha256:[a-f0-9]{{64}}\n)+", lockfile)
     assert "cuda-toolkit" not in lockfile
 
 
+def test_local_vision_image_contains_only_the_image_embedding_runtime() -> None:
+    dockerfile = (ROOT / "Dockerfile.local-vision").read_text()
+    lockfile = (ROOT / "requirements.image_embed.lock").read_text()
+
+    assert "COPY requirements.image_embed.lock" in dockerfile
+    assert "COPY ml/serving" in dockerfile
+    assert "ml.serving.image_embed_server:app" in dockerfile
+    assert "best_model.pth" not in dockerfile
+    assert "classifier" not in dockerfile.lower()
+    assert "transformers==" in lockfile
+
+
+def test_api_image_can_host_the_ephemeral_rate_limiter() -> None:
+    """Railway's API image can keep a bounded ephemeral Redis process."""
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    startup = (ROOT / "scripts/start_railway.sh").read_text()
+
+    assert "redis-server" in dockerfile
+    assert "redis-server" in startup
+    assert "--save \"\"" in startup
+    assert "--maxmemory 16mb" in startup
+
+
 def test_container_healthchecks_probe_liveness_not_readiness() -> None:
     """Healthcheck quyết định restart container, nên phải độc lập với dịch vụ ngoài."""
-    for name in ("Dockerfile", "Dockerfile.cv"):
+    for name in ("Dockerfile", "Dockerfile.cv", "Dockerfile.local-vision"):
         healthcheck = [
             line
             for line in (ROOT / name).read_text().splitlines()

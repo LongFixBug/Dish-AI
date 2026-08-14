@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
     literal_column,
@@ -43,6 +44,7 @@ class VnIngredient(Base):
             "AND carbs_per_g >= 0 AND fiber_per_g >= 0",
             name="ck_vn_ingredients_nonnegative_nutrients",
         ),
+        CheckConstraint("gram > 0", name="ck_vn_ingredients_positive_gram"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -61,6 +63,13 @@ class VnIngredient(Base):
     fat_per_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
     carbs_per_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
     fiber_per_g: Mapped[float] = mapped_column(Float, default=0.0, server_default=text("0.0"))
+    gram: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=100.0,
+        server_default=text("100.0"),
+        comment="Khối lượng cơ sở của dữ liệu dinh dưỡng, theo nguồn là 100g ăn được",
+    )
 
     source: Mapped[str] = mapped_column(String(50), default="vnfood", server_default=text("'vnfood'"))
     item_type: Mapped[str] = mapped_column(
@@ -73,6 +82,87 @@ class VnIngredient(Base):
 
     def __repr__(self) -> str:
         return f"<VnIngredient(id={self.id!r}, name={self.ingredient_name!r})>"
+
+
+class NrihcmFood(Base):
+    """Raw nutrition snapshot from the HCMC Nutrition Research Institute API.
+
+    This is intentionally separate from the reviewed FoodAI catalog. The API
+    payload is retained so a later review can compare source changes without
+    silently promoting external data into ``vn_ingredients`` or ``vn_dishes``.
+    Values ending in ``_per_100g`` follow the source page's edible-portion
+    basis, not a measured serving size.
+    """
+
+    __tablename__ = "nrihcm_foods"
+    __table_args__ = (
+        Index("ix_nrihcm_foods_name_vi", "name_vi"),
+        Index("ix_nrihcm_foods_group_id", "group_id"),
+        Index("ix_nrihcm_foods_fetched_at", "fetched_at"),
+        UniqueConstraint("source_food_id", name="uq_nrihcm_foods_source_food_id"),
+        CheckConstraint(
+            "source_food_id > 0 AND basis_grams > 0 AND edible_waste_percent >= 0 "
+            "AND edible_waste_percent <= 100 AND energy_kcal_per_100g >= 0 "
+            "AND energy_kj_per_100g >= 0 AND water_g_per_100g >= 0 "
+            "AND protein_g_per_100g >= 0 AND fat_g_per_100g >= 0 "
+            "AND carbs_g_per_100g >= 0",
+            name="ck_nrihcm_foods_valid_nutrition",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        primary_key=True,
+        default=lambda: str(uuid4()),
+        server_default=text("gen_random_uuid()"),
+    )
+    source_food_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    food_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    name_vi: Mapped[str] = mapped_column(String(500), nullable=False)
+    name_en: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    group_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    group_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    energy_kcal_per_100g: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default=text("0.0")
+    )
+    energy_kj_per_100g: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default=text("0.0")
+    )
+    edible_waste_percent: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default=text("0.0")
+    )
+    basis_grams: Mapped[float] = mapped_column(
+        Float, nullable=False, default=100.0, server_default=text("100.0")
+    )
+    water_g_per_100g: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default=text("0.0")
+    )
+    protein_g_per_100g: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default=text("0.0")
+    )
+    fat_g_per_100g: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default=text("0.0")
+    )
+    carbs_g_per_100g: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default=text("0.0")
+    )
+
+    nutrition_facts: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False)
+    raw_payload: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    source_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    def __repr__(self) -> str:
+        return f"<NrihcmFood(source_food_id={self.source_food_id!r}, name_vi={self.name_vi!r})>"
 
 
 # ── Bảng: Món ăn Việt ─────────────────────────────────────────────────────────
@@ -516,6 +606,10 @@ class RecognitionEvent(Base):
             name="ck_recognition_events_cv_confidence",
         ),
         CheckConstraint(
+            "cv_top2_confidence IS NULL OR (cv_top2_confidence >= 0 AND cv_top2_confidence <= 1)",
+            name="ck_recognition_events_cv_top2_confidence",
+        ),
+        CheckConstraint(
             "album_score IS NULL OR (album_score >= 0 AND album_score <= 1)",
             name="ck_recognition_events_album_score",
         ),
@@ -540,10 +634,14 @@ class RecognitionEvent(Base):
     source: Mapped[str] = mapped_column(String(50), nullable=False)
     final_dish_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
     cv_dish_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    cv_top1_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
     cv_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cv_top2_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    cv_top2_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     album_dish_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
     album_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     album_margin: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fusion_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
     model_version: Mapped[str | None] = mapped_column(String(300), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
@@ -562,6 +660,15 @@ class FeedbackSubmission(Base):
         CheckConstraint(
             "file_size_bytes > 0 AND width > 0 AND height > 0",
             name="ck_feedback_submissions_image_shape",
+        ),
+        CheckConstraint(
+            "capture_source IN ('camera', 'upload')",
+            name="ck_feedback_submissions_capture_source",
+        ),
+        Index(
+            "ix_feedback_submissions_capture_source_status",
+            "capture_source",
+            "status",
         ),
     )
 
@@ -590,6 +697,10 @@ class FeedbackSubmission(Base):
     file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     width: Mapped[int] = mapped_column(Integer, nullable=False)
     height: Mapped[int] = mapped_column(Integer, nullable=False)
+    capture_source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="upload", server_default=text("'upload'"),
+        comment="Nguồn ảnh: camera thật hoặc file upload; chỉ camera tính vào gate ML.",
+    )
     consent_to_training: Mapped[bool] = mapped_column(Boolean, nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending", server_default=text("'pending'")
@@ -603,6 +714,17 @@ class FeedbackSubmission(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    reviewed_dish_slug: Mapped[str | None] = mapped_column(
+        String(300), nullable=True, index=True,
+        comment="Nhãn canonical do reviewer xác nhận; không tin label người gửi.",
+    )
+    reviewed_by: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    reviewer_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
 def _canonical_name_expression(column):

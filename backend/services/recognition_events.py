@@ -34,6 +34,10 @@ async def record_recognition_event(
     album_dish_name: str | None,
     album_score: float | None,
     album_margin: float | None,
+    cv_top1_name: str | None = None,
+    cv_top2_name: str | None = None,
+    cv_top2_confidence: float | None = None,
+    fusion_reason: str | None = None,
 ) -> str | None:
     """Persist only decision metadata; telemetry failure never breaks analysis."""
     event = RecognitionEvent(
@@ -41,10 +45,14 @@ async def record_recognition_event(
         source=str(response.source),
         final_dish_name=response.dish_name,
         cv_dish_name=cv_dish_name,
+        cv_top1_name=cv_top1_name,
         cv_confidence=_bounded(cv_confidence),
+        cv_top2_name=cv_top2_name,
+        cv_top2_confidence=_bounded(cv_top2_confidence),
         album_dish_name=album_dish_name,
         album_score=_bounded(album_score),
-        album_margin=max(0.0, float(album_margin or 0.0)),
+        album_margin=_bounded(album_margin),
+        fusion_reason=fusion_reason,
         model_version=response.model_version,
     )
     try:

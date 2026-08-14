@@ -49,6 +49,7 @@ REFERENCES_DIR = IMAGE_ROOT / "references"
 CANDIDATE_DIR = IMAGE_ROOT / "references_candidate"
 BACKUP_ROOT = IMAGE_ROOT / "reference_backups"
 CLASS_NAMES_PATH = PROJECT_ROOT / "data" / "eval" / "class_names.json"
+PROVENANCE_FILENAME = "_provenance.jsonl"
 
 DEFAULT_PER_CLASS = 40
 DEFAULT_CRAWL_LIMIT = 80
@@ -111,25 +112,233 @@ def collect_blocked_hashes(roots: Iterable[Path]) -> list[imagehash.ImageHash]:
     return hashes
 
 
+# Các alias được thiết kế để crawl ảnh CHỤP THỰC TẾ của món ăn/thức uống.
+# KHÔNG dùng cụm mơ hồ như "nhà hàng Việt Nam" hay từ ngữ xuất hiện trong tiêu đề bài báo.
+# Mỗi query phải hình dung ngay ra một đĩa/tô/ly/bát cụ thể.
+SEARCH_ALIASES: dict[str, tuple[str, ...]] = {
+    "Bánh kem": (
+        "bánh sinh nhật kem tươi hoa quả",
+        "bánh kem tầng đẹp ngon",
+        "birthday cake cream decoration food photo",
+        "bánh kem bơ socola",
+    ),
+    "Bánh mì không": (
+        "ổ bánh mì không nhân trắng giòn",
+        "bánh mì baguette không nhân cắt đôi",
+        "plain french baguette bread food photo",
+        "bánh mì việt nam ruột trắng không nhân",
+    ),
+    "Chocolate": (
+        "thanh socola đen nguyên miếng",
+        "dark chocolate bar broken pieces",
+        "kẹo socola thỏi gãy đôi",
+        "chocolate brownie cake food photo",
+    ),
+    "Coca-Cola": (
+        "ly coca cola đá bàn ăn",
+        "coca cola glass ice restaurant table",
+        "lon coca cola lạnh vỉa hè",
+        "coca cola bottle cold drink",
+        "iced coke drink glass",
+    ),
+    "Cơm trắng": (
+        "bát cơm trắng nóng dẻo",
+        "bowl of steamed white rice close up food",
+        "đĩa cơm trắng bữa ăn",
+        "cooked white rice serving bowl",
+    ),
+    "Gà rán": (
+        "miếng gà rán giòn vàng ruộm",
+        "crispy fried chicken piece golden food",
+        "đùi gà rán giòn",
+        "fried chicken drumstick crispy close up",
+    ),
+    "Hamburger": (
+        "bánh hamburger bò phô mai cắt đôi",
+        "beef cheeseburger cross section food photo",
+        "hamburger bún mè nhân đầy",
+        "juicy burger cut in half lettuce tomato",
+    ),
+    "Khoai luộc": (
+        "đĩa khoai lang luộc chín vàng",
+        "boiled sweet potato sliced food photo",
+        "khoai tây luộc cắt miếng đĩa",
+        "steamed sweet potato cut open",
+    ),
+    "Pizza": (
+        "miếng pizza phô mai kéo sợi",
+        "pizza slice melted cheese pull",
+        "bánh pizza hải sản tôm mực",
+        "whole pizza fresh out of oven food photo",
+    ),
+    "Sầu riêng": (
+        "múi sầu riêng vàng óng bóc vỏ",
+        "durian fruit flesh yellow opened",
+        "trái sầu riêng bổ đôi",
+        "durian spiky fruit cut open close up",
+    ),
+    "Sữa Milo": (
+        "ly milo đá sữa đặc",
+        "milo iced drink glass condensed milk",
+        "milo dầm đá việt nam",
+        "milo nestle drink cold glass",
+    ),
+    "Trà sữa": (
+        "ly trà sữa trân châu đường đen",
+        "bubble tea boba milk tea glass",
+        "trà sữa matcha trân châu",
+        "taro milk tea drink cup boba",
+    ),
+    "Trà trái cây": (
+        "ly trà đào cam sả đá",
+        "fruit tea iced peach lemon drink glass",
+        "trà trái cây đá lạnh chanh dây",
+        "tropical fruit tea iced drink jar",
+    ),
+    "Trứng chiên": (
+        "trứng chiên vàng chảo dầu sôi",
+        "fried egg pan sunny side up food",
+        "trứng ốp la lòng đào chảo",
+        "egg fried in pan close up food photo",
+    ),
+    "Trứng luộc": (
+        "quả trứng luộc bóc vỏ cắt đôi",
+        "hard boiled egg cut half yolk",
+        "trứng luộc lòng đào dẻo",
+        "soft boiled egg sliced food photo",
+    ),
+    "Ức gà": (
+        "miếng ức gà áp chảo vàng",
+        "pan seared chicken breast plate food",
+        "ức gà luộc xé sợi đĩa",
+        "grilled chicken breast sliced food photo",
+    ),
+    "Xôi mặn": (
+        "đĩa xôi mặn thập cẩm chà bông",
+        "vietnamese savory sticky rice xoi man topping",
+        "hộp xôi mặn gà lạp xưởng",
+        "xoi man vietnamese sticky rice plate food",
+    ),
+    "Xúc xích nướng": (
+        "xiên xúc xích nướng than lửa",
+        "grilled sausage skewer fire bbq food",
+        "xúc xích nướng vỉ than hồng",
+        "bbq sausage grilled charcoal close up food",
+    ),
+}
+
+
 def build_queries(dish_name: str) -> list[str]:
-    """Return multiple Vietnamese search contexts for source diversity."""
-    return [
-        f'"{dish_name}" món ăn Việt Nam',
-        f'"{dish_name}" nhà hàng Việt Nam',
-        f'"{dish_name}" đặc sản Việt Nam',
+    """Sinh queries tập trung vào ảnh thực phẩm thực tế, tránh kết quả là bài báo.
+
+    Base query dùng cú pháp ảnh (ảnh [tên món] ngon thực tế) thay vì
+    "[tên món] nhà hàng Việt Nam" vì cái sau hay trả về ảnh bài báo kinh tế/
+    chính sách có dính chữ tên món trong tiêu đề.
+    """
+    aliases = SEARCH_ALIASES.get(dish_name, ())
+    # Specific food-photo queries first so crawl fills up on clean images fast
+    alias_queries = [f'"{alias}"' for alias in aliases]
+    # Fallback base queries — still specific enough to stay on food
+    base_queries = [
+        f'"ảnh {dish_name}" món ăn thực tế ngon',
+        f'"{dish_name}" food photo close up',
     ]
+    return alias_queries + base_queries
+
+
 
 
 def crawl_bing(query: str, destination: Path, limit: int) -> None:
-    """Download one query lazily so unit tests stay network-free."""
+    """Download one query and keep source URLs beside the staging files."""
+    from icrawler import ImageDownloader
     from icrawler.builtin import BingImageCrawler
+
+    provenance_path = destination / PROVENANCE_FILENAME
+
+    class ProvenanceImageDownloader(ImageDownloader):
+        """Persist the public image URL for every successful staging download."""
+
+        def __init__(self, *args, provenance_path: str, query: str, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.provenance_path = Path(provenance_path)
+            self.query = query
+
+        def process_meta(self, task):
+            if not task.get("success") or not task.get("filename"):
+                return
+            record = {
+                "staging_filename": Path(str(task["filename"])).name,
+                "source_url": str(task.get("file_url", "")),
+                "query": self.query,
+                "downloaded_at": datetime.now(UTC).isoformat(),
+            }
+            with self.lock:
+                self.provenance_path.parent.mkdir(parents=True, exist_ok=True)
+                with self.provenance_path.open("a", encoding="utf-8") as stream:
+                    stream.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     destination.mkdir(parents=True, exist_ok=True)
     crawler = BingImageCrawler(
         storage={"root_dir": str(destination)},
+        downloader_cls=ProvenanceImageDownloader,
         downloader_threads=4,
+        extra_downloader_args={
+            "provenance_path": str(provenance_path),
+            "query": query,
+        },
     )
     crawler.crawl(keyword=query, max_num=limit)
+
+
+def _read_staging_provenance(staging: Path) -> dict[str, dict[str, str]]:
+    """Load source metadata keyed by the temporary filename."""
+    path = staging / PROVENANCE_FILENAME
+    if not path.is_file():
+        return {}
+    records: dict[str, dict[str, str]] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        filename = value.get("staging_filename") if isinstance(value, dict) else None
+        source_url = value.get("source_url") if isinstance(value, dict) else None
+        if not isinstance(filename, str) or not isinstance(source_url, str):
+            continue
+        records[Path(filename).name] = {
+            "source_url": source_url,
+            "query": str(value.get("query", "")),
+        }
+    return records
+
+
+def _append_provenance(
+    output_root: Path,
+    slug: str,
+    accepted: list[Path],
+    saved_paths: list[Path],
+    staging_provenance: dict[str, dict[str, str]],
+) -> None:
+    """Map staging URLs to final paths without making provenance a label gate."""
+    if len(accepted) != len(saved_paths):
+        raise RuntimeError("Không map được provenance với số ảnh đã lưu")
+    output_path = output_root / PROVENANCE_FILENAME
+    records = []
+    for source, target in zip(accepted, saved_paths, strict=True):
+        metadata = staging_provenance.get(source.name, {})
+        records.append(
+            {
+                "path": target.relative_to(output_root).as_posix(),
+                "source_url": metadata.get("source_url"),
+                "query": metadata.get("query", ""),
+            }
+        )
+    if not records:
+        return
+    with output_path.open("a", encoding="utf-8") as stream:
+        for record in records:
+            stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+
 
 
 def _image_count(directory: Path) -> int:
@@ -174,6 +383,7 @@ def build_class(
                 errors.append(f"{query}: {type(exc).__name__}: {exc}")
                 logger.warning("Crawl failed for %s: %s", query, exc)
                 continue
+            staging_provenance = _read_staging_provenance(staging)
             result = select_survivors(
                 staging,
                 blocked_hashes,
@@ -183,7 +393,22 @@ def build_class(
             rejected_invalid += result.rejected_invalid
             rejected_small += result.rejected_small
             rejected_duplicate += result.rejected_duplicate
+            before_files = {
+                path for path in class_dir.iterdir() if path.is_file()
+            }
             added = save_survivors(result.accepted, class_dir, slug)
+            saved_paths = sorted(
+                path
+                for path in class_dir.iterdir()
+                if path.is_file() and path not in before_files
+            )
+            _append_provenance(
+                output_root,
+                slug,
+                result.accepted,
+                saved_paths,
+                staging_provenance,
+            )
             saved += added
             for path in result.accepted:
                 from PIL import Image

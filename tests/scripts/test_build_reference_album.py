@@ -60,7 +60,9 @@ def test_build_queries_keeps_dish_name_and_adds_distinct_contexts():
 
     assert len(queries) == len(set(queries))
     assert all("Bún bò Huế" in query for query in queries)
-    assert any("nhà hàng" in query for query in queries)
+    # Queries must contain at least 2 distinct search terms (alias + base fallback)
+    assert len(queries) >= 2
+
 
 
 def test_build_class_rejects_blocked_and_saves_only_new_images(
@@ -94,6 +96,52 @@ def test_build_class_rejects_blocked_and_saves_only_new_images(
     assert imagehash.phash(make_noise_image(2)) == imagehash.phash(
         __import__("PIL").Image.open(saved[0])
     )
+
+
+def test_build_class_writes_source_provenance_for_saved_images(
+    tmp_path, make_noise_image
+):
+    from scripts.build_reference_album import build_class
+
+    output_root = tmp_path / "candidate"
+
+    def fake_crawl(_query, destination, _limit):
+        destination.mkdir(parents=True, exist_ok=True)
+        make_noise_image(9).save(destination / "source.jpg", "JPEG")
+        (destination / "_provenance.jsonl").write_text(
+            json.dumps(
+                {
+                    "staging_filename": "source.jpg",
+                    "source_url": "https://example.test/source.jpg",
+                    "query": "\"Phở bò\" food photo",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    result = build_class(
+        "pho_bo",
+        "Phở bò",
+        output_root,
+        [],
+        per_class=1,
+        crawl_limit=5,
+        crawl=fake_crawl,
+    )
+
+    assert result.saved == 1
+    provenance = [
+        json.loads(line)
+        for line in (output_root / "_provenance.jsonl").read_text().splitlines()
+    ]
+    assert provenance == [
+        {
+            "path": "pho_bo/pho_bo_0.jpg",
+            "query": "\"Phở bò\" food photo",
+            "source_url": "https://example.test/source.jpg",
+        }
+    ]
 
 
 def test_audit_candidate_reports_missing_and_underfilled_classes(

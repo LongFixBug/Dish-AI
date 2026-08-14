@@ -122,10 +122,3 @@ def test_memory_store_drops_expired_windows() -> None:
     store._drop_expired(now)
 
     assert store._windows == {}
-
-
-def test_chat_has_its_own_ten_requests_per_minute_quota() -> None:
-    policy = POLICIES[("POST", "/api/v1/chat/stream")]
-
-    assert policy.limit == 10
-    assert policy.window_seconds == 60

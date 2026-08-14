@@ -15,6 +15,8 @@ abstract interface class FeedbackGateway {
     required String correctDishName,
     required bool consentToTraining,
     required String accessToken,
+    String? recognitionEventId,
+    String captureSource = 'upload',
   });
 }
 
@@ -37,6 +39,8 @@ class FeedbackApi implements FeedbackGateway {
     required String correctDishName,
     required bool consentToTraining,
     required String accessToken,
+    String? recognitionEventId,
+    String captureSource = 'upload',
   }) async {
     final name = correctDishName.trim();
     if (name.isEmpty) {
@@ -58,6 +62,7 @@ class FeedbackApi implements FeedbackGateway {
           ..headers['authorization'] = 'Bearer $accessToken'
           ..fields['correct_dish_name'] = name
           ..fields['consent_to_training'] = 'true'
+          ..fields['capture_source'] = captureSource
           ..files.add(
             http.MultipartFile.fromBytes(
               'file',
@@ -66,6 +71,9 @@ class FeedbackApi implements FeedbackGateway {
               contentType: _mediaType(filename),
             ),
           );
+    if (recognitionEventId != null && recognitionEventId.isNotEmpty) {
+      request.fields['recognition_event_id'] = recognitionEventId;
+    }
 
     try {
       final streamed = await _client.send(request).timeout(_timeout);

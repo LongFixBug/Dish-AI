@@ -1,8 +1,7 @@
 """Tách chủ thể ảnh món ăn thành sticker qua sidecar (port 8083).
 
-Cùng lớp chống chịu với image_embeddings: retry + circuit breaker + chặn số
-lượng gọi đồng thời. Sticker là thứ trang trí — sidecar chết thì luồng phân
-tích vẫn phải chạy bình thường, nên caller nhận ``None`` chứ không nhận lỗi.
+Sticker là thứ trang trí — sidecar chết thì luồng phân tích vẫn phải chạy
+bình thường, nên caller nhận ``None`` chứ không nhận lỗi.
 """
 
 import base64

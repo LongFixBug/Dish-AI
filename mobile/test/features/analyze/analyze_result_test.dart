@@ -2,10 +2,25 @@ import 'package:balance/features/analyze/domain/analyze_result.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('parses a reference-only text estimate notice', () {
+    final result = AnalyzeResult.fromJson({
+      'dish_name': 'Món lạ',
+      'source': 'text_ai_estimate',
+      'reference_only': true,
+      'warning': 'Thông tin mang tính tham khảo.',
+      'dishes': <Object>[],
+    });
+
+    expect(result.referenceOnly, isTrue);
+    expect(result.warning, contains('tham khảo'));
+    expect(result.isTextAnalysis, isTrue);
+  });
+
   test('parses the nutrition contract returned by FastAPI', () {
     final result = AnalyzeResult.fromJson({
       'dish_name': 'Phở bò + Quẩy',
       'source': 'vision',
+      'recognition_event_id': 'event-123',
       'cv_confidence': 0.72,
       'recognition_confidence': 0.84,
       'nutrition': {
@@ -54,6 +69,7 @@ void main() {
     });
 
     expect(result.dishName, 'Phở bò + Quẩy');
+    expect(result.recognitionEventId, 'event-123');
     expect(result.nutrition?.totalCalories, 615.4);
     expect(result.recognitionConfidence, 0.84);
     expect(result.nutrition?.catalogCoverageScore, 0.5);

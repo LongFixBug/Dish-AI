@@ -11,12 +11,16 @@ data
 uploads
 models
 
-# Keep production CV image small: include only the promoted serving pair.
+# Archived local image-model images only: include the old serving pair when an
+# offline Dockerfile.cv experiment is explicitly built. The API image needs no
+# checkpoint and the current CI flow does not build either image.
 checkpoints
 !checkpoints/
 checkpoints/*
 !checkpoints/best_model.pth
 !checkpoints/best_model.manifest.json
+!checkpoints/food_gate/
+!checkpoints/food_gate/siglip2_food_gate_best.pt
 
 ml/evaluation/reports
 .Codex

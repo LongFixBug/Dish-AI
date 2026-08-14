@@ -1,9 +1,7 @@
-"""Image-retrieval cascade over the reviewed dish-photo album.
+"""Archived local image-retrieval cascade used only by offline experiments.
 
-Trước khi gọi Vision, ảnh upload được embed bằng SigLIP 2 và so với album
-ảnh tham chiếu trong Qdrant (collection ``dish_images``). Top-1 đủ tự tin và
-tách biệt rõ khỏi top-2 thì trả lời ngay, khỏi tốn một lượt cloud Vision;
-chưa đủ thì các tên ứng viên chỉ được nối thêm vào prompt của Vision.
+The API no longer imports or executes this module. It remains available for
+historical evaluation reports and rollback work, with no production effect.
 """
 
 import logging
@@ -11,6 +9,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from backend.config import settings
+from backend.services.catalog_aliases import is_reviewed_catalog_alias
 from backend.services.dish_image_index import DishCandidateScore, top_dish_candidates
 from backend.services.image_embeddings import embed_image
 from backend.services.menu_vocabulary import (
@@ -40,12 +39,11 @@ class CascadeDecision:
 
 @dataclass(frozen=True)
 class LocalEvidence:
-    """Một bằng chứng local sau khi đã resolve về catalog PostgreSQL.
+    """Legacy offline evidence object, kept for historical fusion reports.
 
-    ``strong`` là gate để tham gia consensus/phản biện. ``solo_strong`` là
-    gate chặt hơn để một nguồn được tự chốt khi nguồn kia yếu. Album hiện dùng
-    cùng score+margin gate cho cả hai; CV chỉ bật solo sau khi có threshold đã
-    calibration.
+    ``strong`` là gate để tham gia consensus/phản biện. ``solo_strong`` được
+    giữ để tương thích dữ liệu/test cũ, nhưng không còn được dùng trong API
+    runtime SigLIP2.
     """
 
     dish_name: str | None
@@ -55,12 +53,12 @@ class LocalEvidence:
     solo_strong: bool = False
 
 
-FusionAction = Literal["local_consensus", "cv_local", "image_knn", "vision"]
+FusionAction = Literal["local_consensus", "vision"]
 
 
 @dataclass(frozen=True)
 class LocalFusionDecision:
-    """Kết quả pure của bộ quyết định EfficientNet + album reference."""
+    """Legacy two-source fusion result for offline evaluation only."""
 
     action: FusionAction
     dish_name: str | None
@@ -72,7 +70,12 @@ def decide_local_fusion(
     cv: LocalEvidence,
     album: LocalEvidence,
 ) -> LocalFusionDecision:
-    """PURE: kết hợp hai nguồn chỉ sau khi chúng có catalog identity an toàn."""
+    """PURE: chỉ local-consensus mới được phép trả kết quả trực tiếp.
+
+    Confidence của một nguồn không được dùng làm quyền phủ quyết nguồn kia:
+    nếu hai nguồn khác UUID, hoặc chỉ có một nguồn đủ mạnh, phải chuyển Vision
+    kèm candidate hints.
+    """
     cv_strong = bool(cv.strong and cv.dish_name and cv.canonical_id)
     album_strong = bool(album.strong and album.dish_name and album.canonical_id)
 
@@ -91,22 +94,6 @@ def decide_local_fusion(
             reason="strong_disagreement",
         )
 
-    if cv_strong and cv.solo_strong:
-        return LocalFusionDecision(
-            action="cv_local",
-            dish_name=cv.dish_name,
-            canonical_id=cv.canonical_id,
-            reason="cv_solo_gate",
-        )
-
-    if album_strong and album.solo_strong:
-        return LocalFusionDecision(
-            action="image_knn",
-            dish_name=album.dish_name,
-            canonical_id=album.canonical_id,
-            reason="album_standalone_gate",
-        )
-
     return LocalFusionDecision(
         action="vision",
         dish_name=None,
@@ -120,6 +107,7 @@ def decide_cascade(
     threshold: float,
     margin: float,
     candidates_limit: int,
+    allowed_class_slugs: set[str] | frozenset[str] | None = None,
 ) -> CascadeDecision:
     """PURE: quyết định resolve khi top-1 vừa đủ điểm vừa tách biệt top-2.
 
@@ -138,7 +126,13 @@ def decide_cascade(
     top1 = candidates[0]
     runner_up_score = candidates[1].best_score if len(candidates) > 1 else 0.0
     actual_margin = top1.best_score - runner_up_score
-    is_resolved = top1.best_score >= threshold and actual_margin >= margin
+    score_gate_passed = top1.best_score >= threshold and actual_margin >= margin
+    fast_lane_gate_passed = (
+        not allowed_class_slugs
+        or top1.class_slug is not None
+        and top1.class_slug in allowed_class_slugs
+    )
+    is_resolved = score_gate_passed and fast_lane_gate_passed
     return CascadeDecision(
         resolved=is_resolved,
         dish_name=top1.dish_name,
@@ -187,6 +181,14 @@ def is_name_refinement(album_name: str, resolved_name: str) -> bool:
     return set(album_tokens) <= set(resolved_tokens)
 
 
+def is_catalog_identity_safe(query_name: str, resolved_name: str) -> bool:
+    """Accept lexical refinements plus the explicit reviewed alias allow-list."""
+    return is_name_refinement(query_name, resolved_name) or is_reviewed_catalog_alias(
+        query_name,
+        resolved_name,
+    )
+
+
 def merge_candidate_names(
     primary: list[str],
     secondary: list[str],
@@ -212,8 +214,8 @@ def merge_candidate_names(
 async def image_candidates(image_bytes: bytes) -> list[DishCandidateScore]:
     """Embed ảnh upload rồi để album ảnh tham chiếu biểu quyết tên món.
 
-    Album chỉ là tầng tăng tốc: sidecar sập, Qdrant sập hay collection chưa
-    tồn tại đều trả ``[]`` (kèm warning) để flow CV + Vision cũ chạy như thường.
+    Sidecar/Qdrant failures return ``[]`` so the request can fall back to
+    Vision without a local model crash.
     """
     if not settings.image_embed_enabled:
         return []
@@ -225,7 +227,7 @@ async def image_candidates(image_bytes: bytes) -> list[DishCandidateScore]:
         )
     except Exception:
         logger.warning(
-            "Image cascade không khả dụng, fallback về flow CV + Vision",
+            "Image retrieval không khả dụng, fallback về Vision",
             exc_info=True,
         )
         return []

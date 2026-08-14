@@ -1,4 +1,4 @@
-"""Training script cho VietFood CV model.
+"""Legacy training script cho VietFood CV model.
 
 Fine-tune EfficientNet-B0 (timm) pretrained ImageNet → phân loại món Việt.
 Full fine-tune (không freeze backbone) với lr nhỏ 5e-5 — tốt cho food

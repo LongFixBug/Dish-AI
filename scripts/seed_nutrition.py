@@ -108,6 +108,7 @@ async def seed() -> None:
                     fat_per_g=item.get("fat_per_g", 0.0),
                     carbs_per_g=item.get("carbs_per_g", 0.0),
                     fiber_per_g=item.get("fiber_per_g", 0.0),
+                    gram=item.get("gram", 100.0),
                     source=item.get("source", "unknown"),
                 )
                 for item in batch

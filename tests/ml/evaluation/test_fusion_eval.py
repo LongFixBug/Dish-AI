@@ -1,7 +1,10 @@
 """Offline fusion evaluation must enforce evidence per local decision branch."""
 
+from pathlib import Path
+
 from ml.evaluation.fusion_eval import (
     FusionObservation,
+    build_report,
     build_dish_slug_index,
     evaluate_rollout_gate,
     decide_observation,
@@ -10,6 +13,7 @@ from ml.evaluation.fusion_eval import (
     slug_from_cv_prediction,
     summarize_actions,
     sweep_thresholds,
+    fusion_cv_thresholds,
 )
 from ml.evaluation.recognition_eval import ClassTruth, normalize_name
 
@@ -43,6 +47,34 @@ def test_matching_strong_sources_are_counted_as_correct_consensus() -> None:
 
     assert result.action == "local_consensus"
     assert result.correct is True
+
+
+def test_fusion_tuner_can_measure_thresholds_below_serving_gate() -> None:
+    values = fusion_cv_thresholds(0.90, 0.902)
+
+    assert values == (0.9, 0.901, 0.902)
+
+
+def test_fusion_report_records_album_score_mode() -> None:
+    report = build_report(
+        [_observation()],
+        [decide_observation(_observation(), 0.996, 0.73, 0.04)],
+        images_dir=Path("data/images/golden"),
+        checkpoint_path=Path("checkpoints/best_model.pth"),
+        cv_threshold=0.996,
+        album_threshold=0.73,
+        album_margin=0.04,
+        album_score_mode="top3_blend",
+        cv_model_serving_threshold=0.996,
+        cv_solo_threshold=None,
+        album_solo_enabled=False,
+        min_precision=0.98,
+        min_accepted=1,
+        required_actions=("local_consensus",),
+        timestamp="20260806_150000",
+    )
+
+    assert report["thresholds"]["album_score_mode"] == "top3_blend"
 
 
 def test_strong_disagreement_defers_to_vision_instead_of_auto_answering() -> None:
@@ -164,19 +196,12 @@ def test_summary_separates_auto_precision_from_vision_deferrals() -> None:
         "correct": 1,
         "precision": 1.0,
     }
-    assert summary["image_knn"] == {
-        "accepted": 1,
-        "correct": 0,
-        "precision": 0.0,
-    }
-    assert summary["vision"]["deferred"] == 1
+    assert summary["vision"]["deferred"] == 2
 
 
-def test_rollout_gate_requires_minimum_evidence_for_every_auto_action() -> None:
+def test_rollout_gate_requires_minimum_evidence_for_consensus() -> None:
     summary = {
         "local_consensus": {"accepted": 30, "correct": 30, "precision": 1.0},
-        "cv_local": {"accepted": 29, "correct": 29, "precision": 1.0},
-        "image_knn": {"accepted": 40, "correct": 39, "precision": 0.975},
         "vision": {"deferred": 10},
     }
 
@@ -186,18 +211,12 @@ def test_rollout_gate_requires_minimum_evidence_for_every_auto_action() -> None:
         min_accepted=30,
     )
 
-    assert gate["passed"] is False
-    assert gate["failures"] == {
-        "cv_local": "accepted 29 < 30",
-        "image_knn": "precision 0.9750 < 0.9800",
-    }
+    assert gate == {"passed": True, "failures": {}}
 
 
-def test_rollout_gate_can_exclude_an_intentionally_disabled_cv_solo_branch() -> None:
+def test_rollout_gate_has_no_solo_branches() -> None:
     summary = {
         "local_consensus": {"accepted": 30, "correct": 30, "precision": 1.0},
-        "cv_local": {"accepted": 0, "correct": 0, "precision": None},
-        "image_knn": {"accepted": 40, "correct": 40, "precision": 1.0},
         "vision": {"deferred": 10},
     }
 
@@ -205,7 +224,7 @@ def test_rollout_gate_can_exclude_an_intentionally_disabled_cv_solo_branch() -> 
         summary,
         min_precision=0.98,
         min_accepted=30,
-        required_actions=("local_consensus", "image_knn"),
+        required_actions=("local_consensus",),
     )
 
     assert gate == {"passed": True, "failures": {}}

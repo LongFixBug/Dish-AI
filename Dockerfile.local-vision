@@ -1,0 +1,43 @@
+# Archived SigLIP2/DINOv2 experiment image. The current API uses Vision only;
+# this image is not built or started by the development/production flow.
+FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+
+ARG IMAGE_EMBED_BACKEND=siglip2
+ARG IMAGE_EMBED_MODEL=google/siglip2-base-patch16-224
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8082 \
+    HF_HOME=/opt/huggingface \
+    IMAGE_EMBED_BACKEND=${IMAGE_EMBED_BACKEND} \
+    IMAGE_EMBED_MODEL=${IMAGE_EMBED_MODEL}
+
+WORKDIR /app
+
+COPY requirements.image_embed.lock ./
+RUN pip install --no-cache-dir -r requirements.image_embed.lock \
+    && groupadd --system foodai \
+    && useradd --system --gid foodai --home-dir /app foodai
+
+# Bake the selected vision encoder into the immutable image. Runtime never
+# depends on a fresh Hugging Face download and never loads a text tower.
+RUN python -c "import os; from transformers import AutoImageProcessor, AutoModel, SiglipVisionModel; name=os.environ['IMAGE_EMBED_MODEL']; AutoImageProcessor.from_pretrained(name); (AutoModel if os.environ['IMAGE_EMBED_BACKEND'] == 'dinov2' else SiglipVisionModel).from_pretrained(name)"
+
+COPY backend/__init__.py backend/config.py ./backend/
+COPY ml/__init__.py ml/model_registry.py ./ml/
+COPY ml/serving ./ml/serving
+
+RUN chown -R foodai:foodai /app /opt/huggingface
+
+USER foodai
+
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
+EXPOSE 8082
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8082/live', timeout=2)"]
+
+CMD ["sh", "-c", "exec uvicorn ml.serving.image_embed_server:app --host 0.0.0.0 --port ${PORT:-8082}"]

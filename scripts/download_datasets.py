@@ -102,9 +102,40 @@ def find_dataset_columns(features: Mapping[str, object]) -> tuple[str, str, list
     return image_column, label_column, label_names
 
 
-def is_min_size(image: Image.Image) -> bool:
-    """Ảnh đạt chuẩn khi cạnh nhỏ nhất >= MIN_IMAGE_SIDE_PX."""
-    return min(image.size) >= MIN_IMAGE_SIDE_PX
+def is_min_size(image: Image.Image, min_side: int = MIN_IMAGE_SIDE_PX) -> bool:
+    """Ảnh đạt chuẩn khi cạnh nhỏ nhất >= min_side."""
+    return min(image.size) >= min_side
+
+
+def is_quality_photo(
+    image: Image.Image,
+    min_side: int = MIN_IMAGE_SIDE_PX,
+    max_aspect: float = 2.2,
+    min_aspect: float = 0.45,
+    min_std: float = 22.0,
+    max_light_bg_ratio: float = 0.30,
+) -> bool:
+    """Lọc ảnh rác: bỏ ảnh quá méo, flat graphic/clipart hoặc nền phòng thu/nền sáng quảng cáo."""
+    w, h = image.size
+    if min(w, h) < min_side:
+        return False
+    aspect = w / h
+    if aspect > max_aspect or aspect < min_aspect:
+        return False
+    try:
+        import numpy as np
+
+        rgb = image.convert("RGB")
+        arr = np.array(rgb)
+        if float(np.std(arr)) < min_std:
+            return False
+        gray = np.mean(arr, axis=2)
+        if float(np.mean(gray > 215)) > max_light_bg_ratio:
+            return False
+    except Exception:
+        pass
+    return True
+
 
 
 def is_duplicate_phash(

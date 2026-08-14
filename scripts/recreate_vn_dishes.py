@@ -20,6 +20,13 @@ from backend.db.models import VnDish
 from backend.db.postgres import async_session
 from backend.services.catalog_quality import canonical_name_key, deduplicate_catalog_rows
 
+DEMO_CANONICAL_COPIES = (
+    ("Bánh canh thịt heo", "Bánh canh"),
+    ("Canh cá lóc (Các quả) nấu chua", "Canh chua"),
+    ("Bún nem nướng", "Bún thịt nướng"),
+    ("Cá chày kho", "Cá kho tộ"),
+)
+
 _HAS_EN = re.compile(r"[A-Za-z]{3,}")
 
 
@@ -72,6 +79,53 @@ def serving_totals(item: dict) -> tuple[float, float, float, float, float]:
     )
 
 
+async def apply_demo_canonical_copies(session) -> int:
+    """Copy reviewed source nutrition into the four demo canonical names."""
+    created = 0
+    for source_name, target_name in DEMO_CANONICAL_COPIES:
+        result = await session.execute(
+            text(
+                """
+                INSERT INTO vn_dishes (
+                    dish_name,
+                    total_calories,
+                    total_protein_g,
+                    total_fat_g,
+                    total_carbs_g,
+                    total_fiber_g,
+                    typical_grams,
+                    typical_grams_source,
+                    typical_grams_confidence,
+                    typical_grams_rule,
+                    source
+                )
+                SELECT
+                    :target_name,
+                    source_row.total_calories,
+                    source_row.total_protein_g,
+                    source_row.total_fat_g,
+                    source_row.total_carbs_g,
+                    source_row.total_fiber_g,
+                    source_row.typical_grams,
+                    source_row.typical_grams_source,
+                    source_row.typical_grams_confidence,
+                    source_row.typical_grams_rule,
+                    'demo_alias'
+                FROM vn_dishes AS source_row
+                WHERE source_row.dish_name = :source_name
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM vn_dishes AS existing
+                      WHERE lower(existing.dish_name) = lower(:target_name)
+                  )
+                """
+            ),
+            {"source_name": source_name, "target_name": target_name},
+        )
+        created += max(int(result.rowcount or 0), 0)
+    return created
+
+
 async def main() -> None:
     json_path = Path(__file__).resolve().parent.parent / "data" / "vn_foods.json"
     with open(json_path, encoding="utf-8") as f:
@@ -121,6 +175,8 @@ async def main() -> None:
             row.total_fiber_g = float(item["total_fiber_g"])
             row.source = "vnmeal"
         print(f"  -> Upserted {len(selected)} dishes")
+        created = await apply_demo_canonical_copies(session)
+        print(f"  -> Added {created} demo canonical copies")
         await session.commit()
 
         print("[2/2] Verifying serving-size coverage...")

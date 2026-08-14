@@ -5,6 +5,7 @@ import pytest
 
 from backend.services import recognition_cascade
 from backend.services.dish_image_index import DishCandidateScore
+from backend.services import dish_image_index
 from backend.services.recognition_cascade import (
     LocalEvidence,
     decide_cascade,
@@ -18,8 +19,18 @@ MARGIN = 0.04
 LIMIT = 8
 
 
-def _candidate(name: str, score: float, votes: int = 1) -> DishCandidateScore:
-    return DishCandidateScore(dish_name=name, best_score=score, votes=votes)
+def _candidate(
+    name: str,
+    score: float,
+    votes: int = 1,
+    class_slug: str | None = None,
+) -> DishCandidateScore:
+    return DishCandidateScore(
+        dish_name=name,
+        best_score=score,
+        votes=votes,
+        class_slug=class_slug,
+    )
 
 
 def _evidence(
@@ -60,8 +71,8 @@ def _evidence(
                 confidence=0.97,
             ),
             _evidence("Cơm tấm", None, strong=False, confidence=0.71),
-            "cv_local",
-            "cv_solo_gate",
+            "vision",
+            "no_strong_local_evidence",
         ),
         (
             _evidence("Phở bò", None, strong=False, confidence=0.35),
@@ -72,8 +83,8 @@ def _evidence(
                 solo_strong=True,
                 confidence=0.90,
             ),
-            "image_knn",
-            "album_standalone_gate",
+            "vision",
+            "no_strong_local_evidence",
         ),
         (
             _evidence("Bún riêu", "dish-bun-rieu", strong=True, confidence=0.91),
@@ -207,6 +218,53 @@ def test_candidate_names_are_capped_in_best_score_order() -> None:
     # Resolved hay không thì candidate_names vẫn được điền (và bị cắt tại limit).
     assert decision.resolved is True
     assert decision.candidate_names == ["Phở bò", "Phở gà"]
+
+
+def test_fast_lane_allowlist_rejects_a_high_score_non_fast_lane_candidate() -> None:
+    decision = decide_cascade(
+        [
+            _candidate("Bún mắm", 0.96, class_slug="bun_mam"),
+            _candidate("Phở bò", 0.80, class_slug="pho_bo"),
+        ],
+        threshold=0.86,
+        margin=0.07,
+        candidates_limit=LIMIT,
+        allowed_class_slugs={"pho_bo"},
+    )
+
+    assert decision.resolved is False
+    assert decision.dish_name == "Bún mắm"
+    assert decision.candidate_names == ["Bún mắm", "Phở bò"]
+
+
+def test_fast_lane_allowlist_accepts_a_candidate_in_the_configured_classes() -> None:
+    decision = decide_cascade(
+        [_candidate("Phở bò", 0.96, class_slug="pho_bo")],
+        threshold=0.86,
+        margin=0.07,
+        candidates_limit=LIMIT,
+        allowed_class_slugs={"pho_bo"},
+    )
+
+    assert decision.resolved is True
+
+
+def test_top3_blend_rewards_consistent_reference_matches() -> None:
+    """Ba ảnh gần nhau đáng tin hơn một ảnh đơn lẻ tình cờ giống query."""
+    one_lucky_hit = dish_image_index.aggregate_candidate_score(
+        [0.96, 0.60, 0.58], mode="top3_blend"
+    )
+    consistent_hits = dish_image_index.aggregate_candidate_score(
+        [0.93, 0.92, 0.91], mode="top3_blend"
+    )
+
+    assert consistent_hits > one_lucky_hit
+
+
+def test_best_score_mode_preserves_current_album_threshold_semantics() -> None:
+    assert dish_image_index.aggregate_candidate_score(
+        [0.96, 0.60, 0.58], mode="best"
+    ) == pytest.approx(0.96)
 
 
 # ─── merge_candidate_names ───────────────────────────────────────────────────

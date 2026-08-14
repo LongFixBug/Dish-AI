@@ -7,7 +7,7 @@ import logging
 from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import VnDish, VnIngredient
+from backend.db.models import NrihcmFood, VnDish, VnIngredient
 from backend.services.menu_vocabulary import (
     CANONICAL_FAMILY_NAMES,
     DISH_FAMILY_TOKENS,
@@ -53,6 +53,22 @@ def _vn_ingredient_to_per_gram(ing: VnIngredient) -> NutritionPerGram:
     )
 
 
+def _nrihcm_food_to_per_gram(food: NrihcmFood) -> NutritionPerGram:
+    """Convert the crawled NRIHCM basis row to per-gram nutrition."""
+    grams = max(0.0, float(food.basis_grams or 0.0))
+    if grams <= 0:
+        raise ValueError("Không thể tính dinh dưỡng NRIHCM khi thiếu basis_grams")
+    return NutritionPerGram(
+        name=food.name_vi,
+        calories_per_g=food.energy_kcal_per_100g / grams,
+        protein_per_g=food.protein_g_per_100g / grams,
+        fat_per_g=food.fat_g_per_100g / grams,
+        carbs_per_g=food.carbs_g_per_100g / grams,
+        fiber_per_g=0.0,
+        source="nrihcm_raw",
+    )
+
+
 def _has_weight(vn: VnDish) -> bool:
     """Return whether the dish has a usable reference serving weight."""
     return bool(vn.typical_grams and vn.typical_grams > 0)
@@ -76,16 +92,13 @@ def resolve_catalog_portion_grams(
     """
     default = max(0.0, float(catalog_grams))
     candidate = max(0.0, float(vision_grams))
-    if (
-        candidate <= 0
-        or vision_confidence < CATALOG_PORTION_CONFIDENCE_THRESHOLD
-    ):
+    if candidate <= 0 or vision_confidence < CATALOG_PORTION_CONFIDENCE_THRESHOLD:
         return default, "catalog_default"
 
     normalized = unicodedata.normalize("NFKD", dish_name.casefold())
-    normalized = "".join(
-        char for char in normalized if not unicodedata.combining(char)
-    ).replace("đ", "d")
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char)).replace(
+        "đ", "d"
+    )
     if "banh mi" in normalized:
         minimum, maximum = BANH_MI_PORTION_RANGE
     else:
@@ -165,18 +178,14 @@ def _is_semantic_candidate_compatible(query: str, candidate: str) -> bool:
 
     query_families = query_tokens & DISH_FAMILY_TOKENS
     candidate_families = candidate_tokens & DISH_FAMILY_TOKENS
-    if query_families and candidate_families and query_families.isdisjoint(
-        candidate_families
-    ):
+    if query_families and candidate_families and query_families.isdisjoint(candidate_families):
         return False
 
     required_shared = min(2, len(query_tokens))
     return len(query_tokens & candidate_tokens) >= required_shared
 
 
-async def _lookup_institute_exact(
-    session: AsyncSession, name: str
-) -> VnDish | None:
+async def _lookup_institute_exact(session: AsyncSession, name: str) -> VnDish | None:
     """Find one reviewed dish by accent- and case-insensitive normalized name."""
     exact = await session.execute(
         select(VnDish)
@@ -196,9 +205,7 @@ def _refinement_distance(query: str, candidate_name: str) -> int:
     return len(menu_tokens(candidate_name) - menu_tokens(query))
 
 
-async def _lookup_institute_by_vector(
-    session: AsyncSession, name: str
-) -> VnDish | None:
+async def _lookup_institute_by_vector(session: AsyncSession, name: str) -> VnDish | None:
     """Resolve Qdrant candidates through authoritative PostgreSQL UUIDs.
 
     Điểm vector cao không có nghĩa là đúng món: tra "Phở bò" mà Qdrant xếp
@@ -209,10 +216,15 @@ async def _lookup_institute_by_vector(
     candidates = await _lookup_institute_candidates_by_vector(session, name)
     if not candidates:
         return None
+    query_tokens = menu_tokens(name)
     return min(
-        candidates,
-        key=lambda candidate: _refinement_distance(name, candidate.dish_name),
-    )
+        enumerate(candidates),
+        key=lambda indexed_candidate: (
+            -len(query_tokens & menu_tokens(indexed_candidate[1].dish_name)),
+            _refinement_distance(name, indexed_candidate[1].dish_name),
+            indexed_candidate[0],
+        ),
+    )[1]
 
 
 async def _lookup_institute_candidates_by_vector(
@@ -241,14 +253,12 @@ async def _lookup_institute_candidates_by_vector(
         )
         return []
 
-    compatible_hits = [
-        hit for hit in hits if _is_semantic_candidate_compatible(name, hit.name)
-    ]
+    compatible_hits = [hit for hit in hits if _is_semantic_candidate_compatible(name, hit.name)]
     if not compatible_hits:
         return []
-    result = await session.execute(select(VnDish).where(
-        VnDish.id.in_([hit.record_id for hit in compatible_hits])
-    ))
+    result = await session.execute(
+        select(VnDish).where(VnDish.id.in_([hit.record_id for hit in compatible_hits]))
+    )
     by_id = {str(candidate.id): candidate for candidate in result.scalars().all()}
     return [by_id[hit.record_id] for hit in compatible_hits if hit.record_id in by_id]
 
@@ -305,9 +315,7 @@ async def lookup_dish_exact(session: AsyncSession, name: str) -> VnDish | None:
 # Ingredient, fruit, and packaged-product lookup
 
 
-async def _lookup_ingredient_ilike(
-    session: AsyncSession, name: str
-) -> VnIngredient | None:
+async def _lookup_ingredient_ilike(session: AsyncSession, name: str) -> VnIngredient | None:
     """Find the shortest ingredient containing the normalized query."""
     stmt = (
         select(VnIngredient)
@@ -324,18 +332,15 @@ async def _lookup_ingredient_ilike(
     return result.scalar_one_or_none()
 
 
-async def _lookup_ingredient_exact(
-    session: AsyncSession, name: str
-) -> VnIngredient | None:
+async def _lookup_ingredient_exact(session: AsyncSession, name: str) -> VnIngredient | None:
     """Match a complete normalized ingredient name before substring search."""
+    if not callable(getattr(session, "execute", None)):
+        return None
     stmt = (
         select(VnIngredient)
         .where(
             VnIngredient.item_type.in_(["ingredient", "fruit", "product"])
-            & (
-                func.vn_norm(VnIngredient.ingredient_name)
-                == func.vn_norm(literal(name))
-            )
+            & (func.vn_norm(VnIngredient.ingredient_name) == func.vn_norm(literal(name)))
         )
         .limit(1)
     )
@@ -343,9 +348,7 @@ async def _lookup_ingredient_exact(
     return result.scalar_one_or_none()
 
 
-async def _lookup_ingredient_vector(
-    session: AsyncSession, name: str
-) -> VnIngredient | None:
+async def _lookup_ingredient_vector(session: AsyncSession, name: str) -> VnIngredient | None:
     """Resolve Qdrant ingredient candidates through PostgreSQL UUIDs."""
     try:
         hits = await search_catalog(name, CatalogType.INGREDIENT, limit=5)
@@ -359,12 +362,9 @@ async def _lookup_ingredient_vector(
     if not hits:
         return None
 
-    stmt = (
-        select(VnIngredient)
-        .where(
-            VnIngredient.id.in_([hit.record_id for hit in hits])
-            & VnIngredient.item_type.in_(["ingredient", "fruit", "product"])
-        )
+    stmt = select(VnIngredient).where(
+        VnIngredient.id.in_([hit.record_id for hit in hits])
+        & VnIngredient.item_type.in_(["ingredient", "fruit", "product"])
     )
     result = await session.execute(stmt)
     by_id = {str(ingredient.id): ingredient for ingredient in result.scalars().all()}
@@ -382,10 +382,45 @@ async def lookup_ingredient(session: AsyncSession, name: str) -> VnIngredient | 
     return await _lookup_ingredient_vector(session, name.strip())
 
 
-async def lookup_ingredient_text(
-    session: AsyncSession, name: str
-) -> VnIngredient | None:
+async def lookup_ingredient_text(session: AsyncSession, name: str) -> VnIngredient | None:
     """Require an exact normalized name for side items and beverages."""
     if not name or not name.strip():
         return None
     return await _lookup_ingredient_exact(session, name.strip())
+
+
+async def lookup_nrihcm_food_exact(session: AsyncSession, name: str) -> NrihcmFood | None:
+    """Find one crawled NRIHCM row by normalized Vietnamese name."""
+    if not name or not name.strip():
+        return None
+    if not callable(getattr(session, "execute", None)):
+        return None
+    statement = (
+        select(NrihcmFood)
+        .where(func.vn_norm(NrihcmFood.name_vi) == func.vn_norm(literal(name.strip())))
+        .order_by(NrihcmFood.energy_kcal_per_100g.desc(), NrihcmFood.source_food_id.asc())
+        .limit(1)
+    )
+    result = await session.execute(statement)
+    return result.scalar_one_or_none()
+
+
+async def lookup_nrihcm_food(session: AsyncSession, name: str) -> NrihcmFood | None:
+    """Find a crawled NRIHCM row by safe normalized substring fallback."""
+    if not name or not name.strip():
+        return None
+    if not callable(getattr(session, "execute", None)):
+        return None
+    statement = (
+        select(NrihcmFood)
+        .where(
+            func.vn_norm(NrihcmFood.name_vi).op("ILIKE")(func.vn_norm(literal(f"%{name.strip()}%")))
+        )
+        .order_by(
+            func.char_length(NrihcmFood.name_vi).asc(),
+            NrihcmFood.source_food_id.asc(),
+        )
+        .limit(1)
+    )
+    result = await session.execute(statement)
+    return result.scalar_one_or_none()

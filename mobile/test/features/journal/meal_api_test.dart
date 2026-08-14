@@ -69,4 +69,22 @@ void main() {
     );
     api.close();
   });
+
+  test('ghi rõ text analysis source khi lưu kết quả nhập món', () async {
+    final client = MockClient((request) async {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['source'], 'analyze');
+      expect(body['analyze_source'], 'text');
+      return http.Response('{}', 201);
+    });
+    final api = MealApi(client: client, baseUrl: Uri.parse('http://api.test'));
+
+    await api.upsert(
+      entry,
+      accessToken: 'access-token',
+      source: 'analyze',
+      analyzeSource: 'text',
+    );
+    api.close();
+  });
 }

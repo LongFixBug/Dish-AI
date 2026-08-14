@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from schemas.nutrition import NutritionTotals
 
@@ -15,9 +15,7 @@ class AnalyzeDish(BaseModel):
         default=None,
         description="Tên gốc Vision trả, chỉ có giá trị khi khác tên chuẩn trong DB",
     )
-    grams: float = Field(
-        default=0.0, ge=0, description="Khối lượng ước lượng (gram) từ Vision"
-    )
+    grams: float = Field(default=0.0, ge=0, description="Khối lượng ước lượng (gram) từ Vision")
     is_side: bool = Field(
         default=False,
         description="True = món ăn kèm / đồ uống (tra cả vn_ingredients nếu vn_dishes thiếu)",
@@ -32,7 +30,7 @@ class AnalyzeDish(BaseModel):
         le=1.0,
         description="Confidence nhận diện riêng của item, không phải độ phủ catalog.",
     )
-    portion_source: Literal["vision", "catalog_default", "unknown"] = Field(
+    portion_source: Literal["vision", "catalog_default", "user_input", "unknown"] = Field(
         default="unknown",
         description="Nguồn gram hiển thị cho item.",
     )
@@ -43,17 +41,39 @@ class AnalyzeDish(BaseModel):
     )
 
 
+class AnalyzeMatch(BaseModel):
+    """Candidate returned when a text name matches a nutrition catalog."""
+
+    record_id: str
+    canonical_name: str
+    catalog_type: Literal["vn_dish", "vn_ingredient", "nrihcm_food"]
+    source: str
+    nutrition_basis: str
+    review_status: Literal["reviewed", "raw"]
+
+
+class TextAnalyzeRequest(BaseModel):
+    """User-provided food name and actual amount to analyze."""
+
+    food_name: str = Field(min_length=1, max_length=300)
+    grams: float = Field(default=100.0, gt=0, le=10_000)
+
+    @field_validator("food_name")
+    @classmethod
+    def normalize_food_name(cls, value: str) -> str:
+        cleaned = " ".join(value.strip().split())
+        if not cleaned:
+            raise ValueError("Tên món không được để trống.")
+        return cleaned
+
+
 class AnalyzeResponse(BaseModel):
     """Response cho POST /api/v1/analyze.
 
-    - source='local_consensus': EfficientNet + album cùng resolve về một UUID
-      catalog, không cần gọi Vision.
-    - source='cv_local': EfficientNet qua solo gate đã calibration, album yếu.
-    - source='image_knn': ảnh match album ảnh tham chiếu (SigLIP + Qdrant),
-      không cần gọi Vision.
-    - source='cv_local_not_found_vision': CV family prior + Qdrant shortlist +
-      Vision visual selection.
     - source='vision': Vision nhận diện + lookup vn_dishes/vn_ingredients.
+    - source='local_consensus' and 'cv_local_not_found_vision' are legacy
+      response values kept only so old clients can deserialize history; the
+      current API never emits them.
     - nutrition: NutritionTotals (dish-level, không có per-ingredient list).
     - dishes: list món Vision trả (tên + gram).
     - staged_dishes: món mới được lưu ở khu vực chờ duyệt.
@@ -63,17 +83,24 @@ class AnalyzeResponse(BaseModel):
     dish_name: str | None = Field(default=None, description="Tên món chính / bữa ăn")
     source: Literal[
         "local_consensus",
-        "cv_local",
         "vision",
         "cv_local_not_found_vision",
-        "image_knn",
+        "text_catalog",
+        "text_nrihcm_raw",
+        "text_ai_estimate",
+        "text_ambiguous",
+        "text_not_found",
     ]
     model_version: str | None = Field(
         default=None,
-        description="Version của CV checkpoint hoặc tên cloud Vision model.",
+        description="Tên image encoder hoặc cloud Vision model đã tạo kết quả.",
     )
     cv_confidence: float | None = Field(
-        default=None, description="Confidence CV local (0-1), None nếu CV disabled"
+        default=None,
+        description=(
+            "Trường legacy giữ tương thích client; luôn None sau khi bỏ "
+            "EfficientNet khỏi runtime."
+        ),
     )
     recognition_confidence: float | None = Field(
         default=None,
@@ -97,6 +124,19 @@ class AnalyzeResponse(BaseModel):
     missing_items: list[str] = Field(
         default_factory=list,
         description="Item không có trong cả vn_dishes + vn_ingredients",
+    )
+    matches: list[AnalyzeMatch] = Field(
+        default_factory=list,
+        description="Các ứng viên khi người dùng nhập tên món.",
+    )
+    reference_only: bool = Field(
+        default=False,
+        description="True khi dinh dưỡng là AI estimate, chỉ mang tính tham khảo.",
+    )
+    warning: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Cảnh báo nguồn hoặc chất lượng kết quả cho UI.",
     )
     error: str | None = None
     recognition_event_id: str | None = Field(

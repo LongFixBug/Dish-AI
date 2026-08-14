@@ -34,6 +34,8 @@ flowchart LR
 
 ## Quick start
 
+Hướng dẫn đầy đủ để mở backend, model server và iOS Simulator: [LOCAL_TESTING.md](LOCAL_TESTING.md).
+
 Yêu cầu: Python 3.12+, Docker, và `uv`.
 
 ```bash
@@ -115,7 +117,7 @@ docker build -t foodai-api .
 docker run --rm -p 8000:8000 --env-file .env foodai-api
 ```
 
-Khi deploy lên Render, Railway hay Fly.io, dùng `.env.production.example` làm checklist biến môi trường, cung cấp `DATABASE_URL`, `QDRANT_URL`, `VISION_API_KEY`, `VISION_API_BASE`, `REDIS_URL`, thông tin S3 và chạy `alembic upgrade head` trong release command. PostgreSQL giữ dữ liệu chuẩn; Qdrant chỉ giữ vector dẫn về UUID PostgreSQL. Nếu Qdrant hoặc embedding service tạm dừng, exact lookup vẫn hoạt động còn semantic fallback được bỏ qua an toàn. Image API cố ý không đóng gói Torch/checkpoint; local CV là accelerator tùy chọn cho môi trường có model, còn production image dùng Vision fallback.
+Khi deploy lên Render, Railway hay Fly.io, dùng `.env.production.example` làm checklist biến môi trường, cung cấp `DATABASE_URL`, `QDRANT_URL`, `VISION_API_KEY`, `VISION_API_BASE`, `REDIS_URL`, thông tin S3 và chạy `alembic upgrade head` trong release command. PostgreSQL giữ dữ liệu chuẩn; Qdrant chỉ giữ vector cho semantic search của catalog/chat. Flow ảnh hiện tại là Vision → catalog PostgreSQL; không cần EfficientNet, SigLIP hay image-embedding sidecar.
 
 ### Production layout
 
@@ -138,7 +140,9 @@ Local/training only, không commit
   data/images/val/
   data/images/test/
   data/images/references/
+  data/images/siglip_fast_lane/
   checkpoints/experiments/
+  checkpoints/siglip_fast_lane/
   models/*.gguf
 
 Production runtime
@@ -146,11 +150,21 @@ Production runtime
   Qdrant           semantic index dựng lại được
   S3               ảnh upload/feedback/object
   Redis            rate limit/session runtime
-  best_model.pth   chỉ khi dùng Dockerfile.cv
-  best_model.manifest.json
+  Vision API          Qwen Vision image recognition
 ```
 
-`.gitignore` đã loại `data/images/`, `checkpoints/`, `models/*.gguf` và `.dockerignore` cũng chặn toàn bộ `data/`, chỉ cho `Dockerfile.cv` lấy đúng cặp serving model `checkpoints/best_model.pth` + `checkpoints/best_model.manifest.json`. Vì vậy ảnh train có thể nằm trong project khi học local, nhưng không đi vào Git hoặc production image.
+`.gitignore` đã loại `data/images/`, `checkpoints/`, `models/*.gguf` và `.dockerignore` cũng chặn toàn bộ dữ liệu nặng. Checkpoint EfficientNet/Dockerfile.cv cũ vẫn được giữ riêng cho rollback/offline evaluation, nhưng không được API hoặc image-embedding sidecar khởi động.
+
+### Archived local image-model experiments
+
+Các trainer, checkpoint, reference album và Dockerfile của EfficientNet/SigLIP
+được giữ lại để xem lại kết quả hoặc rollback, nhưng không nằm trong flow API
+và không được `scripts/dev_up.sh` khởi động. Thay đổi chúng không thay đổi kết
+quả nhận diện production cho đến khi có một kế hoạch release riêng.
+
+Các lệnh train/re-index cũ vẫn nằm trong lịch sử repo để phục vụ nghiên cứu;
+không chạy chúng trong môi trường production hiện tại. Muốn đưa một local
+image model trở lại cần một release plan và bộ đánh giá riêng.
 
 ### Dataset sync
 

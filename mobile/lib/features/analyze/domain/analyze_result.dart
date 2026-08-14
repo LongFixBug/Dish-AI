@@ -3,20 +3,35 @@ class AnalyzeResult {
     required this.source,
     required this.dishes,
     required this.missingItems,
+    this.recognitionEventId,
     this.dishName,
     this.cvConfidence,
     this.recognitionConfidence,
     this.nutrition,
     this.reasoning,
     this.error,
+    this.matches = const [],
+    this.referenceOnly = false,
+    this.warning,
   });
 
   factory AnalyzeResult.fromJson(Map<String, dynamic> json) {
     final dishesJson = json['dishes'];
     final missingJson = json['missing_items'];
+    final matchesJson = json['matches'];
+    final matches = matchesJson is List
+        ? matchesJson
+              .whereType<Map>()
+              .map<AnalyzeMatch>(
+                (match) =>
+                    AnalyzeMatch.fromJson(Map<String, dynamic>.from(match)),
+              )
+              .toList(growable: false)
+        : const <AnalyzeMatch>[];
     return AnalyzeResult(
       dishName: json['dish_name'] as String?,
       source: json['source'] as String? ?? 'vision',
+      recognitionEventId: json['recognition_event_id'] as String?,
       cvConfidence: _toDoubleOrNull(json['cv_confidence']),
       recognitionConfidence: _toDoubleOrNull(json['recognition_confidence']),
       nutrition: switch (json['nutrition']) {
@@ -34,11 +49,15 @@ class AnalyzeResult {
           ? missingJson.whereType<String>().toList(growable: false)
           : const [],
       error: json['error'] as String?,
+      matches: matches,
+      referenceOnly: json['reference_only'] as bool? ?? false,
+      warning: _toStringOrNull(json['warning']),
     );
   }
 
   final String? dishName;
   final String source;
+  final String? recognitionEventId;
   final double? cvConfidence;
   final double? recognitionConfidence;
   final NutritionSummary? nutrition;
@@ -46,6 +65,11 @@ class AnalyzeResult {
   final String? reasoning;
   final List<String> missingItems;
   final String? error;
+  final List<AnalyzeMatch> matches;
+  final bool referenceOnly;
+  final String? warning;
+
+  bool get isTextAnalysis => source.startsWith('text_');
 
   /// Nhân toàn bộ kết quả với [factor].
   ///
@@ -57,6 +81,7 @@ class AnalyzeResult {
     return AnalyzeResult(
       dishName: dishName,
       source: source,
+      recognitionEventId: recognitionEventId,
       cvConfidence: cvConfidence,
       recognitionConfidence: recognitionConfidence,
       nutrition: nutrition?.scaled(safeFactor),
@@ -76,6 +101,9 @@ class AnalyzeResult {
       reasoning: reasoning,
       missingItems: missingItems,
       error: error,
+      matches: matches,
+      referenceOnly: referenceOnly,
+      warning: warning,
     );
   }
 
@@ -91,6 +119,7 @@ class AnalyzeResult {
     return AnalyzeResult(
       dishName: dishName,
       source: source,
+      recognitionEventId: recognitionEventId,
       cvConfidence: cvConfidence,
       recognitionConfidence: recognitionConfidence,
       nutrition: currentNutrition.scaledItem(index, safeGrams),
@@ -116,6 +145,9 @@ class AnalyzeResult {
       reasoning: reasoning,
       missingItems: missingItems,
       error: error,
+      matches: matches,
+      referenceOnly: referenceOnly,
+      warning: warning,
     );
   }
 
@@ -129,6 +161,7 @@ class AnalyzeResult {
     return AnalyzeResult(
       dishName: name,
       source: source,
+      recognitionEventId: recognitionEventId,
       cvConfidence: cvConfidence,
       recognitionConfidence: recognitionConfidence,
       nutrition: nutrition,
@@ -136,8 +169,40 @@ class AnalyzeResult {
       reasoning: reasoning,
       missingItems: missingItems,
       error: error,
+      matches: matches,
+      referenceOnly: referenceOnly,
+      warning: warning,
     );
   }
+}
+
+class AnalyzeMatch {
+  const AnalyzeMatch({
+    required this.recordId,
+    required this.canonicalName,
+    required this.catalogType,
+    required this.source,
+    required this.nutritionBasis,
+    required this.reviewStatus,
+  });
+
+  factory AnalyzeMatch.fromJson(Map<String, dynamic> json) {
+    return AnalyzeMatch(
+      recordId: json['record_id'] as String? ?? '',
+      canonicalName: json['canonical_name'] as String? ?? 'Món ăn',
+      catalogType: json['catalog_type'] as String? ?? 'unknown',
+      source: json['source'] as String? ?? 'unknown',
+      nutritionBasis: json['nutrition_basis'] as String? ?? 'unknown',
+      reviewStatus: json['review_status'] as String? ?? 'unknown',
+    );
+  }
+
+  final String recordId;
+  final String canonicalName;
+  final String catalogType;
+  final String source;
+  final String nutritionBasis;
+  final String reviewStatus;
 }
 
 class AnalyzedDish {

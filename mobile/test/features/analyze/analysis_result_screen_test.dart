@@ -6,6 +6,58 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets(
+    'text AI estimate shows a reference warning and hides recognition feedback',
+    (tester) async {
+      final result = AnalyzeResult.fromJson({
+        'dish_name': 'Món lạ',
+        'source': 'text_ai_estimate',
+        'reference_only': true,
+        'warning': 'Thông tin mang tính tham khảo.',
+        'nutrition': {'total_calories': 120, 'total_grams': 100},
+        'dishes': <Object>[],
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: BalanceTheme.light,
+          home: AnalysisResultScreen(result: result),
+        ),
+      );
+
+      expect(find.byKey(const ValueKey('analysis-warning')), findsOneWidget);
+      expect(find.text('Thông tin mang tính tham khảo.'), findsOneWidget);
+      expect(find.text('Nhận diện đúng'), findsNothing);
+    },
+  );
+
+  testWidgets('text catalog result shows its data source label', (
+    tester,
+  ) async {
+    final result = AnalyzeResult.fromJson({
+      'dish_name': 'Sữa bò tươi',
+      'source': 'text_catalog',
+      'nutrition': {'total_calories': 60, 'total_grams': 100},
+      'dishes': <Object>[],
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalysisResultScreen(result: result),
+      ),
+    );
+
+    expect(find.text('✓ Dữ liệu catalog'), findsOneWidget);
+    expect(
+      find.text(
+        'Dữ liệu được lấy từ catalog và scale theo khối lượng bạn nhập.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('✓ AI nhận diện'), findsNothing);
+  });
+
   testWidgets('result screen presents nutrition and estimated components', (
     tester,
   ) async {
@@ -60,6 +112,7 @@ void main() {
     expect(find.text('650 kcal'), findsOneWidget);
     expect(find.textContaining('không thay thế tư vấn y tế'), findsOneWidget);
     expect(find.text('Nhận diện: 86%'), findsOneWidget);
+    expect(find.text('Nguồn nhận diện: Vision'), findsOneWidget);
     expect(find.text('Dữ liệu catalog: 92%'), findsOneWidget);
     expect(find.textContaining('Độ tin cậy:'), findsNothing);
     expect(find.text('Cơm tấm'), findsOneWidget);
@@ -69,6 +122,27 @@ void main() {
     await tester.tap(find.text('Thêm vào nhật ký'));
     await tester.pump();
     expect(find.text('Đã thêm bữa ăn vào nhật ký'), findsOneWidget);
+  });
+
+  testWidgets('result summary identifies local CV consensus source', (
+    tester,
+  ) async {
+    final result = AnalyzeResult.fromJson({
+      'dish_name': 'Phở bò',
+      'source': 'local_consensus',
+      'recognition_confidence': 0.99,
+      'nutrition': {'total_calories': 450, 'total_grams': 500},
+      'dishes': <Object>[],
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: BalanceTheme.light,
+        home: AnalysisResultScreen(result: result),
+      ),
+    );
+
+    expect(find.text('Nguồn nhận diện: CV local'), findsOneWidget);
   });
 
   testWidgets('result summary keeps the raised inked paper-card treatment', (

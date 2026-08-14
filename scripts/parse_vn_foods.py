@@ -27,6 +27,8 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from backend.services.ingredient_names import clean_ingredient_name  # noqa: E402
+
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 BASE_URL = "https://viendinhduong.vn"
@@ -120,13 +122,9 @@ def parse_food_item(item: dict) -> dict | None:
     if protein == 0 and fat == 0 and carb == 0:
         return None
 
-    name = item.get("name_vi") or item.get("name_en") or ""
+    name = clean_ingredient_name(item.get("name_vi") or item.get("name_en") or "")
     if not name:
         return None
-
-    # Tên có thể kèm tên English để embedding/search tự nhiên hơn
-    if item.get("name_en") and item["name_en"] != name:
-        name = f"{name} ({item['name_en']})"
 
     return {
         "ingredient_name": name,
@@ -135,6 +133,7 @@ def parse_food_item(item: dict) -> dict | None:
         "fat_per_g": round(fat / 100, 6),
         "carbs_per_g": round(carb / 100, 6),
         "fiber_per_g": round(fiber / 100, 6),
+        "gram": 100.0,
         "source": "vnfood",
     }
 

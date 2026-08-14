@@ -48,6 +48,10 @@ GOLDEN_DIR = IMAGE_ROOT / "golden"
 
 # Class names are intentionally specific enough to be visually distinguishable.
 NEW_DISHES = {
+    "banh_canh": "Bánh canh",
+    "hu_tieu": "Hủ tiếu",
+    "bun_bo_hue": "Bún bò Huế",
+    "chao_long": "Cháo lòng",
     "banh_trang_tron": "Bánh tráng trộn",
     "pha_lau": "Phá lấu",
     "xien_que_chien": "Xiên que chiên",
@@ -83,6 +87,9 @@ SLEEP_BETWEEN_CLASSES_SECONDS = 2.0
 # Alternate names widen image-source coverage without merging visually different
 # dishes into one EfficientNet label.
 SEARCH_ALIASES = {
+    "Hủ tiếu": ("hu tieu vietnamese noodle soup",),
+    "Bún bò Huế": ("bun bo hue vietnamese noodle soup",),
+    "Cháo lòng": ("chao long vietnamese porridge",),
     "Trà sữa trân châu": ("bubble tea trân châu", "boba milk tea"),
 }
 
