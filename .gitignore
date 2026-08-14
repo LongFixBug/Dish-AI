@@ -34,6 +34,13 @@ logs/
 # Personal learning notes; intentionally kept local and not versioned.
 docs/
 
+# Internal working notes and agent memories may contain local paths, accounts,
+# deployment details, or debugging context. Keep them on the developer machine.
+.Codex/
+.claude/
+LOCAL_TESTING.md
+plan.md
+
 # RAG eval reports (output, không commit — chạy lại sinh mới)
 ml/evaluation/reports/
 reports/
