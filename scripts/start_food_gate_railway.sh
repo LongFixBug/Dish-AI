@@ -35,4 +35,4 @@ os.replace(temporary, destination)
 PY
 fi
 
-exec uvicorn ml.inference.food_gate:app --host 0.0.0.0 --port "${PORT:-8084}"
+exec uvicorn ml.serving.ml_sidecar:app --host 0.0.0.0 --port "${PORT:-8084}"

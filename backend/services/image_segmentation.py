@@ -10,7 +10,7 @@ import logging
 from backend.config import settings
 from backend.services.resilience import ResilientHttpClient
 
-SEGMENT_API = f"{settings.segment_url}/v1/segment"
+SEGMENT_API = f"{settings.segment_url.rstrip('/')}/v1/segment"
 TIMEOUT = 60.0
 
 logger = logging.getLogger("foodai")

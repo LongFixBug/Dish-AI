@@ -103,9 +103,16 @@ def test_api_image_includes_rag_import_dependencies() -> None:
 def test_sidecar_deployments_have_reproducible_dockerfiles() -> None:
     food_gate = (ROOT / "Dockerfile.food-gate").read_text()
     segment = (ROOT / "Dockerfile.segment").read_text()
+    combined = (ROOT / "ml/serving/ml_sidecar.py").read_text()
 
     assert "RAILWAY_DOCKERFILE_PATH" not in food_gate
     assert "start_food_gate_railway.sh" in food_gate
+    assert "requirements.ml-sidecar.lock" in food_gate
+    assert "os.getenv('PORT', '8084')" in food_gate
+    assert "ml.serving.ml_sidecar:app" in food_gate or "ml.serving.ml_sidecar:app" in (
+        ROOT / "scripts/start_food_gate_railway.sh"
+    ).read_text()
+    assert "app.mount(\"/segment\"" in combined
     assert "requirements.segment.lock" in segment
     assert "/health" in segment
 

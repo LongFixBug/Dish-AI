@@ -1,10 +1,16 @@
 from io import BytesIO
 
 import pytest
+import torch
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from ml.inference.food_gate import FoodGatePrediction, FoodGateSettings, create_app
+from ml.inference.food_gate import (
+    FoodGatePrediction,
+    FoodGatePredictor,
+    FoodGateSettings,
+    create_app,
+)
 
 
 def _jpeg_bytes() -> bytes:
@@ -25,6 +31,19 @@ def test_food_gate_rejects_out_of_range_scores() -> None:
 
     with pytest.raises(ValueError):
         settings.decide(non_food_score=1.01)
+
+
+def test_checkpoint_dtype_comes_from_floating_state_tensor() -> None:
+    assert (
+        FoodGatePredictor._checkpoint_dtype(
+            {"weight": torch.ones(2, dtype=torch.float16), "labels": torch.ones(2)}
+        )
+        == torch.float16
+    )
+    assert (
+        FoodGatePredictor._checkpoint_dtype({"labels": torch.ones(2, dtype=torch.int64)})
+        == torch.float32
+    )
 
 
 def test_predict_endpoint_sanitizes_upload_and_returns_scores() -> None:

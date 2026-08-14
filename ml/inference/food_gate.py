@@ -58,11 +58,34 @@ class FoodGateResponse(BaseModel):
 class FoodGatePredictor:
     """Loads the fine-tuned SigLIP2 classifier once and predicts sanitized images."""
 
-    def __init__(self, *, processor, model, label2id: dict[str, int], device: str) -> None:
+    def __init__(
+        self,
+        *,
+        processor,
+        model,
+        label2id: dict[str, int],
+        device: str,
+        dtype: torch.dtype,
+    ) -> None:
         self._processor = processor
         self._model = model
         self._label2id = label2id
         self._device = device
+        self._dtype = dtype
+
+    @staticmethod
+    def _checkpoint_dtype(state_dict: dict[str, torch.Tensor]) -> torch.dtype:
+        """Return the floating-point dtype used by the stored model weights.
+
+        Production sidecars use the same loader for the original FP32 artifact
+        and the smaller FP16 artifact.  Looking at the artifact instead of an
+        environment flag keeps the deployment immutable and prevents a dtype
+        mismatch between the model and its state dict.
+        """
+        for value in state_dict.values():
+            if torch.is_floating_point(value):
+                return value.dtype
+        return torch.float32
 
     @classmethod
     def load(cls, settings: FoodGateSettings) -> FoodGatePredictor:
@@ -91,7 +114,13 @@ class FoodGatePredictor:
         config.num_labels = 2
         config.id2label = id2label
         config.label2id = label2id
-        model = AutoModelForImageClassification.from_config(config)
+        dtype = cls._checkpoint_dtype(checkpoint["model_state_dict"])
+        previous_dtype = torch.get_default_dtype()
+        torch.set_default_dtype(dtype)
+        try:
+            model = AutoModelForImageClassification.from_config(config)
+        finally:
+            torch.set_default_dtype(previous_dtype)
         model.load_state_dict(checkpoint["model_state_dict"])
         device = "mps" if torch.backends.mps.is_available() else "cpu"
         model = model.to(device)
@@ -101,11 +130,19 @@ class FoodGatePredictor:
             model=model,
             label2id=label2id,
             device=device,
+            dtype=dtype,
         )
 
     def predict(self, image: Image.Image) -> FoodGatePrediction:
         inputs = self._processor(images=image, return_tensors="pt")
-        inputs = {name: value.to(self._device) for name, value in inputs.items()}
+        inputs = {
+            name: (
+                value.to(device=self._device, dtype=self._dtype)
+                if torch.is_floating_point(value)
+                else value.to(self._device)
+            )
+            for name, value in inputs.items()
+        }
         with torch.inference_mode():
             outputs = self._model(**inputs)
         scores = torch.softmax(outputs.logits, dim=1)[0]

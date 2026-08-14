@@ -3,12 +3,14 @@ FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/app/hf
+    HF_HOME=/app/hf \
+    U2NET_HOME=/data/u2net
 
 WORKDIR /app
 
-COPY requirements.cv.lock .
-RUN pip install --no-cache-dir -r requirements.cv.lock
+COPY requirements.ml-sidecar.lock .
+RUN pip install --no-cache-dir -r requirements.ml-sidecar.lock \
+    && mkdir -p /data/u2net
 
 RUN python -c "from transformers import AutoConfig, AutoImageProcessor; model = 'google/siglip2-base-patch16-224'; AutoConfig.from_pretrained(model); AutoImageProcessor.from_pretrained(model)" \
     && groupadd --system foodai \
@@ -19,13 +21,13 @@ COPY ml ./ml
 COPY scripts/start_food_gate_railway.sh ./scripts/start_food_gate_railway.sh
 
 RUN chmod +x /app/scripts/start_food_gate_railway.sh \
-    && chown -R foodai:foodai /app
+    && chown -R foodai:foodai /app /data
 
 USER foodai
 
 EXPOSE 8084
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8084/live', timeout=2)"]
+    CMD-SHELL python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.getenv('PORT', '8084') + '/live', timeout=2)"
 
 CMD ["/app/scripts/start_food_gate_railway.sh"]
