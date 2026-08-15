@@ -191,7 +191,7 @@ def test_retired_local_image_model_artifacts_are_removed() -> None:
     assert not [path for path in retired_paths if (ROOT / path).exists()]
 
 
-def test_retired_local_image_recognition_code_is_removed() -> None:
+def test_retired_local_image_recognition_code_except_siglip_food_hint_is_removed() -> None:
     retired_paths = (
         "backend/services/dish_image_index.py",
         "backend/services/fast_lane_config.py",
@@ -202,11 +202,8 @@ def test_retired_local_image_recognition_code_is_removed() -> None:
         "ml/evaluation/fusion_eval.py",
         "ml/evaluation/tune_cascade.py",
         "ml/inference/cv.py",
-        "ml/inference/siglip_food_v1.py",
-        "ml/model_registry.py",
         "ml/serving/image_embed_server.py",
         "ml/training/dataset.py",
-        "ml/training/siglip_fast_lane.py",
         "ml/training/train.py",
         "scripts/index_dish_images.py",
         "scripts/start_image_embed.sh",
@@ -217,8 +214,6 @@ def test_retired_local_image_recognition_code_is_removed() -> None:
 
 def test_retired_local_image_recognition_data_is_removed() -> None:
     retired_paths = (
-        "data/config/siglip_fast_lane.json",
-        "data/config/siglip_food_v1.json",
         "data/eval/camera_feedback_dataset_manifest.json",
         "data/eval/catalog_name_resolution_siglip_hints_capture.jsonl",
         "data/eval/dinov2_reference_metrics_20260808.json",

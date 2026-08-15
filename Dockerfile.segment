@@ -2,7 +2,8 @@ FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    U2NET_HOME=/data/u2net
+    PIP_NO_CACHE_DIR=1 \
+    U2NET_HOME=/app/models/u2net
 
 WORKDIR /app
 
@@ -10,17 +11,17 @@ COPY requirements.segment.lock .
 RUN pip install --no-cache-dir -r requirements.segment.lock \
     && groupadd --system foodai \
     && useradd --system --gid foodai --home-dir /app foodai \
-    && mkdir -p /data/u2net \
-    && chown -R foodai:foodai /app /data
+    && mkdir -p /app/models/u2net
 
-COPY ml/__init__.py ./ml/
-COPY ml/serving ./ml/serving
+COPY ml ./ml
+
+RUN chown -R foodai:foodai /app
 
 USER foodai
 
 EXPOSE 8083
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD ["sh", "-c", "python -c 'import os, urllib.request; urllib.request.urlopen(\"http://127.0.0.1:\" + os.getenv(\"PORT\", \"8083\") + \"/health\", timeout=2)'"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+    CMD ["sh", "-c", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT:-8083}/health', timeout=2)\""]
 
-CMD ["uvicorn", "ml.serving.segment_server:app", "--host", "0.0.0.0", "--port", "8083"]
+CMD ["sh", "-c", "exec uvicorn ml.serving.segment_server:app --host 0.0.0.0 --port ${PORT:-8083}"]
