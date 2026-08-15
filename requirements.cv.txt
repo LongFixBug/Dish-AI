@@ -6,3 +6,4 @@ torch==2.13.0+cpu
 torchvision==0.28.0+cpu
 timm==1.0.28
 transformers==5.14.1
+rembg[cpu]>=2.0.60,<3

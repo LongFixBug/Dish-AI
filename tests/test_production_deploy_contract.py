@@ -40,3 +40,17 @@ def test_segment_image_uses_railway_port_and_healthcheck() -> None:
     assert "ml.serving.segment_server:app" in dockerfile
     assert "--port ${PORT:-8083}" in dockerfile
     assert "/health" in dockerfile
+
+
+def test_food_gate_bundle_can_serve_siglip_hints_and_stickers() -> None:
+    dockerfile = _read("Dockerfile.food-gate")
+    startup = _read("scripts/start_food_gate_railway.sh")
+    bundle = _read("ml/serving/ml_sidecar.py")
+
+    assert "ml.serving.ml_sidecar:app" in startup
+    assert "SIGLIP_FOOD_V1_ARTIFACT_S3_KEY" in startup
+    assert "SIGLIP_FOOD_V1_ARTIFACT_SHA256" in startup
+    assert "@app.post(\"/siglip/predict\"" in bundle
+    assert "app.mount(\"/segment\"" in bundle
+    assert "CMD [\"/app/scripts/start_food_gate_railway.sh\"]" in dockerfile
+    assert "rembg" in _read("requirements.cv.txt")
