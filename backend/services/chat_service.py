@@ -122,7 +122,24 @@ class ToolContext:
 
 _DATE_RANGE_TOOLS = frozenset({"get_meals", "get_summary", "count_dish", "compare_goal"})
 _NUTRITION_METRIC_TERMS = frozenset(
-    {"calo", "kcal", "calories", "protein", "dam", "carb", "chat beo", "gram", "bao nhieu"}
+    {
+        "calo",
+        "kcal",
+        "calories",
+        "protein",
+        "dam",
+        "carb",
+        "chat beo",
+        "natri",
+        "sodium",
+        "sugar",
+        "chat xo",
+        "fiber",
+        "canxi",
+        "vitamin",
+        "gram",
+        "bao nhieu",
+    }
 )
 _KNOWLEDGE_CONTENT_TERMS = frozenset(
     {
@@ -141,6 +158,11 @@ _KNOWLEDGE_CONTENT_TERMS = frozenset(
     }
 )
 
+_SOCIAL_TERMS = frozenset({"cam on", "thanks", "xin chao", "chao ban", "hello", "hi"})
+_GOAL_COMPARISON_TERMS = frozenset(
+    {"con cach muc tieu", "bao xa", "so voi muc tieu", "thieu bao nhieu", "du bao nhieu"}
+)
+
 
 def _normalized_text(value: str) -> str:
     decomposed = unicodedata.normalize("NFD", value.casefold())
@@ -148,26 +170,129 @@ def _normalized_text(value: str) -> str:
     return re.sub(r"\s+", " ", without_accents.replace("đ", "d")).strip()
 
 
+def _contains_term(text: str, terms: frozenset[str]) -> bool:
+    return any(term in text for term in terms)
+
+
+def _asks_for_nutrition_metric(question: str, normalized_question: str) -> bool:
+    if _contains_term(normalized_question, _NUTRITION_METRIC_TERMS):
+        return True
+    return bool(re.search(r"\bđường\b", question, flags=re.IGNORECASE))
+
+
+def _extract_counted_dish(question: str) -> str | None:
+    pattern = r"\b(?:ăn|dùng|nạp)\b\s+(.+?)\s+(?:mấy lần|bao nhiêu lần|số lần)\b"
+    match = re.search(pattern, question, flags=re.IGNORECASE)
+    if match is None:
+        normalized = _normalized_text(question)
+        pattern = r"\b(?:an|dung|nap)\b\s+(.+?)\s+(?:may lan|bao nhieu lan|so lan)\b"
+        match = re.search(pattern, normalized)
+    if match is None:
+        return None
+    dish_name = match.group(1).strip(" .?!,;")
+    return dish_name or None
+
+
+def _call_dict(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    return {"tool": tool, "arguments": arguments}
+
+
+def _canonicalize_explicit_intent(request: ChatRequest, plan: ChatPlan) -> ChatPlan:
+    """Apply deterministic corrections for intents the planner often confuses."""
+    normalized_question = _normalized_text(request.message)
+    asks_for_metric = _asks_for_nutrition_metric(request.message, normalized_question)
+    asks_for_document_content = _contains_term(normalized_question, _KNOWLEDGE_CONTENT_TERMS)
+
+    if asks_for_metric and not asks_for_document_content and plan.route in {
+        "knowledge",
+        "general",
+        "out_of_scope",
+    }:
+        return ChatPlan.model_validate(
+            {
+                "route": "catalog",
+                "calls": [_call_dict("search_catalog", {"query": request.message})],
+            }
+        )
+
+    if not plan.calls and _contains_term(normalized_question, _SOCIAL_TERMS):
+        return ChatPlan.model_validate({"route": "general", "calls": []})
+
+    calls = [call.model_dump(mode="json") for call in plan.calls]
+    count_dish = _extract_counted_dish(request.message)
+    if count_dish:
+        for call in calls:
+            if call["tool"] == "get_meals":
+                date_args = {
+                    key: call["arguments"][key]
+                    for key in ("date_from", "date_to")
+                    if key in call["arguments"]
+                }
+                call.update(_call_dict("count_dish", {"dish_name": count_dish, **date_args}))
+
+    asks_for_meal_list = _contains_term(
+        normalized_question,
+        frozenset({"da an gi", "liet ke", "nhat ky", "bua trua", "bua sang", "bua toi"}),
+    )
+    asks_for_goal_distance = not asks_for_meal_list and (
+        _contains_term(normalized_question, _GOAL_COMPARISON_TERMS)
+        or (
+        "con bao nhieu" in normalized_question
+        and _contains_term(normalized_question, frozenset({"calo", "calories", "protein"}))
+        )
+    )
+    if asks_for_goal_distance:
+        replaced_summary = False
+        for call in calls:
+            if call["tool"] in {"get_meals", "get_summary"}:
+                date_args = {
+                    key: call["arguments"][key]
+                    for key in ("date_from", "date_to")
+                    if key in call["arguments"]
+                }
+                call.update(_call_dict("compare_goal", date_args))
+                replaced_summary = True
+                break
+        if replaced_summary:
+            calls = [call for call in calls if call["tool"] != "get_goal"]
+
+    if any(call["tool"] == "suggest_dishes" for call in calls):
+        calls = [call for call in calls if call["tool"] != "get_goal"]
+
+    if not asks_for_meal_list and any(call["tool"] == "get_summary" for call in calls):
+        calls = [call for call in calls if call["tool"] != "get_meals"]
+
+    if "muc tieu cua toi" in normalized_question and plan.route == "knowledge":
+        knowledge_calls = [call for call in calls if call["tool"] == "search_knowledge_base"]
+        if knowledge_calls:
+            calls = [_call_dict("get_goal", {}), *knowledge_calls]
+            return ChatPlan.model_validate({"route": "hybrid", "calls": calls})
+
+    if calls != [call.model_dump(mode="json") for call in plan.calls]:
+        return ChatPlan.model_validate({"route": plan.route, "calls": calls})
+    return plan
+
+
 def ground_plan(request: ChatRequest, plan: ChatPlan) -> ChatPlan:
     """Prevent a catalog-only context from answering descriptive questions."""
     normalized_question = _normalized_text(request.message)
-    asks_for_metric = any(term in normalized_question for term in _NUTRITION_METRIC_TERMS)
+    asks_for_metric = _asks_for_nutrition_metric(request.message, normalized_question)
     asks_for_document_content = any(
         term in normalized_question for term in _KNOWLEDGE_CONTENT_TERMS
     )
-    if plan.route != "catalog" or asks_for_metric or not asks_for_document_content:
-        return plan
-    return ChatPlan.model_validate(
-        {
-            "route": "knowledge",
-            "calls": [
-                {
-                    "tool": "search_knowledge_base",
-                    "arguments": {"query": request.message},
-                }
-            ],
-        }
-    )
+    if plan.route == "catalog" and not asks_for_metric and asks_for_document_content:
+        plan = ChatPlan.model_validate(
+            {
+                "route": "knowledge",
+                "calls": [
+                    {
+                        "tool": "search_knowledge_base",
+                        "arguments": {"query": request.message},
+                    }
+                ],
+            }
+        )
+    return _canonicalize_explicit_intent(request, plan)
 
 
 def normalize_plan_dates(raw: dict[str, Any], *, today: date) -> dict[str, Any]:

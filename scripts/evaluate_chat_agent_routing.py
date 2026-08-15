@@ -59,10 +59,14 @@ def score_plan(case: dict[str, Any], *, route: str, tools: tuple[str, ...]) -> d
 async def live_report(cases: list[dict[str, Any]]) -> dict[str, Any]:
     rows = []
     for case in cases:
-        plan = await chat_service._plan(ChatRequest(message=case["message"]))
+        request = ChatRequest(message=case["message"])
+        planner_plan = await chat_service._plan(request)
+        plan = chat_service.ground_plan(request, planner_plan)
         tools = tuple(call.tool for call in plan.calls)
         rows.append({
             "case_id": case["case_id"],
+            "planner_route": planner_plan.route,
+            "planner_tools": tuple(call.tool for call in planner_plan.calls),
             "actual_route": plan.route,
             "actual_tools": tools,
             **score_plan(case, route=plan.route, tools=tools),

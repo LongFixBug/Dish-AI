@@ -98,6 +98,150 @@ def test_component_question_is_redirected_from_catalog_to_knowledge_base() -> No
     assert grounded.calls[0].arguments == {"query": "Một tô phở bò thường gồm những gì?"}
 
 
+def test_explicit_nutrition_question_is_redirected_to_catalog() -> None:
+    knowledge_plan = ChatPlan.model_validate(
+        {
+            "route": "knowledge",
+            "calls": [
+                {
+                    "tool": "search_knowledge_base",
+                    "arguments": {"query": "Bún bò Huế có nhiều natri không?"},
+                }
+            ],
+        }
+    )
+
+    grounded = chat_service.ground_plan(
+        ChatRequest(message="Bún bò Huế có nhiều natri không?"),
+        knowledge_plan,
+    )
+
+    assert grounded.route == "catalog"
+    assert grounded.calls[0].tool == "search_catalog"
+    assert grounded.calls[0].arguments == {"query": "Bún bò Huế có nhiều natri không?"}
+
+
+def test_count_question_does_not_use_full_meal_listing() -> None:
+    plan = ChatPlan.model_validate(
+        {
+            "route": "personal",
+            "calls": [
+                {
+                    "tool": "get_meals",
+                    "arguments": {
+                        "date_from": "2026-07-20",
+                        "date_to": "2026-07-26",
+                    },
+                }
+            ],
+        }
+    )
+
+    grounded = chat_service.ground_plan(
+        ChatRequest(message="Tuần này tôi ăn phở bò mấy lần?"),
+        plan,
+    )
+
+    assert grounded.calls[0].tool == "count_dish"
+    assert grounded.calls[0].arguments["dish_name"] == "phở bò"
+
+
+def test_goal_distance_uses_compare_goal_and_drops_redundant_goal_call() -> None:
+    plan = ChatPlan.model_validate(
+        {
+            "route": "personal",
+            "calls": [
+                {
+                    "tool": "get_summary",
+                    "arguments": {
+                        "date_from": "2026-07-27",
+                        "date_to": "2026-07-27",
+                    },
+                },
+                {"tool": "get_goal", "arguments": {}},
+            ],
+        }
+    )
+
+    grounded = chat_service.ground_plan(
+        ChatRequest(message="Hôm nay lượng ăn của tôi còn cách mục tiêu bao xa?"),
+        plan,
+    )
+
+    assert [call.tool for call in grounded.calls] == ["compare_goal"]
+    assert grounded.calls[0].arguments["date_from"] == "2026-07-27"
+
+
+def test_suggestion_tool_owns_goal_and_summary_context() -> None:
+    plan = ChatPlan.model_validate(
+        {
+            "route": "personal",
+            "calls": [
+                {"tool": "get_goal", "arguments": {}},
+                {"tool": "suggest_dishes", "arguments": {}},
+            ],
+        }
+    )
+
+    grounded = chat_service.ground_plan(
+        ChatRequest(message="Gợi ý món cho tối nay theo phần calories còn lại."),
+        plan,
+    )
+
+    assert [call.tool for call in grounded.calls] == ["suggest_dishes"]
+
+
+def test_goal_and_knowledge_question_keeps_both_contexts() -> None:
+    plan = ChatPlan.model_validate(
+        {
+            "route": "knowledge",
+            "calls": [
+                {
+                    "tool": "search_knowledge_base",
+                    "arguments": {"query": "Theo mục tiêu của tôi, giải thích từ tài liệu."},
+                }
+            ],
+        }
+    )
+
+    grounded = chat_service.ground_plan(
+        ChatRequest(message="Theo mục tiêu của tôi, giải thích từ tài liệu vì sao cần chú ý khẩu phần."),
+        plan,
+    )
+
+    assert grounded.route == "hybrid"
+    assert [call.tool for call in grounded.calls] == ["get_goal", "search_knowledge_base"]
+
+
+def test_dinh_duong_is_not_mistaken_for_sugar_metric() -> None:
+    plan = ChatPlan.model_validate(
+        {
+            "route": "knowledge",
+            "calls": [
+                {
+                    "tool": "search_knowledge_base",
+                    "arguments": {"query": "Balance lấy dữ liệu catalog dinh dưỡng từ đâu?"},
+                }
+            ],
+        }
+    )
+
+    grounded = chat_service.ground_plan(
+        ChatRequest(message="Balance lấy dữ liệu catalog dinh dưỡng từ đâu?"),
+        plan,
+    )
+
+    assert grounded.route == "knowledge"
+
+
+def test_thanks_is_general_not_out_of_scope() -> None:
+    plan = ChatPlan.model_validate({"route": "out_of_scope", "calls": []})
+
+    grounded = chat_service.ground_plan(ChatRequest(message="Cảm ơn nhé."), plan)
+
+    assert grounded.route == "general"
+
+
 @pytest.mark.parametrize(
     ("route", "calls"),
     [

@@ -21,9 +21,9 @@
 {"case_id":"personal-10","message":"Ngày mai nên ăn gì để bám mục tiêu dinh dưỡng?","expected_route":"personal","expected_tools":["suggest_dishes"]}
 {"case_id":"hybrid-01","message":"Hôm nay tôi còn bao nhiêu calories và món phở bò có phù hợp không?","expected_route":"hybrid","expected_tools":["compare_goal","search_catalog"]}
 {"case_id":"hybrid-02","message":"Dựa vào mục tiêu hôm nay, gợi ý một món và cho tôi dinh dưỡng của món đó.","expected_route":"hybrid","expected_tools":["suggest_dishes","search_catalog"]}
-{"case_id":"hybrid-03","message":"Tôi đã ăn gì hôm nay, còn bao nhiêu protein và nên chọn món nào?","expected_route":"hybrid","expected_tools":["get_summary","suggest_dishes"]}
+{"case_id":"hybrid-03","message":"Tôi đã ăn gì hôm nay, còn bao nhiêu protein và nên chọn món nào?","expected_route":"personal","expected_tools":["get_meals","suggest_dishes"]}
 {"case_id":"hybrid-04","message":"Tôi ăn phở bò bao nhiêu lần tuần này và món này có bao nhiêu calories?","expected_route":"hybrid","expected_tools":["count_dish","search_catalog"]}
-{"case_id":"hybrid-05","message":"Theo mục tiêu của tôi, giải thích từ tài liệu vì sao cần chú ý khẩu phần phở bò.","expected_route":"hybrid","expected_tools":["compare_goal","search_knowledge_base"]}
+{"case_id":"hybrid-05","message":"Theo mục tiêu của tôi, giải thích từ tài liệu vì sao cần chú ý khẩu phần phở bò.","expected_route":"hybrid","expected_tools":["get_goal","search_knowledge_base"]}
 {"case_id":"general-01","message":"Chào bạn, Balance làm được gì?","expected_route":"general","expected_tools":[]}
 {"case_id":"general-02","message":"Cảm ơn nhé.","expected_route":"general","expected_tools":[]}
 {"case_id":"out-of-scope-01","message":"Viết giúp tôi một bài thơ về mùa hè.","expected_route":"out_of_scope","expected_tools":[]}
