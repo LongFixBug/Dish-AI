@@ -7,7 +7,11 @@ __pycache__
 backups
 
 # Training datasets and raw local assets do not belong in the API image.
-data
+# Only the small, checked-in nutrition reference snapshot is needed by the
+# production API's deterministic goals/suggestions endpoints.
+data/*
+!data/
+!data/vn_nutrition_reference_targets.json
 uploads
 models
 
@@ -21,6 +25,13 @@ checkpoints/*
 !checkpoints/best_model.manifest.json
 !checkpoints/food_gate/
 !checkpoints/food_gate/siglip2_food_gate_best.pt
+# The SigLIP food-hint sidecar packages only its serving encoder and head.
+!checkpoints/siglip_food_v1/
+!checkpoints/siglip_food_v1/encoder/
+!checkpoints/siglip_food_v1/encoder/model.safetensors
+!checkpoints/siglip_food_v1/encoder/config.json
+!checkpoints/siglip_food_v1/encoder/preprocessor_config.json
+!checkpoints/siglip_food_v1/classifier_head.pt
 
 ml/evaluation/reports
 .Codex

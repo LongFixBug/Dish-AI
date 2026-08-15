@@ -11,6 +11,27 @@ services:
     ports:
       - "127.0.0.1:8084:8084"
 
+  siglip-food-hint:
+    profiles: ["siglip-food-hint"]
+    build:
+      context: .
+      dockerfile: Dockerfile.siglip-food-hint
+    environment:
+      SIGLIP_FOOD_V1_ENCODER_DIR: /app/checkpoints/siglip_food_v1/encoder
+      SIGLIP_FOOD_V1_CLASSIFIER_HEAD_PATH: /app/checkpoints/siglip_food_v1/classifier_head.pt
+      SIGLIP_FOOD_V1_TOP_K: ${SIGLIP_FOOD_V1_TOP_K:-3}
+      SIGLIP_FOOD_V1_DEVICE: cpu
+    ports:
+      - "127.0.0.1:8085:8085"
+
+  segment:
+    profiles: ["segment"]
+    build:
+      context: .
+      dockerfile: Dockerfile.segment
+    ports:
+      - "127.0.0.1:8083:8083"
+
   postgres:
     image: pgvector/pgvector:pg16
     environment:

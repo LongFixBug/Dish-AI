@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir -r requirements.api.lock \
 
 COPY backend ./backend
 COPY schemas ./schemas
+COPY data/vn_nutrition_reference_targets.json ./data/vn_nutrition_reference_targets.json
 COPY ml/__init__.py ml/model_registry.py ./ml/
 COPY ml/inference ./ml/inference
 COPY alembic.ini ./alembic.ini
