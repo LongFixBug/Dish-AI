@@ -94,6 +94,10 @@ DEBUG=false uv run python scripts/audit_catalog.py --fail-on error
 
 ## Deploy production
 
+For GPU-backed Food Gate and SigLIP Food Hint deployment outside Railway, see
+[RunPod GPU sidecar guide](docs/runpod-gpu-sidecar.md). Railway can continue
+to host the API and data services while RunPod serves only the ML sidecar.
+
 Production gồm API, PostgreSQL, Qdrant, Redis, object storage, Vision API và ML sidecar. Sidecar hiện cung cấp Food Gate, SigLIP Food Hint và segmentation; chat cần LLM endpoint và embedding runtime phù hợp.
 
 1. Dùng [`.env.production.example`](.env.production.example) làm checklist, nhưng nhập secrets trong dashboard của nền tảng deploy — không commit file có giá trị thật.

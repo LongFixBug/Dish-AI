@@ -46,11 +46,13 @@ def test_food_gate_bundle_can_serve_siglip_hints_and_stickers() -> None:
     dockerfile = _read("Dockerfile.food-gate")
     startup = _read("scripts/start_food_gate_railway.sh")
     bundle = _read("ml/serving/ml_sidecar.py")
+    siglip_routes = _read("ml/serving/siglip_food_hint_routes.py")
 
     assert "ml.serving.ml_sidecar:app" in startup
     assert "SIGLIP_FOOD_V1_ARTIFACT_S3_KEY" in startup
     assert "SIGLIP_FOOD_V1_ARTIFACT_SHA256" in startup
-    assert "@app.post(\"/siglip/predict\"" in bundle
+    assert "attach_siglip_food_hint_routes(app)" in bundle
+    assert "@app.post(\"/siglip/predict\"" in siglip_routes
     assert "app.mount(\"/segment\"" in bundle
     assert "CMD [\"/app/scripts/start_food_gate_railway.sh\"]" in dockerfile
     assert "rembg" in _read("requirements.cv.txt")

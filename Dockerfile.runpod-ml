@@ -1,0 +1,38 @@
+FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/app/hf \
+    U2NET_HOME=/data/u2net \
+    PORT=8080 \
+    ML_SIDECAR_APP=ml.serving.ml_gpu_sidecar:app \
+    FOOD_GATE_DEVICE=cuda \
+    SIGLIP_FOOD_V1_DEVICE=cuda
+
+WORKDIR /app
+
+COPY requirements.api.txt requirements.ml-gpu.txt ./
+
+# Official PyTorch CUDA 12.4 wheels. RunPod supplies the NVIDIA driver at
+# runtime; the container needs no host-specific CUDA installation.
+RUN pip install --no-cache-dir \
+        torch==2.6.0 torchvision==0.21.0 \
+        --index-url https://download.pytorch.org/whl/cu124 \
+    && pip install --no-cache-dir -r requirements.ml-gpu.txt \
+    && mkdir -p /data/u2net
+
+RUN python -c "from transformers import AutoConfig, AutoImageProcessor; model = 'google/siglip2-base-patch16-224'; AutoConfig.from_pretrained(model); AutoImageProcessor.from_pretrained(model)"
+
+COPY backend ./backend
+COPY ml ./ml
+COPY scripts/start_food_gate_railway.sh ./scripts/start_food_gate_railway.sh
+
+RUN chmod +x /app/scripts/start_food_gate_railway.sh
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/live', timeout=3)"]
+
+CMD ["/app/scripts/start_food_gate_railway.sh"]

@@ -82,11 +82,16 @@ async def predict_siglip_food_hints(
     if settings.siglip_food_hint_mode == "disabled" or settings.siglip_food_hint_url is None:
         return None
 
+    headers = {}
+    if settings.siglip_food_hint_service_token:
+        headers["X-Food-Gate-Token"] = settings.siglip_food_hint_service_token
+
     try:
         async with httpx.AsyncClient(timeout=settings.siglip_food_hint_timeout_seconds) as client:
             response = await client.post(
                 f"{str(settings.siglip_food_hint_url).rstrip('/')}/predict",
                 files={"file": ("upload", image_content, content_type)},
+                headers=headers,
             )
             response.raise_for_status()
 

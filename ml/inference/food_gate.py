@@ -24,6 +24,7 @@ from backend.api.upload_utils import (
     validate_and_sanitize_image,
     validate_image_content_type,
 )
+from ml.inference.runtime_device import InferenceDevice, resolve_inference_device
 
 
 class FoodGateSettings(BaseSettings):
@@ -35,6 +36,7 @@ class FoodGateSettings(BaseSettings):
     block_threshold: float = Field(default=0.90, ge=0, le=1)
     max_concurrency: int = Field(default=1, ge=1, le=16)
     service_token: str = ""
+    device: InferenceDevice = "auto"
 
     def decide(self, *, non_food_score: float) -> Literal["block", "vision"]:
         if not math.isfinite(non_food_score) or not 0 <= non_food_score <= 1:
@@ -122,7 +124,11 @@ class FoodGatePredictor:
         finally:
             torch.set_default_dtype(previous_dtype)
         model.load_state_dict(checkpoint["model_state_dict"])
-        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        device = resolve_inference_device(
+            requested=settings.device,
+            cuda_available=torch.cuda.is_available(),
+            mps_available=torch.backends.mps.is_available(),
+        )
         model = model.to(device)
         model.eval()
         return cls(

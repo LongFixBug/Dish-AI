@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -21,6 +20,7 @@ from backend.api.upload_utils import (
     validate_and_sanitize_image,
     validate_image_content_type,
 )
+from ml.inference.runtime_device import InferenceDevice, resolve_inference_device
 
 
 DISPLAY_NAMES = {
@@ -43,7 +43,9 @@ class SiglipFoodV1Settings(BaseSettings):
 
     top_k: int = Field(default=3, ge=1, le=5)
     max_concurrency: int = Field(default=1, ge=1, le=8)
-    device: Literal["auto", "mps", "cpu"] = "auto"
+    device: InferenceDevice = "auto"
+    service_token: str = ""
+    warm_on_startup: bool = False
 
 
 class FoodCandidate(BaseModel):
@@ -130,13 +132,11 @@ class SiglipFoodV1Predictor:
 
         model.classifier.load_state_dict(head_checkpoint["classifier_state_dict"])
 
-        if settings.device == "auto":
-            device = "mps" if torch.backends.mps.is_available() else "cpu"
-        else:
-            device = settings.device
-
-        if device == "mps" and not torch.backends.mps.is_available():
-            raise ValueError("MPS không sẵn sàng")
+        device = resolve_inference_device(
+            requested=settings.device,
+            cuda_available=torch.cuda.is_available(),
+            mps_available=torch.backends.mps.is_available(),
+        )
 
         model = model.to(device)
         model.eval()

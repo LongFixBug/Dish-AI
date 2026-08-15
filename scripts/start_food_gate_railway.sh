@@ -72,4 +72,5 @@ with tarfile.open(archive, "r:gz") as bundle:
 PY
 fi
 
-exec uvicorn ml.serving.ml_sidecar:app --host 0.0.0.0 --port "${PORT:-8084}"
+sidecar_app="${ML_SIDECAR_APP:-ml.serving.ml_sidecar:app}"
+exec uvicorn "$sidecar_app" --host 0.0.0.0 --port "${PORT:-8084}"

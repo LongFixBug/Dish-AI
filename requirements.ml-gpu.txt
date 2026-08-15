@@ -1,0 +1,6 @@
+# GPU runtime for the external RunPod ML sidecar. Keep Railway on the locked
+# CPU image; this file deliberately installs the CUDA wheels in the Dockerfile.
+-r requirements.api.txt
+timm==1.0.28
+transformers==5.14.1
+rembg[cpu]==2.0.78

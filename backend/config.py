@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     # hint: gửi top-k gợi ý vào prompt Vision
     siglip_food_hint_mode: Literal["disabled", "shadow", "hint"] = "disabled"
     siglip_food_hint_url: AnyHttpUrl | None = None
+    siglip_food_hint_service_token: str = ""
     siglip_food_hint_timeout_seconds: float = Field(default=1.5, ge=0.1, le=10)
     siglip_food_hint_top_k: int = Field(default=3, ge=1, le=5)
     siglip_food_hint_min_score: float = Field(default=0.90, ge=0, le=1)
