@@ -23,9 +23,9 @@ import imagehash
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.build_new_dish_classes import ClassResult, build_class
-from scripts.build_reference_album import collect_blocked_hashes
-from scripts.expand_dish_classes import _query_terms, parse_bing_image_tasks
+from scripts.build_new_dish_classes import ClassResult, build_class  # noqa: E402
+from scripts.build_reference_album import collect_blocked_hashes  # noqa: E402
+from scripts.expand_dish_classes import _query_terms, parse_bing_image_tasks  # noqa: E402
 
 DEFAULT_ROOT = PROJECT_ROOT / "data" / "images" / "siglip_food_v1"
 DEFAULT_TARGETS = {"train": 60, "val": 15, "test": 130}

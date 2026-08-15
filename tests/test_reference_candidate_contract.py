@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,6 +35,9 @@ def test_requested_candidate_classes_have_display_names_and_folders() -> None:
     class_names_path = ROOT / "data/eval/class_names.json"
     class_names = json.loads(class_names_path.read_text(encoding="utf-8"))
     candidate_root = ROOT / "data/images/references_candidate"
+
+    if not candidate_root.is_dir():
+        pytest.skip("Reference-candidate images are local data and intentionally excluded from Git.")
 
     for slug, display_name in REQUESTED_CANDIDATE_CLASSES.items():
         assert class_names[slug] == display_name

@@ -393,10 +393,8 @@ async def _analyze_vision_path(
 ) -> AnalyzeResponse:
     """Run the single image recognizer and resolve its result to catalog data."""
     try:
-        vision = await identify_dish(
-            temp_path,
-            candidate_names=candidate_names,
-        )
+        vision_kwargs = {"candidate_names": candidate_names} if candidate_names else {}
+        vision = await identify_dish(temp_path, **vision_kwargs)
     except VisionError as exc:
         logger.warning("Vision analysis failed: %s", exc)
         return _analysis_response(
@@ -508,14 +506,15 @@ async def analyze_food(
                 },
             )
 
-    if settings.siglip_food_hint_mode == "shadow":
+    siglip_hint_mode = getattr(settings, "siglip_food_hint_mode", "disabled")
+    if siglip_hint_mode == "shadow":
         background_tasks.add_task(
             observe_siglip_food_hint_shadow,
             image.content,
             image.content_type,
         )
 
-    elif settings.siglip_food_hint_mode == "hint":
+    elif siglip_hint_mode == "hint":
         hint_result = await predict_siglip_food_hints(
             image.content,
             image.content_type,
