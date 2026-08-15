@@ -54,3 +54,6 @@ def test_food_gate_bundle_can_serve_siglip_hints_and_stickers() -> None:
     assert "app.mount(\"/segment\"" in bundle
     assert "CMD [\"/app/scripts/start_food_gate_railway.sh\"]" in dockerfile
     assert "rembg" in _read("requirements.cv.txt")
+    cv_lock = _read("requirements.cv.lock")
+    assert "--find-links https://download.pytorch.org/whl/cpu/torch/" in cv_lock
+    assert "--find-links https://download.pytorch.org/whl/cpu/torchvision/" in cv_lock
