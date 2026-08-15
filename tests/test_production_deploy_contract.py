@@ -11,10 +11,16 @@ def _read(name: str) -> str:
 def test_api_image_includes_runtime_nutrition_snapshot() -> None:
     dockerfile = _read("Dockerfile")
     dockerignore = _read(".dockerignore")
+    api_requirements = _read("requirements.api.txt")
+    api_lock = _read("requirements.api.lock")
 
     assert "COPY data/vn_nutrition_reference_targets.json" in dockerfile
     assert "!data/" in dockerignore
     assert "!data/vn_nutrition_reference_targets.json" in dockerignore
+    assert "langchain-community" in api_requirements
+    assert "langchain-community==" in api_lock
+    assert "langchain-text-splitters" in api_requirements
+    assert "langchain-text-splitters==" in api_lock
 
 
 def test_siglip_food_hint_image_contains_only_serving_artifacts() -> None:
