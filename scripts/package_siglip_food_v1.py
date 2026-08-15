@@ -32,7 +32,12 @@ def _read_expected_classes(config_path: Path) -> tuple[str, ...]:
     classes = payload.get("classes")
     if not isinstance(classes, list) or not all(isinstance(item, str) for item in classes):
         raise ValueError("Config SigLIP phải có danh sách classes hợp lệ")
-    return tuple(classes)
+    # ``load_fast_lane_config`` uses alphabetical order to give class indices a
+    # reproducible identity. Package with that same canonical contract.
+    normalized = tuple(sorted(item.strip() for item in classes if item.strip()))
+    if len(normalized) != len(classes) or len(set(normalized)) != len(normalized):
+        raise ValueError("Config SigLIP chứa class rỗng hoặc trùng")
+    return normalized
 
 
 def _validate_checkpoint(checkpoint_dir: Path, expected_classes: tuple[str, ...]) -> None:

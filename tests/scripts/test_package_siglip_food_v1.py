@@ -3,6 +3,18 @@ import json
 import tarfile
 
 
+def test_read_expected_classes_matches_training_canonical_order(tmp_path) -> None:
+    from scripts.package_siglip_food_v1 import _read_expected_classes
+
+    config = tmp_path / "config.json"
+    config.write_text(
+        json.dumps({"classes": ["hu_tieu", "banh_canh", "pho_bo"]}),
+        encoding="utf-8",
+    )
+
+    assert _read_expected_classes(config) == ("banh_canh", "hu_tieu", "pho_bo")
+
+
 def test_package_artifact_contains_only_inference_files_and_checksum(tmp_path) -> None:
     from scripts.package_siglip_food_v1 import package_artifact
 
