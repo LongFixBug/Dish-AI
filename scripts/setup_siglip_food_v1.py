@@ -16,7 +16,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from ml.training.siglip_fast_lane import (
+from ml.training.siglip_fast_lane import (  # noqa: E402
     FastLaneConfig,
     load_fast_lane_config,
     resolve_device,
@@ -27,6 +27,33 @@ from ml.training.siglip_fast_lane import (
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "data" / "config" / "siglip_food_v1.json"
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data" / "images" / "siglip_food_v1"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "checkpoints" / "siglip_food_v1"
+DATASET_SPLITS = ("train", "val", "test")
+
+
+def initialize_dataset_workspace(
+    *,
+    data_dir: Path = DEFAULT_DATA_DIR,
+    classes: tuple[str, ...],
+) -> dict[str, int | str]:
+    """Create the empty local layout without downloading or committing images."""
+    directories_created = 0
+    for split in DATASET_SPLITS:
+        for slug in classes:
+            directory = data_dir / split / slug
+            if not directory.exists():
+                directory.mkdir(parents=True, exist_ok=True)
+                directories_created += 1
+
+    instructions = data_dir / "README.md"
+    instructions.write_text(
+        "# SigLIP food-v1 local dataset\\n\\n"
+        "Không commit ảnh vào Git. Mỗi ảnh phải là một món rõ ràng, đúng nhãn, "
+        "có nguồn/licence được review trước khi dùng release.\\n\\n"
+        "Cấu trúc: `train/<slug>`, `val/<slug>`, `test/<slug>`. Giữ test riêng "
+        "từ đầu; không copy hoặc near-duplicate ảnh giữa các split.\\n",
+        encoding="utf-8",
+    )
+    return {"directories_created": directories_created, "data_dir": str(data_dir)}
 
 
 def prepare_training(
@@ -59,10 +86,20 @@ def main() -> None:
     parser.add_argument("--device", choices=("auto", "cpu", "cuda", "mps"), default="mps")
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--check-only", action="store_true")
+    parser.add_argument(
+        "--init-layout",
+        action="store_true",
+        help="Create empty train/val/test folders only; never download images.",
+    )
     args = parser.parse_args()
 
-    import torch
+    if args.init_layout:
+        config = load_fast_lane_config(args.config)
+        report = initialize_dataset_workspace(data_dir=args.data_dir, classes=config.classes)
+        print(json.dumps({"dataset_workspace": report}, ensure_ascii=False, indent=2))
+        return
 
+    import torch
     config, report = prepare_training(
         config_path=args.config,
         data_dir=args.data_dir,
