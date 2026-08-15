@@ -35,3 +35,14 @@ def test_runpod_guide_documents_warm_gpu_and_railway_variables() -> None:
     assert "SIGLIP_FOOD_HINT_URL" in guide
     assert "SIGLIP_FOOD_HINT_SERVICE_TOKEN" in guide
     assert "FOOD_GATE_SERVICE_TOKEN" in guide
+
+
+def test_github_action_builds_the_amd64_runpod_image_on_demand() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "publish-runpod-image.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "workflow_dispatch:" in workflow
+    assert "packages: write" in workflow
+    assert "Dockerfile.runpod-ml" in workflow
+    assert "linux/amd64" in workflow

@@ -11,11 +11,19 @@ The sidecar exposes these existing contracts on HTTP port `8080`:
 
 ## 1. Publish the GPU image
 
-From the repository root, build an AMD64 image because RunPod Pods run Linux
-AMD64. Replace `GH_USER` with the GitHub account name.
+The simplest path is the manual GitHub Actions workflow **Publish RunPod GPU
+image**. It builds an AMD64 image on GitHub's Linux runner and publishes:
+
+```text
+ghcr.io/longfixbug/dish-ai:runpod-v1
+```
+
+This avoids relying on a local Docker daemon. If the package is not public,
+change its visibility in GitHub Packages before creating the Pod. An equivalent
+manual build is:
 
 ```bash
-export IMAGE=ghcr.io/GH_USER/foodai-ml-sidecar:runpod-v1
+export IMAGE=ghcr.io/longfixbug/dish-ai:runpod-v1
 docker buildx build --platform linux/amd64 \
   -f Dockerfile.runpod-ml \
   -t "$IMAGE" \
