@@ -8,7 +8,8 @@ FoodAI là ứng dụng phân tích ảnh món ăn Việt và theo dõi dinh dư
 flowchart LR
     A[Ảnh món ăn] --> G{Food Gate}
     G -->|Không phải món ăn| B[Hướng dẫn chụp lại]
-    G -->|Món ăn hoặc Gate không sẵn sàng| V[Vision LLM]
+    G -->|Món ăn hoặc Gate không sẵn sàng| H[SigLIP Food Hint]
+    H -->|Top-k gợi ý hoặc sidecar không sẵn sàng| V[Vision LLM]
     V --> R{Catalog resolver}
     R -->|Exact| P[PostgreSQL]
     R -->|Semantic fallback| Q[Qdrant]
@@ -18,6 +19,7 @@ flowchart LR
 ```
 
 - Food Gate chặn ảnh không phải món ăn trước khi gọi Vision khi chạy ở chế độ `enforce`; nếu Gate lỗi, hệ thống fail-open sang Vision.
+- SigLIP Food Hint là classifier fine-tune riêng, chỉ đưa tối đa top-k tên món làm gợi ý cho Vision khi ở chế độ `hint`; không tự chốt món hoặc dinh dưỡng. Nếu model/sidecar lỗi hay score chưa đủ cao, Vision chạy không có gợi ý.
 - Vision chỉ là dự đoán. PostgreSQL là nguồn dữ liệu dinh dưỡng chuẩn; Qdrant chỉ là semantic index có thể dựng lại.
 - Món chưa có catalog được đưa vào `dish_candidates`, không tự động thành dữ liệu tham chiếu.
 
@@ -29,7 +31,7 @@ flowchart LR
 | PostgreSQL | Catalog, user, phiên đăng nhập, meal log và nutrition goals |
 | Qdrant | Semantic retrieval cho catalog và RAG; dữ liệu dẫn xuất |
 | Vision API | Nhận diện món ăn từ ảnh |
-| Food Gate + segmentation | Chặn ảnh ngoài phạm vi và tạo sticker khi sidecar được bật |
+| Food Gate + SigLIP Food Hint + segmentation | Chặn ảnh ngoài phạm vi, gợi ý candidate cho Vision và tạo sticker trong ML sidecar |
 | Flutter Balance | Ứng dụng iOS/Android |
 
 API có đăng ký/đăng nhập email-mật khẩu, đăng nhập Google, refresh token và logout. Google Sign-In production cần Web client ID ở backend và OAuth clients tương ứng cho Android/iOS.
@@ -92,12 +94,13 @@ DEBUG=false uv run python scripts/audit_catalog.py --fail-on error
 
 ## Deploy production
 
-Production gồm API, PostgreSQL, Qdrant, Redis, object storage và Vision API. Food Gate/segmentation có thể chạy trong sidecar; chat cần LLM endpoint và embedding runtime phù hợp.
+Production gồm API, PostgreSQL, Qdrant, Redis, object storage, Vision API và ML sidecar. Sidecar hiện cung cấp Food Gate, SigLIP Food Hint và segmentation; chat cần LLM endpoint và embedding runtime phù hợp.
 
 1. Dùng [`.env.production.example`](.env.production.example) làm checklist, nhưng nhập secrets trong dashboard của nền tảng deploy — không commit file có giá trị thật.
 2. Đặt `ENVIRONMENT=production`, `RATE_LIMIT_BACKEND=redis`, S3 object storage, `DATABASE_URL`, `QDRANT_URL`, Vision key và `AUTH_SECRET_KEY` riêng có ít nhất 32 ký tự.
-3. Nếu bật Food Gate, đặt `FOOD_GATE_MODE=enforce`, `FOOD_GATE_URL` và service token khớp sidecar.
-4. Chạy `alembic upgrade head` trong release/deploy process, sau đó kiểm tra `/live`, `/health` và `/ready`.
+3. Để bật luồng production hiện tại, đặt `FOOD_GATE_MODE=enforce`, `FOOD_GATE_URL`, `FOOD_GATE_SERVICE_TOKEN` và `SIGLIP_FOOD_HINT_MODE=hint`. Đặt `SIGLIP_FOOD_HINT_URL` trỏ tới cùng ML sidecar với suffix `/siglip` (ví dụ private URL của sidecar cộng `/siglip`).
+4. Food Gate sidecar cần checkpoint Gate và artifact SigLIP đã kiểm tra SHA-256 trong object storage. Các biến `FOOD_GATE_CHECKPOINT_*` và `SIGLIP_FOOD_V1_ARTIFACT_*` chỉ đặt trên sidecar; không commit artifact hay secret vào Git.
+5. Chạy `alembic upgrade head` trong release/deploy process, sau đó kiểm tra API `/live`, `/health`, `/ready` và sidecar `/siglip/live`. `/siglip/ready` sẽ trả `cold` trước lần dự đoán đầu tiên và `ready` sau khi model được nạp.
 
 ## Bảo mật và Git
 
