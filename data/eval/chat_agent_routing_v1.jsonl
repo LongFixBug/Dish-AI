@@ -1,0 +1,30 @@
+{"case_id":"catalog-01","message":"Phở bò khoảng bao nhiêu calo?","expected_route":"catalog","expected_tools":["search_catalog"]}
+{"case_id":"catalog-02","message":"100g ức gà có bao nhiêu protein?","expected_route":"catalog","expected_tools":["search_catalog"]}
+{"case_id":"catalog-03","message":"Tìm thông tin dinh dưỡng của cơm tấm.","expected_route":"catalog","expected_tools":["search_catalog"]}
+{"case_id":"catalog-04","message":"Bún bò Huế có nhiều natri không?","expected_route":"catalog","expected_tools":["search_catalog"]}
+{"case_id":"catalog-05","message":"So dinh dưỡng bánh mì thịt với phở bò.","expected_route":"catalog","expected_tools":["search_catalog"]}
+{"case_id":"catalog-06","message":"Một ly trà sữa trân châu có bao nhiêu đường?","expected_route":"catalog","expected_tools":["search_catalog"]}
+{"case_id":"knowledge-01","message":"Tài liệu kiến thức nói gì về thành phần của phở bò?","expected_route":"knowledge","expected_tools":["search_knowledge_base"]}
+{"case_id":"knowledge-02","message":"Balance lấy dữ liệu catalog dinh dưỡng từ đâu?","expected_route":"knowledge","expected_tools":["search_knowledge_base"]}
+{"case_id":"knowledge-03","message":"Trong knowledge base có lưu ý gì khi ước lượng khẩu phần phở bò?","expected_route":"knowledge","expected_tools":["search_knowledge_base"]}
+{"case_id":"knowledge-04","message":"Tài liệu có mô tả cách Balance phân tích ảnh món ăn không?","expected_route":"knowledge","expected_tools":["search_knowledge_base"]}
+{"case_id":"knowledge-05","message":"Nguồn nào được dùng để kiểm tra thành phần món phở bò?","expected_route":"knowledge","expected_tools":["search_knowledge_base"]}
+{"case_id":"personal-01","message":"Hôm nay tôi đã ăn những gì?","expected_route":"personal","expected_tools":["get_meals"]}
+{"case_id":"personal-02","message":"Tóm tắt calories hôm nay của tôi.","expected_route":"personal","expected_tools":["get_summary"]}
+{"case_id":"personal-03","message":"Tuần này tôi ăn phở bò mấy lần?","expected_route":"personal","expected_tools":["count_dish"]}
+{"case_id":"personal-04","message":"Mục tiêu calories hiện tại của tôi là bao nhiêu?","expected_route":"personal","expected_tools":["get_goal"]}
+{"case_id":"personal-05","message":"Hôm nay lượng ăn của tôi còn cách mục tiêu bao xa?","expected_route":"personal","expected_tools":["compare_goal"]}
+{"case_id":"personal-06","message":"Gợi ý món cho tối nay theo phần calories còn lại.","expected_route":"personal","expected_tools":["suggest_dishes"]}
+{"case_id":"personal-07","message":"Liệt kê các bữa trưa tôi đã ghi trong 7 ngày gần đây.","expected_route":"personal","expected_tools":["get_meals"]}
+{"case_id":"personal-08","message":"Tổng protein tôi đã nạp hôm nay là bao nhiêu?","expected_route":"personal","expected_tools":["get_summary"]}
+{"case_id":"personal-09","message":"Tháng này tôi đã ăn cơm tấm bao nhiêu lần?","expected_route":"personal","expected_tools":["count_dish"]}
+{"case_id":"personal-10","message":"Ngày mai nên ăn gì để bám mục tiêu dinh dưỡng?","expected_route":"personal","expected_tools":["suggest_dishes"]}
+{"case_id":"hybrid-01","message":"Hôm nay tôi còn bao nhiêu calories và món phở bò có phù hợp không?","expected_route":"hybrid","expected_tools":["compare_goal","search_catalog"]}
+{"case_id":"hybrid-02","message":"Dựa vào mục tiêu hôm nay, gợi ý một món và cho tôi dinh dưỡng của món đó.","expected_route":"hybrid","expected_tools":["suggest_dishes","search_catalog"]}
+{"case_id":"hybrid-03","message":"Tôi đã ăn gì hôm nay, còn bao nhiêu protein và nên chọn món nào?","expected_route":"hybrid","expected_tools":["get_summary","suggest_dishes"]}
+{"case_id":"hybrid-04","message":"Tôi ăn phở bò bao nhiêu lần tuần này và món này có bao nhiêu calories?","expected_route":"hybrid","expected_tools":["count_dish","search_catalog"]}
+{"case_id":"hybrid-05","message":"Theo mục tiêu của tôi, giải thích từ tài liệu vì sao cần chú ý khẩu phần phở bò.","expected_route":"hybrid","expected_tools":["compare_goal","search_knowledge_base"]}
+{"case_id":"general-01","message":"Chào bạn, Balance làm được gì?","expected_route":"general","expected_tools":[]}
+{"case_id":"general-02","message":"Cảm ơn nhé.","expected_route":"general","expected_tools":[]}
+{"case_id":"out-of-scope-01","message":"Viết giúp tôi một bài thơ về mùa hè.","expected_route":"out_of_scope","expected_tools":[]}
+{"case_id":"out-of-scope-02","message":"Dự đoán giá vàng tuần sau.","expected_route":"out_of_scope","expected_tools":[]}
