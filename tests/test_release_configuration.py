@@ -130,6 +130,13 @@ def test_dependency_and_toolchain_versions_are_reproducible() -> None:
     assert "python:3.12-slim@sha256:" in (ROOT / "Dockerfile.cv").read_text()
 
 
+def test_api_image_patches_debian_packages_before_install() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text()
+
+    assert "apt-get update" in dockerfile
+    assert "apt-get upgrade -y --no-install-recommends" in dockerfile
+
+
 def test_image_embedding_sidecar_installs_a_complete_hashed_lockfile() -> None:
     dockerfile = (ROOT / "Dockerfile.local-vision").read_text()
     lockfile = (ROOT / "requirements.image_embed.lock").read_text()
