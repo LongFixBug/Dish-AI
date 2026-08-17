@@ -34,6 +34,11 @@ logs/
 # Personal learning notes; intentionally kept local and not versioned.
 docs/
 
+# Local assistant/project instructions; kept on the developer machine.
+GLOSSARY.md
+AGENTS.md
+CLAUDE.md
+
 # RAG eval reports (output, không commit — chạy lại sinh mới)
 ml/evaluation/reports/
 reports/
