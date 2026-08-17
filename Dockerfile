@@ -1,6 +1,6 @@
 FROM ghcr.io/ggml-org/llama.cpp:server AS llama_runtime
 
-FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de
+FROM python:3.12-slim@sha256:876416ecde9aca2bcc90e1fb0c7a9500bbf749f5788b70f82d4c5a5c2357f8b4
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -12,6 +12,7 @@ WORKDIR /app
 COPY --from=llama_runtime /app /opt/llama
 
 RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends wget ca-certificates libgomp1 redis-server \
     && rm -rf /var/lib/apt/lists/*
 

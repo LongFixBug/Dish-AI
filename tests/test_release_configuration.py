@@ -180,6 +180,13 @@ def test_dependency_and_toolchain_versions_are_reproducible() -> None:
     assert "python:3.12-slim@sha256:" in (ROOT / "Dockerfile.food-gate").read_text()
 
 
+def test_api_image_patches_debian_packages_before_install() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text()
+
+    assert "apt-get update" in dockerfile
+    assert "apt-get upgrade -y --no-install-recommends" in dockerfile
+
+
 def test_retired_local_image_model_artifacts_are_removed() -> None:
     retired_paths = (
         "Dockerfile.cv",
