@@ -40,6 +40,10 @@ docs/
 .claude/
 LOCAL_TESTING.md
 plan.md
+# Local assistant/project instructions; kept on the developer machine.
+GLOSSARY.md
+AGENTS.md
+CLAUDE.md
 
 # RAG eval reports (output, không commit — chạy lại sinh mới)
 ml/evaluation/reports/
