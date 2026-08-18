@@ -33,8 +33,8 @@ vision_http_client = ResilientHttpClient(
     # Vision quota errors must never be retried: one user action = at most one
     # paid provider request. The analyze endpoint falls back to local evidence.
     max_attempts=1,
-    failure_threshold=1,
-    recovery_seconds=600,
+    failure_threshold=2,
+    recovery_seconds=30,
 )
 
 INCLUDED_ACCOMPANIMENTS = (
@@ -597,4 +597,20 @@ def _parse_json_response(content: str) -> dict:
     if match:
         content = match.group(1).strip()
 
-    return json.loads(content)
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as original_error:
+        # Some providers append a short explanation despite the JSON-only prompt.
+        # Decode the first complete object so harmless surrounding text does not
+        # turn an otherwise usable vision result into a failed request.
+        decoder = json.JSONDecoder()
+        for index, character in enumerate(content):
+            if character != "{":
+                continue
+            try:
+                parsed, _ = decoder.raw_decode(content[index:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+        raise original_error

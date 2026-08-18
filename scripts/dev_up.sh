@@ -32,7 +32,7 @@ wait_for_port() {
   return 1
 }
 
-echo "▶ 1/5  Data stores (postgres :5432, qdrant :6333)"
+echo "▶ 1/7  Data stores (postgres :5432, qdrant :6333)"
 if port_open 5432 && port_open 6333; then
   echo "   ⏭  đã chạy sẵn"
 else
@@ -41,10 +41,10 @@ else
   wait_for_port 6333 qdrant
 fi
 
-echo "▶ 2/5  Migrations"
+echo "▶ 2/7  Migrations"
 DEBUG=false uv run python -m alembic upgrade head
 
-echo "▶ 3/5  Sticker segmentation (:8083)"
+echo "▶ 3/7  Sticker segmentation (:8083)"
 if port_open 8083; then
   echo "   ⏭  đã chạy sẵn"
 else
@@ -52,7 +52,7 @@ else
   wait_for_port 8083 segment
 fi
 
-echo "▶ 4/5  llama.cpp (LLM :8080, embedding :8081)"
+echo "▶ 4/7  llama.cpp (LLM :8080, embedding :8081)"
 if [ "$WITH_LLM" = "0" ]; then
   echo "   ⏭  bỏ qua theo --no-llm"
 elif port_open 8080 && port_open 8081; then
@@ -64,7 +64,31 @@ else
   bash scripts/start_llama.sh
 fi
 
-echo "▶ 5/5  API (:8000)"
+echo "▶ 5/7  Food Gate (:8084)"
+if port_open 8084; then
+  echo "   ⏭  đã chạy sẵn"
+else
+  DEBUG=false FOOD_GATE_CHECKPOINT_PATH="$ROOT/checkpoints/food_gate/siglip2_food_gate_best.pt" \
+    nohup "$ROOT/.venv/bin/python" -m uvicorn ml.inference.food_gate:app \
+      --host 127.0.0.1 --port 8084 > "$LOG_DIR/food_gate.log" 2>&1 &
+  echo $! > "$RUN_DIR/food_gate.pid"
+  wait_for_port 8084 food-gate 90
+fi
+
+echo "▶ 6/7  SigLIP food hint (:8085)"
+if port_open 8085; then
+  echo "   ⏭  đã chạy sẵn"
+else
+  DEBUG=false \
+    SIGLIP_FOOD_V1_ENCODER_DIR="$ROOT/checkpoints/siglip_food_v1/encoder" \
+    SIGLIP_FOOD_V1_CLASSIFIER_HEAD_PATH="$ROOT/checkpoints/siglip_food_v1/classifier_head.pt" \
+    nohup "$ROOT/.venv/bin/python" -m uvicorn ml.inference.siglip_food_v1:app \
+      --host 127.0.0.1 --port 8085 > "$LOG_DIR/food_hint.log" 2>&1 &
+  echo $! > "$RUN_DIR/food_hint.pid"
+  wait_for_port 8085 food-hint 90
+fi
+
+echo "▶ 7/7  API (:8000)"
 if port_open 8000; then
   echo "   ⏭  đã chạy sẵn"
 else
@@ -97,6 +121,8 @@ cat <<EOF
   API      http://127.0.0.1:8000
   Docs     http://127.0.0.1:8000/docs
   Sticker  http://127.0.0.1:8083
+  Food Gate http://127.0.0.1:8084
+  Hint     http://127.0.0.1:8085
   Log      $LOG_DIR/api.log
   Smoke    bash scripts/smoke_test.sh
   Dừng     bash scripts/dev_down.sh

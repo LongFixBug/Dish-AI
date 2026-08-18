@@ -126,7 +126,10 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
     final bytes = widget.imageBytes;
     final state = AppScope.maybeOf(context);
     final dishName = _result.dishName;
-    if (bytes == null || state == null || dishName == null || dishName.isEmpty) {
+    if (bytes == null ||
+        state == null ||
+        dishName == null ||
+        dishName.isEmpty) {
       return;
     }
     final consent = await showDialog<bool>(
@@ -152,9 +155,9 @@ class _AnalysisResultScreenState extends State<AnalysisResultScreen> {
       );
     } on Object {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chưa gửi được ảnh góp ý.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Chưa gửi được ảnh góp ý.')));
     }
   }
 
@@ -594,8 +597,6 @@ class _ResultFacts extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final recognitionPercent = _recognitionPercent(result);
-    final catalogPercent = _catalogCoveragePercent(result);
     final nutrition = result.nutrition;
     final servingSummary = _servingSummary(result);
     return Column(
@@ -636,16 +637,6 @@ class _ResultFacts extends StatelessWidget {
           ).textTheme.displaySmall?.copyWith(color: BalanceColors.blueDark),
         ),
         const SizedBox(height: 4),
-        if (recognitionPercent != null)
-          Text(
-            'Nhận diện: $recognitionPercent%',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        if (catalogPercent != null)
-          Text(
-            'Dữ liệu catalog: $catalogPercent%',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
       ],
     );
   }
@@ -1231,18 +1222,6 @@ List<Widget> _componentRows(
         ),
       )
       .toList(growable: false);
-}
-
-int? _recognitionPercent(AnalyzeResult result) {
-  final score = result.recognitionConfidence ?? result.cvConfidence;
-  return score == null ? null : (score * 100).round();
-}
-
-int? _catalogCoveragePercent(AnalyzeResult result) {
-  final nutrition = result.nutrition;
-  return nutrition == null
-      ? null
-      : (nutrition.catalogCoverageScore * 100).round();
 }
 
 String? _servingSummary(AnalyzeResult result) {

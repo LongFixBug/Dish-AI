@@ -3,6 +3,7 @@
 import pytest
 
 from ml.inference.vision import (
+    _parse_json_response,
     VisionError,
     _build_food_identification_prompt,
     _extract_message_content,
@@ -13,6 +14,20 @@ from ml.inference.vision import (
 def test_provider_response_requires_message_content() -> None:
     with pytest.raises(VisionError, match="response không hợp lệ"):
         _extract_message_content({"choices": []})
+
+
+def test_json_parser_extracts_object_from_surrounding_text() -> None:
+    parsed = _parse_json_response(
+        'Here is the result:\n{"dishes": [], "confidence": 0.2}\nDone.'
+    )
+
+    assert parsed == {"dishes": [], "confidence": 0.2}
+
+
+def test_json_parser_extracts_object_from_unclosed_code_fence() -> None:
+    parsed = _parse_json_response('```json\n{"dishes": []}')
+
+    assert parsed == {"dishes": []}
 
 
 def test_normalizer_ignores_non_object_items() -> None:

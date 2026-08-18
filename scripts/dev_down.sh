@@ -16,6 +16,16 @@ if [ -f "$RUN_DIR/segment.pid" ]; then
   rm -f "$RUN_DIR/segment.pid"
 fi
 
+if [ -f "$RUN_DIR/food_gate.pid" ]; then
+  kill "$(cat "$RUN_DIR/food_gate.pid")" 2>/dev/null && echo "🛑 food-gate"
+  rm -f "$RUN_DIR/food_gate.pid"
+fi
+
+if [ -f "$RUN_DIR/food_hint.pid" ]; then
+  kill "$(cat "$RUN_DIR/food_hint.pid")" 2>/dev/null && echo "🛑 food-hint"
+  rm -f "$RUN_DIR/food_hint.pid"
+fi
+
 pkill -f "llama-server --model" 2>/dev/null && echo "🛑 llama.cpp"
 
 docker compose stop postgres qdrant >/dev/null 2>&1 && echo "🛑 postgres + qdrant"
